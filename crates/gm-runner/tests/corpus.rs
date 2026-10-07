@@ -7,7 +7,9 @@
 //! `gm-runner` process with a time limit (`GM81_CORPUS_SECONDS`, default 120),
 //! and fails if any game panics, hits a fatal error, aborts or times out.
 //! Projects that the runner refuses cleanly (e.g. no rooms) are reported but
-//! not counted as failures. The projects themselves are never part of the repo.
+//! not counted as failures. `GM81_CORPUS_SKIP` (comma-separated file-name
+//! substrings) leaves out known-bad projects. The projects themselves are never
+//! part of the repo.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -52,6 +54,17 @@ fn corpus_runs_without_fatal_errors() {
     }
     let frames = env_num("GM81_CORPUS_FRAMES", 300);
     let seconds = env_num("GM81_CORPUS_SECONDS", 120);
+    // known-bad projects to leave out: comma-separated file-name substrings
+    let skip: Vec<String> = std::env::var("GM81_CORPUS_SKIP")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+    games.retain(|g| {
+        let n = g.file_name().unwrap().to_string_lossy().to_ascii_lowercase();
+        !skip.iter().any(|s| n.contains(s.as_str()))
+    });
     let exe = env!("CARGO_BIN_EXE_gm-runner");
     let mut failures = Vec::new();
     for (k, g) in games.iter().enumerate() {

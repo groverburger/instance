@@ -219,6 +219,25 @@ fn run_headless(o: Opts) -> i32 {
         let list: Vec<String> = g.unsupported_calls.iter().map(|(n, c)| format!("{} x{}", n, c)).collect();
         eprintln!("stubbed/unsupported functions called: {}", list.join(", "));
     }
+    if std::env::var_os("GM_DUMP_INSTANCES").is_some() {
+        for i in &g.instances {
+            eprintln!(
+                "  {} {} ({:.1},{:.1}) spr {} img {:.2} vis {} depth {} active {} solid {}",
+                i.id,
+                g.object(i.object_index).map(|o| o.name.as_str()).unwrap_or("?"),
+                i.x,
+                i.y,
+                i.sprite_index,
+                i.image_index,
+                i.visible,
+                i.depth,
+                i.active,
+                i.solid
+            );
+        }
+        let v = &g.rs.views[0];
+        eprintln!("  view0 visible {} view ({},{} {}x{}) port ({},{} {}x{})", v.visible, v.xview, v.yview, v.wview, v.hview, v.xport, v.yport, v.wport, v.hport);
+    }
     g.profile_report();
     if let Some(p) = o.screenshot {
         if let Err(e) = g.frame_image().save_png(&p, true) {

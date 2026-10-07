@@ -165,7 +165,7 @@ pub struct Game {
 
     // ---------------------------------------------------------- runtime
     pub instances: Vec<Instance>,
-    pub inst_index: HashMap<i32, usize>,
+    pub inst_index: HashMap<i32, usize, gml::IdBuildHasher>,
     pub next_instance_id: i32,
     pub next_tile_id: i32,
     pub room: i32,
@@ -374,7 +374,7 @@ impl Game {
             has_mouse: Vec::new(),
             has_boundary: Vec::new(),
             instances: Vec::new(),
-            inst_index: HashMap::new(),
+            inst_index: HashMap::default(),
             next_instance_id: p.last_instance_id.max(gml::special::FIRST_INSTANCE_ID) + 1,
             next_tile_id: p.last_tile_id.max(fmt::FIRST_TILE_ID) + 1,
             room: -1,
@@ -647,6 +647,8 @@ impl Game {
     /// Builds ancestor chains and the effective event tables (§6.1, §6.3).
     pub fn build_event_tables(&mut self) {
         let n = self.objects.len();
+        // parents (and the object list) may have changed
+        self.objlists.get_mut().invalidate();
         self.ancestors = (0..n)
             .map(|i| {
                 let mut chain = vec![];

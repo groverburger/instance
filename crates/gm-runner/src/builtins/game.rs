@@ -103,8 +103,7 @@ pub fn register(l: &mut Reg) {
         n.id = id;
         n.destroyed = false;
         n.active = true;
-        g.inst_index.insert(id, g.instances.len());
-        g.instances.push(n);
+        g.push_instance(n);
         if a.b(0)? {
             g.run_event(vm, id, ev::CREATE, 0, c.self_id)?;
         }
