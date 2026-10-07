@@ -24,11 +24,12 @@ fn sample(name: &str) -> Option<Vec<u8>> {
     }
 }
 
-const ALL: [&str; 4] = [
+const ALL: [&str; 5] = [
     "tutorial1.gmk",
     "treasure.gmk",
     "street racing.gmk",
     "treasure.gm81",
+    "street racing.gm81",
 ];
 
 #[test]
@@ -37,7 +38,7 @@ fn all_samples_read() {
         let Some(d) = sample(name) else { continue };
         let (p, v) = read_project_versioned(&d).unwrap_or_else(|e| panic!("{name}: {e}"));
         let expect = match name {
-            "treasure.gm81" => FormatVersion::V810,
+            "treasure.gm81" | "street racing.gm81" => FormatVersion::V810,
             "tutorial1.gmk" => FormatVersion::V800,
             _ => FormatVersion::V701,
         };

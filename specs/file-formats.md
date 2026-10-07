@@ -789,3 +789,12 @@ end-to-end by `specs/tools/gmk_dump.py` with exact consumption to EOF. Observed:
   - sprite `precise` → collision shape 0 (precise), else 1 (rectangle); converted sprites
     get "separate collision masks" on.
   - settings: `disable_screensaver` becomes true.
+
+## Addendum: path, timeline and v800 font records verified
+
+`street racing.gm81` (8.1 IDE, with a user-added path and timeline) decodes to EOF and
+round-trips byte-identically (inflated) through gm-format. Verified record versions:
+path 530, timeline 500, font 800. Example font `range_start` raw value 0x04000020
+(range start 32 in the low 16 bits; the high byte is non-zero — its exact meaning,
+charset vs anti-alias level, stays an open question). Triggers, constants, tiles and
+included files remain unverified.
