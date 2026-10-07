@@ -199,6 +199,11 @@ pub trait Backend {
         false
     }
 
+    /// Counters for diagnostics (draw calls, uploads, read-backs), if any.
+    fn stats(&self) -> Option<String> {
+        None
+    }
+
     /// For the comparison backend: the second renderer's back buffer.
     fn read_back_secondary(&mut self) -> Option<Texture> {
         None

@@ -154,7 +154,8 @@ pub struct GlBackend {
     key: Option<BatchKey>,
     /// Temporary texture used when a surface is drawn onto itself.
     scratch: Option<(glow::Texture, u32, u32)>,
-    pub draw_calls: u64,
+    /// draw calls, texture uploads, read-backs, writes
+    pub counters: [u64; 4],
     win_size: (u32, u32),
 }
 
@@ -289,7 +290,7 @@ impl GlBackend {
                 batch: Vec::with_capacity(1 << 16),
                 key: None,
                 scratch: None,
-                draw_calls: 0,
+                counters: [0; 4],
                 win_size: (w, h),
             })
         }
@@ -402,6 +403,7 @@ impl GlBackend {
             Self::upload_raw(&self.gl, img.w, img.h, bytes).unwrap_or(self.white)
         };
         self.images.insert(key, (Rc::downgrade(img), t));
+        self.counters[1] += 1;
         if self.images.len() >= self.sweep_at {
             self.sweep();
             self.sweep_at = (self.images.len() * 2).max(1024);
@@ -533,7 +535,7 @@ impl GlBackend {
             gl.draw_arrays(key.mode, 0, (self.batch.len() / FLOATS_PER_VERTEX) as i32);
             gl.color_mask(true, true, true, true);
         }
-        self.draw_calls += 1;
+        self.counters[0] += 1;
         self.batch.clear();
     }
 
@@ -771,6 +773,7 @@ impl Backend for GlBackend {
     }
 
     fn read(&mut self, t: Target, x: i32, y: i32, w: u32, h: u32) -> Texture {
+        self.counters[2] += 1;
         self.flush_batch();
         let mut out = Texture::new(w, h);
         let Some((cx, cy, cw, ch)) = self.clip_rect(t, x, y, w as i32, h as i32) else { return out };
@@ -793,6 +796,7 @@ impl Backend for GlBackend {
     }
 
     fn write(&mut self, t: Target, x: i32, y: i32, img: &Texture) {
+        self.counters[3] += 1;
         self.flush_batch();
         let Some((cx, cy, cw, ch)) = self.clip_rect(t, x, y, img.w as i32, img.h as i32) else { return };
         let tex = self.fbo(t).unwrap().tex;
@@ -853,6 +857,11 @@ impl Backend for GlBackend {
 
     fn supports_3d(&self) -> bool {
         true
+    }
+
+    fn stats(&self) -> Option<String> {
+        let c = &self.counters;
+        Some(format!("{} draw calls, {} texture uploads, {} read-backs, {} writes, {} cached textures", c[0], c[1], c[2], c[3], self.images.len()))
     }
 
     fn as_gl(&mut self) -> Option<&mut GlBackend> {

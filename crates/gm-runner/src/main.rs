@@ -232,6 +232,9 @@ fn run_headless(o: Opts) -> i32 {
         g.instances.len(),
         g.caption()
     );
+    if let Some(s) = g.gfx.be.stats() {
+        eprintln!("renderer stats: {}", s);
+    }
     if let Some(cd) = &o.compare {
         if o.every.is_none() {
             let fr = g.frame;
