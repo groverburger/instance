@@ -433,3 +433,82 @@ Sound / UI / files
 - R-27: Not supported (stubs that return 0/""/false): multiplayer (413), DLL calls
   (414), 3D mode (415; d3d_start returns false), joysticks (none present), CD audio,
   video/web splash screens, message_* dialog styling, clipboard (not yet).
+
+## [D3D] 3D graphics (specs/d3d.md, 2026-10-07)
+
+Resolve by black-box tests with GM 8.1 (screenshots of small test games).
+
+- D3D-1: Orientation of the default 3D projection after d3d_start(). Manual says y is
+  reversed (origin bottom-left) and also that the camera looks "along the negative z
+  axis" while greater depth looks smaller. Spec recommends: camera on the negative-depth
+  side at distance = view width, image vertically mirrored vs 2D. Verify, and verify
+  d3d_set_projection_perspective has the same orientation and _ortho is y-down.
+- D3D-2: Sign of d3d_transform_*rotation_x/_y/_z/_axis angles (spec: +angle about z turns
+  +x toward -y, like GM's direction). Verify x/y/axis by drawing a marked primitive.
+- D3D-3: Which screen winding is culled by d3d_set_culling(true) under each projection,
+  and the winding/normal sign of d3d_draw_wall and d3d_draw_floor (which side is visible).
+- D3D-4: Do d3d_draw_* shapes with hrepeat/vrepeat > 1 repeat without
+  texture_set_repeat(true)? Is non-repeat clamp or "not drawn"?
+- D3D-5: Texture orientation on shape side faces (spec: v=0 at z2) and the exact
+  tessellation of cylinder/cone/ellipsoid (rings, seam, cap mapping); floor slope axis.
+- D3D-6: Alpha test in 3D mode: do pixels with alpha 0 write depth (spec: yes)?
+- D3D-7: Do surfaces have their own depth buffer in 3D mode, and is it cleared?
+- D3D-8: Point light attenuation curve over `range` (spec: linear 1-d/range); flat
+  shading colour source; is the ambient term multiplied by vertex colour?
+- D3D-9: Colour of model vertices/shapes recorded without colour: creation-time or
+  draw-time draw colour?
+- D3D-10: d3d_model_save text format (spec gives the commonly observed "100 / count /
+  kind + 10 values" layout, number formatting unknown) — confirm by saving models.
+- D3D-11: Default fov/aspect for d3d_set_projection (non-ext) (spec: 45°, view aspect)
+  and the depth range of d3d_set_projection_ortho (spec: -32000..32000).
+- D3D-12: Transform stack capacity (spec: 32) and whether the world transform applies to
+  2D drawing outside 3D mode (spec: yes); does d3d_start/d3d_end reset culling/fog/etc.?
+- D3D-13: How room backgrounds/foregrounds and tiles are drawn in 3D mode (spec: backdrop
+  without depth test at z=0; tiles at layer depth).
+
+## [MP] Multiplayer (specs/multiplayer.md, 2026-10-07)
+
+- MP-1: gm81-clean uses its own protocol (Part B); interop with GM 8.1 DirectPlay
+  games is out of scope. Confirm this is acceptable.
+- MP-2: When the host leaves a non-migrating session, does mplay_session_status() on the
+  clients become 0 in GM? Do players still appear in mplay_player_find?
+- MP-3: Are messages to "all" (player 0) also delivered to the sender in GM? (spec: no)
+  Is name matching case-sensitive? (spec: yes)
+- MP-4: Is shared data cleared on session create/join/end, and does a joiner receive the
+  current table? (spec: yes)
+- MP-5: Blocking time of mplay_session_find in GM (spec: ~1 s LAN, 3 s addressed).
+
+## [JOY] Joystick (specs/input-joystick.md, 2026-10-07)
+
+- JOY-1: Threshold for joystick_direction and direction events (spec: 0.5) and whether
+  the POV hat contributes (spec: no).
+- JOY-2: Value of joystick_direction for a missing joystick (spec: vk_numpad5 = 101).
+- JOY-3: Are joystick events dispatched before or after the other mouse sub-events?
+- JOY-4: Axis mapping of an XInput pad as seen by GM 8.1 (z = triggers sign, r/u = right
+  stick) — verify with a real controller.
+
+## [SND] Sound (specs/sound.md, 2026-10-07)
+
+- SND-1: Curve mapping sound_volume/sound_global_volume 0..1 to loudness (spec: linear
+  amplitude; GM may map linearly onto DirectSound hundredths of dB). Measure.
+- SND-2: Pan curve (spec: linear attenuation of the opposite channel).
+- SND-3: Can two MIDI sounds play at once (kind 0 MIDI + kind 1 MIDI)? (spec: no, one
+  MIDI player). Does sound_volume affect MIDI in GM?
+- SND-4: 3D sound beyond maxdist: silent or constant? Rolloff curve.
+- SND-5: Do effect changes apply to already-playing voices? Do sound_effect_* parameter
+  calls for an unselected effect have any effect?
+- SND-6: Does sound_play on a non-existent sound raise an error in GM 8.1?
+- SND-7: Does an MP3 given kind 0..2 play at all in GM 8.1?
+
+## [EXT] Extensions and DLLs (specs/extensions.md, 2026-10-07)
+
+- EXT-1: Layout of the .gex package installer file and where GM 8.1 installs user
+  packages (IDE extensions folder vs per-user folder).
+- EXT-2: Standalone exe must embed used packages; proposed extension of exe-format.md
+  (package bundle after the project payload). Needs an owner decision.
+- EXT-3: Meaning of .ged calling-convention codes (12, 11, 2) and argument_count -1.
+- EXT-4: Exact timing of extension init functions relative to Game Start/Create events
+  and of final functions relative to Game End; are finals called on game_restart?
+- EXT-5: Are extension constant values evaluated as GML expressions or literal?
+- EXT-6: external_call with wrong argument types: error or conversion? external_define
+  return id numbering and error message wording.
