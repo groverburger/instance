@@ -395,8 +395,13 @@ Collision / geometry
   test samples room pixel centres; point queries (position_*, mouse) test the point
   itself. Alpha tolerance comparison is strict (alpha > tolerance).
 - R-12: Combined (non-separate) masks are the union of all frames; automatic bbox per
-  frame for separate masks. A user box larger than the image counts as set outside
-  the image for ellipse/diamond/rectangle shapes.
+  frame for separate masks. A user-defined box is clipped to the image (the mask is a
+  per-pixel image of the sprite; nothing outside the image collides). Evidence:
+  pokemonEngine15.gm81's player sprites are 16x20 with a manual box l0..r16, moved on
+  a 16-px grid against 16x16 solids; with an unclipped 17-px box the player hits a
+  solid one step before a grid cell, is put back off-grid and its place_snapped-driven
+  logic never stops it (stuck bumping forever). The game only works with clipping.
+  (Earlier recommendation, superseded: box outside the image counts as set.)
 - R-13: collision_* with prec=false use the instance bbox; with prec=true the mask
   only if the sprite's shape is not rectangle. Shapes are rasterised by pixel centre
   (lines: centre within half a pixel of the segment).
