@@ -309,3 +309,181 @@ fn ui_room_place_instance() {
     assert_eq!((i.x % 16, i.y % 16), (0, 0), "snapped");
     assert!(p.last_instance_id >= i.id);
 }
+
+/// Create Executable: runner bytes + payload + footer; the footer reader finds the
+/// project, and used extension packages are bundled (v2) or reported when missing.
+#[test]
+fn create_executable_round_trip() {
+    let mut p = synthetic_project();
+    let runner = tmp("fake-runner.exe");
+    std::fs::write(&runner, b"MZ this is not really a runner").unwrap();
+    // v1: no extension packages
+    let out = tmp("game1.exe");
+    let warnings = crate::exe::create_executable(&p, &runner, &out, None).unwrap();
+    assert!(warnings.is_empty());
+    let bytes = std::fs::read(&out).unwrap();
+    assert!(bytes.starts_with(b"MZ this is not really a runner"));
+    let e = gm_format::exe::read_embedded(&bytes).expect("footer");
+    assert!(e.bundle.is_none());
+    assert!(read_project(&e.payload).unwrap() == p);
+    // v2: one installed package found in the project's extensions dir, one missing
+    let proj_dir = tmp("exeproj");
+    let ext = proj_dir.join("extensions");
+    std::fs::create_dir_all(&ext).unwrap();
+    std::fs::write(ext.join("Pkg A.ged"), b"ged").unwrap();
+    std::fs::write(ext.join("Pkg A.dat"), b"dat").unwrap();
+    p.extension_packages = vec!["Pkg A".into(), "Missing Pkg".into()];
+    let out = tmp("game2.exe");
+    let warnings =
+        crate::exe::create_executable(&p, &runner, &out, Some(&proj_dir.join("game.gm81")))
+            .unwrap();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("Missing Pkg"));
+    let e = gm_format::exe::read_embedded(&std::fs::read(&out).unwrap()).unwrap();
+    assert!(read_project(&e.payload).unwrap() == p);
+    let pk = gm_format::exe::read_bundle(&e.bundle.unwrap()).unwrap();
+    assert_eq!(pk.len(), 1);
+    assert_eq!(
+        (pk[0].name.as_str(), &pk[0].ged[..], &pk[0].dat[..]),
+        ("Pkg A", &b"ged"[..], &b"dat"[..])
+    );
+}
+
+fn drag(
+    h: &mut egui_kittest::Harness<'_, crate::app::IdeApp>,
+    from: eframe::egui::Pos2,
+    by: eframe::egui::Vec2,
+) {
+    use eframe::egui::{Event, PointerButton};
+    h.event(Event::PointerMoved(from));
+    h.run_steps(1);
+    h.event(Event::PointerButton {
+        pos: from,
+        button: PointerButton::Primary,
+        pressed: true,
+        modifiers: Default::default(),
+    });
+    h.run_steps(1);
+    for i in 1..=5 {
+        h.event(Event::PointerMoved(from + by * (i as f32 / 5.0)));
+        h.run_steps(1);
+    }
+    h.event(Event::PointerButton {
+        pos: from + by,
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Default::default(),
+    });
+    h.run_steps(2);
+}
+
+/// MDI child windows: move by the caption, resize by the corner, maximise, minimise.
+#[test]
+fn ui_mdi_move_resize_maximise() {
+    use eframe::egui::vec2;
+    use egui_kittest::kittest::Queryable;
+    let mut h = harness();
+    h.state_mut().test_set_project(synthetic_project());
+    h.state_mut()
+        .open_form(ResKey::Res(ResourceKind::Script, 0));
+    h.run_steps(4);
+    let id = h.state().test_form_ids()[0];
+    let rect = |h: &egui_kittest::Harness<'_, crate::app::IdeApp>| {
+        h.ctx.memory(|m| m.area_rect(id)).unwrap()
+    };
+    let r0 = rect(&h);
+    drag(&mut h, r0.min + vec2(60.0, 12.0), vec2(50.0, 30.0));
+    let r1 = rect(&h);
+    assert!(
+        (r1.min - r0.min - vec2(50.0, 30.0)).length() < 1.5,
+        "{r0:?} -> {r1:?}"
+    );
+    assert!((r1.size() - r0.size()).length() < 0.5);
+    drag(&mut h, r1.max - vec2(2.0, 2.0), vec2(-60.0, -40.0));
+    let r2 = rect(&h);
+    assert!(
+        (r2.size() - r1.size() - vec2(-60.0, -40.0)).length() < 1.5,
+        "{r1:?} -> {r2:?}"
+    );
+    h.get_by_label("Maximise").click();
+    h.run_steps(3);
+    let r3 = rect(&h);
+    assert!(r3.width() > r2.width() + 100.0 && r3.height() > r2.height() + 100.0);
+    h.get_by_label("Restore").click();
+    h.run_steps(3);
+    assert!((rect(&h).size() - r2.size()).length() < 1.5);
+    h.get_by_label("Minimise").click();
+    h.run_steps(3);
+    assert!(rect(&h).height() < 40.0);
+    assert_eq!(
+        h.state().test_state().2,
+        1,
+        "minimising keeps the form open"
+    );
+}
+
+/// A small synthetic project with one populated resource of each kind.
+fn synthetic_project() -> gm_format::Project {
+    let mut p = ops::new_project();
+    for (k, _, _) in LIST_KINDS {
+        ops::create_resource(&mut p, k, &ops::Placement::End);
+    }
+    p
+}
+
+/// Regression: forms must not grow by themselves while the mouse moves over them
+/// (content sized from the window's own available space fed back into the window).
+#[test]
+fn ui_forms_do_not_grow() {
+    use eframe::egui::{pos2, Event};
+    let mut projects = vec![("synthetic".to_string(), synthetic_project())];
+    for name in ["treasure.gm81", "tutorial1.gmk"] {
+        if let Some(path) = sample_path(name) {
+            projects.push((name.to_string(), ops::load_project(&path).unwrap()));
+        }
+    }
+    for (name, proj) in projects {
+        let mut h = harness();
+        h.state_mut().test_set_project(proj.clone());
+        h.run_steps(2);
+        let mut keys = vec![
+            ResKey::GameInfo,
+            ResKey::Settings,
+            ResKey::Extensions,
+            ResKey::Constants,
+            ResKey::Triggers,
+            ResKey::IncludedFiles,
+        ];
+        for (k, _, _) in LIST_KINDS {
+            if let Some(i) = (0..ops::slot_count(&proj, k)).find(|&i| ops::res_exists(&proj, k, i))
+            {
+                keys.push(ResKey::Res(k, i));
+            }
+        }
+        for key in keys {
+            h.state_mut().test_close_forms();
+            h.state_mut().open_form(key);
+            h.run_steps(4);
+            let id = h.state().test_form_ids()[0];
+            let rect_of = |h: &egui_kittest::Harness<'_, crate::app::IdeApp>| {
+                h.ctx.memory(|m| m.area_rect(id)).expect("form window rect")
+            };
+            let start = rect_of(&h);
+            for f in 0..60 {
+                let t = f as f32 / 60.0;
+                let pos = pos2(
+                    start.min.x + 5.0 + (start.width() - 10.0) * t,
+                    start.min.y + 30.0 + (start.height() - 40.0) * ((t * 7.0) % 1.0),
+                );
+                h.event(Event::PointerMoved(pos));
+                h.run_steps(1);
+            }
+            let end = rect_of(&h);
+            assert!(
+                (end.width() - start.width()).abs() < 1.0
+                    && (end.height() - start.height()).abs() < 1.0,
+                "{name}: {key:?} window changed size from {start:?} to {end:?}"
+            );
+        }
+    }
+}

@@ -8,8 +8,11 @@ use eframe::egui::{self, Context, Id, Vec2};
 use gm_format::{Action, NodeStatus, Project, ResourceKind};
 
 use crate::editors::{open_editor, Cx, Editor, IdAlloc, Request, ResKey};
+use crate::icons::{self, Icon};
+use crate::mdi::{self, MdiState};
 use crate::prefs::Prefs;
 use crate::project_ops::{self as ops, Placement, TreePath, LIST_KINDS};
+use crate::theme;
 use crate::tree::{tree_ui, TreeAction, TreeState};
 use crate::widgets::code_editor::ProjectNames;
 use crate::widgets::TextureCache;
@@ -20,6 +23,8 @@ struct OpenForm {
     /// Asking "save changes?" after the X button.
     close_prompt: bool,
     bring_to_front: bool,
+    /// Position/size inside the workspace.
+    mdi: MdiState,
 }
 
 /// What to do after the "save changes?" question.
@@ -52,11 +57,16 @@ pub struct IdeApp {
     allow_close: bool,
     last_title: String,
     status: String,
+    /// uid of the active (focused) form.
+    active: Option<u64>,
+    /// Workspace rectangle of the last frame (where forms live).
+    workspace: egui::Rect,
+    show_about: bool,
 }
 
 impl IdeApp {
     pub fn new(cc: &eframe::CreationContext<'_>, open: Option<PathBuf>) -> Self {
-        cc.egui_ctx.set_visuals(egui::Visuals::light());
+        crate::theme::apply(&cc.egui_ctx);
         let mut app = IdeApp {
             project: ops::new_project(),
             path: None,
@@ -79,6 +89,9 @@ impl IdeApp {
             allow_close: false,
             last_title: String::new(),
             status: String::new(),
+            active: None,
+            workspace: egui::Rect::from_min_size(egui::pos2(250.0, 60.0), Vec2::new(1000.0, 700.0)),
+            show_about: false,
         };
         app.project_replaced();
         if let Some(p) = open {
@@ -224,11 +237,14 @@ impl IdeApp {
         let uid = self.next_uid;
         self.next_uid += 1;
         if let Some(editor) = open_editor(key, &self.project, uid) {
+            let size = mdi::outer_size(editor.default_size());
+            let rect = mdi::cascade_rect(self.workspace, self.forms.len(), size);
             self.forms.push(OpenForm {
                 editor,
                 uid,
                 close_prompt: false,
                 bring_to_front: true,
+                mdi: MdiState::new(rect),
             });
         }
     }
@@ -388,6 +404,20 @@ impl IdeApp {
         )
     }
 
+    /// Window ids of the open forms (for layout tests).
+    #[cfg(test)]
+    pub(crate) fn test_form_ids(&self) -> Vec<Id> {
+        self.forms
+            .iter()
+            .map(|f| Id::new(("form", f.uid)))
+            .collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_close_forms(&mut self) {
+        self.forms.clear();
+    }
+
     // ------------------------------------------------------------------ UI parts
 
     fn menu_bar(&mut self, ui: &mut egui::Ui) {
@@ -418,6 +448,10 @@ impl IdeApp {
                 }
                 if ui.button("Save As…").clicked() {
                     self.save(true);
+                    ui.close();
+                }
+                if ui.button("Create Executable…").clicked() {
+                    self.create_executable();
                     ui.close();
                 }
                 ui.separator();
@@ -526,24 +560,216 @@ impl IdeApp {
                     }
                 }
             });
+            ui.menu_button("Scripts", |ui| {
+                if ui.button("Create Script").clicked() {
+                    self.create(
+                        ResourceKind::Script,
+                        self.placement_for(ResourceKind::Script),
+                    );
+                    ui.close();
+                }
+                ui.separator();
+                let scripts: Vec<(usize, String)> = self
+                    .project
+                    .scripts
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, s)| Some((i, s.as_ref()?.name.clone())))
+                    .collect();
+                if scripts.is_empty() {
+                    ui.add_enabled(false, egui::Button::new("(no scripts)"));
+                }
+                egui::ScrollArea::vertical()
+                    .max_height(400.0)
+                    .show(ui, |ui| {
+                        for (i, name) in scripts {
+                            if ui.button(name).clicked() {
+                                self.open_form(ResKey::Res(ResourceKind::Script, i));
+                                ui.close();
+                            }
+                        }
+                    });
+            });
             ui.menu_button("Run", |ui| {
                 if ui.button("Run normally (F5)").clicked() {
                     self.run_game();
                     ui.close();
                 }
+                ui.add_enabled(false, egui::Button::new("Run in Debug mode (F6)"));
             });
-            ui.menu_button("Window", |ui| {
-                if ui.button("Close All").clicked() {
-                    for f in &mut self.forms {
-                        f.close_prompt = true;
-                    }
+            ui.menu_button("Window", |ui| self.window_menu(ui));
+            ui.menu_button("Help", |ui| {
+                if ui.button("About gm81-clean…").clicked() {
+                    self.show_about = true;
                     ui.close();
                 }
             });
-            ui.menu_button("Help", |ui| {
-                ui.label("GM81 Clean IDE — clean-room GameMaker 8.1 compatible editor.");
-            });
         });
+    }
+
+    fn window_menu(&mut self, ui: &mut egui::Ui) {
+        let ws = self.workspace;
+        let ctx = ui.ctx().clone();
+        let any = !self.forms.is_empty();
+        if ui.add_enabled(any, egui::Button::new("Cascade")).clicked() {
+            for (i, f) in self.forms.iter_mut().enumerate() {
+                let size = mdi::outer_size(f.editor.default_size());
+                f.mdi = MdiState::new(mdi::cascade_rect(ws, i, size));
+                mdi::bring_to_front(&ctx, Id::new(("form", f.uid)));
+            }
+            ui.close();
+        }
+        if ui
+            .add_enabled(any, egui::Button::new("Arrange Tiled"))
+            .clicked()
+        {
+            let n = self.forms.len().max(1);
+            let cols = (n as f32).sqrt().ceil() as usize;
+            let rows = n.div_ceil(cols);
+            let w = ws.width() / cols as f32;
+            let h = ws.height() / rows as f32;
+            for (i, f) in self.forms.iter_mut().enumerate() {
+                let (c, r) = (i % cols, i / cols);
+                f.mdi = MdiState::new(egui::Rect::from_min_size(
+                    ws.min + Vec2::new(c as f32 * w, r as f32 * h),
+                    Vec2::new(w, h),
+                ));
+            }
+            ui.close();
+        }
+        if ui
+            .add_enabled(any, egui::Button::new("Minimise All"))
+            .clicked()
+        {
+            for f in &mut self.forms {
+                f.mdi.minimised = true;
+            }
+            ui.close();
+        }
+        if ui
+            .add_enabled(any, egui::Button::new("Close All"))
+            .clicked()
+        {
+            for f in &mut self.forms {
+                f.close_prompt = true;
+            }
+            ui.close();
+        }
+        if any {
+            ui.separator();
+        }
+        let mut pick = None;
+        for (i, f) in self.forms.iter().enumerate() {
+            let label = format!("{} {}", i + 1, f.editor.title());
+            if ui
+                .add(egui::Button::selectable(self.active == Some(f.uid), label))
+                .clicked()
+            {
+                pick = Some(i);
+                ui.close();
+            }
+        }
+        if let Some(i) = pick {
+            self.forms[i].bring_to_front = true;
+        }
+    }
+
+    fn status_bar(&mut self, ui: &mut egui::Ui) {
+        let cell = |ui: &mut egui::Ui, w: f32, text: &str| {
+            let (r, _) = ui.allocate_exact_size(Vec2::new(w, 18.0), egui::Sense::hover());
+            let p = ui.painter();
+            p.hline(
+                r.x_range(),
+                r.top() + 0.5,
+                egui::Stroke::new(1.0, theme::SHADOW),
+            );
+            p.vline(
+                r.left() + 0.5,
+                r.y_range(),
+                egui::Stroke::new(1.0, theme::SHADOW),
+            );
+            p.hline(
+                r.x_range(),
+                r.bottom() - 0.5,
+                egui::Stroke::new(1.0, egui::Color32::WHITE),
+            );
+            p.vline(
+                r.right() - 0.5,
+                r.y_range(),
+                egui::Stroke::new(1.0, egui::Color32::WHITE),
+            );
+            p.with_clip_rect(r.shrink(2.0)).text(
+                r.left_center() + Vec2::new(5.0, 0.0),
+                egui::Align2::LEFT_CENTER,
+                text,
+                egui::TextStyle::Body.resolve(ui.style()),
+                egui::Color32::from_gray(20),
+            );
+        };
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            let total = ui.available_width();
+            let file = self
+                .path
+                .as_ref()
+                .map_or_else(|| "<new game>".to_string(), |p| p.display().to_string());
+            let right = 120.0;
+            let mid = (total * 0.45).min(520.0);
+            let left = (total - mid - right - 4.0).max(40.0);
+            let status = if self.status.is_empty() {
+                "Ready"
+            } else {
+                &self.status
+            };
+            cell(ui, left, status);
+            cell(ui, mid, &file);
+            let n = self.forms.len();
+            cell(
+                ui,
+                right,
+                &format!("{n} window{} open", if n == 1 { "" } else { "s" }),
+            );
+        });
+    }
+
+    /// File > Create Executable: runner + project payload + footer (specs/exe-format.md).
+    fn create_executable(&mut self) {
+        let rp =
+            (!self.prefs.runner_path.trim().is_empty()).then(|| self.prefs.runner_path.clone());
+        let Some(runner) = crate::run::find_runner(rp.as_deref()) else {
+            self.messages.push(format!(
+                "Runner executable '{}' not found next to the IDE or in a cargo target \
+                 directory. Set its path in File > Preferences.",
+                crate::run::runner_file_name()
+            ));
+            return;
+        };
+        self.commit_all_forms();
+        let stem = self
+            .path
+            .as_ref()
+            .and_then(|p| p.file_stem())
+            .map_or_else(|| "game".to_string(), |s| s.to_string_lossy().into_owned());
+        let mut d = rfd::FileDialog::new()
+            .add_filter("Executable", &[if cfg!(windows) { "exe" } else { "bin" }])
+            .set_file_name(if cfg!(windows) {
+                format!("{stem}.exe")
+            } else {
+                stem
+            });
+        if let Some(dir) = self.path.as_ref().and_then(|p| p.parent()) {
+            d = d.set_directory(dir);
+        }
+        let Some(out) = d.save_file() else { return };
+        match crate::exe::create_executable(&self.project, &runner, &out, self.path.as_deref()) {
+            Ok(warnings) => {
+                self.status = format!("Created {}", out.display());
+                self.messages.extend(warnings);
+            }
+            Err(e) => self
+                .messages
+                .push(format!("Cannot create the executable: {e}")),
+        }
     }
 
     /// Placement for Resources > Create: into the selected group of that kind, else end.
@@ -559,45 +785,77 @@ impl IdeApp {
     }
 
     fn toolbar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
-            if ui.button("🗋 New").on_hover_text("New game").clicked() {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 1.0;
+            let tb = icons::tool_button;
+            if tb(ui, Icon::New, "Start a new game (Ctrl+N)", true).clicked() {
                 self.request(Pending::New);
             }
-            if ui.button("🗁 Open").on_hover_text("Open a game").clicked() {
+            if tb(ui, Icon::Open, "Open a game (Ctrl+O)", true).clicked() {
                 self.request(Pending::Open(None));
             }
-            if ui
-                .button("💾 Save")
-                .on_hover_text("Save the game")
-                .clicked()
-            {
+            if tb(ui, Icon::Save, "Save the game (Ctrl+S)", true).clicked() {
                 self.save(false);
             }
-            ui.separator();
-            let running = self.runner.is_some();
-            if ui
-                .add_enabled(!running, egui::Button::new("▶ Run"))
-                .on_hover_text("Run the game")
-                .clicked()
+            icons::tool_separator(ui);
+            if tb(
+                ui,
+                Icon::CreateExe,
+                "Create a stand-alone executable for the game",
+                true,
+            )
+            .clicked()
             {
+                self.create_executable();
+            }
+            tb(
+                ui,
+                Icon::Publish,
+                "Publish your game (not available)",
+                false,
+            );
+            icons::tool_separator(ui);
+            let running = self.runner.is_some();
+            if tb(ui, Icon::Run, "Run the game (F5)", !running).clicked() {
                 self.run_game();
             }
-            ui.separator();
+            tb(
+                ui,
+                Icon::Debug,
+                "Run the game in debug mode (not available)",
+                false,
+            );
+            icons::tool_separator(ui);
             for (k, label, _) in LIST_KINDS {
-                if ui
-                    .small_button(format!("+{label}"))
-                    .on_hover_text(format!("Create a {label}"))
-                    .clicked()
+                let article = if label.starts_with(['A', 'E', 'I', 'O', 'U']) {
+                    "an"
+                } else {
+                    "a"
+                };
+                if tb(
+                    ui,
+                    Icon::of_kind(k),
+                    &format!("Create {article} {}", label.to_lowercase()),
+                    true,
+                )
+                .clicked()
                 {
                     self.create(k, self.placement_for(k));
                 }
             }
-            ui.separator();
-            if ui.small_button("Game Info").clicked() {
+            icons::tool_separator(ui);
+            if tb(ui, Icon::GameInfo, "Change the game information", true).clicked() {
                 self.open_form(ResKey::GameInfo);
             }
-            if ui.small_button("Settings").clicked() {
+            if tb(ui, Icon::Settings, "Change the global game settings", true).clicked() {
                 self.open_form(ResKey::Settings);
+            }
+            if tb(ui, Icon::Extensions, "Select the extension packages", true).clicked() {
+                self.open_form(ResKey::Extensions);
+            }
+            icons::tool_separator(ui);
+            if tb(ui, Icon::Help, "About gm81-clean", true).clicked() {
+                self.show_about = true;
             }
         });
     }
@@ -607,19 +865,27 @@ impl IdeApp {
         let mut requests: Vec<Request> = Vec::new();
         let mut to_commit: Vec<usize> = Vec::new();
         let mut to_close: Vec<usize> = Vec::new();
+        self.workspace = area;
+        let mut n_min = 0;
         for (fi, f) in forms.iter_mut().enumerate() {
             let wid = Id::new(("form", f.uid));
             if f.bring_to_front {
-                ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, wid));
+                f.mdi.minimised = false;
+                mdi::bring_to_front(ctx, wid);
+                self.active = Some(f.uid);
                 f.bring_to_front = false;
             }
-            let mut open = true;
+            let slot = mdi::minimised_slot(area, n_min);
+            if f.mdi.minimised {
+                n_min += 1;
+            }
             let dirty = f.editor.is_dirty(&self.project);
             let title = format!("{}{}", f.editor.title(), if dirty { " *" } else { "" });
-            let size = f.editor.default_size();
+            let icon = form_icon(f.editor.key());
+            let active = self.active == Some(f.uid);
             let mut ok = false;
             let mut cancel = false;
-            {
+            let out = {
                 let mut cx = Cx {
                     ctx: ctx.clone(),
                     project: &self.project,
@@ -631,16 +897,18 @@ impl IdeApp {
                     prefs: &self.prefs,
                     alloc: &mut self.alloc,
                 };
-                egui::Window::new(title)
-                    .id(wid)
-                    .open(&mut open)
-                    .default_size(size.min(area.size()))
-                    .default_pos(area.min + Vec2::splat(20.0 + 24.0 * (fi % 8) as f32))
-                    .constrain_to(area)
-                    .resizable(true)
-                    .show(ctx, |ui| {
+                mdi::show(
+                    ctx,
+                    wid,
+                    area,
+                    slot,
+                    &mut f.mdi,
+                    &title,
+                    icon,
+                    active,
+                    |ui| {
                         ui.horizontal(|ui| {
-                            if ui.button("✔ OK").clicked() {
+                            if ok_button(ui).clicked() {
                                 ok = true;
                             }
                             if ui.button("Cancel").clicked() {
@@ -649,8 +917,14 @@ impl IdeApp {
                         });
                         ui.separator();
                         f.editor.ui(ui, &mut cx);
-                    });
+                    },
+                )
+            };
+            if out.activated {
+                self.active = Some(f.uid);
+                mdi::bring_to_front(ctx, wid);
             }
+            let open = !out.close;
             if ok {
                 to_commit.push(fi);
                 to_close.push(fi);
@@ -811,6 +1085,23 @@ impl IdeApp {
                 None => self.group_prompt = Some((path, name)),
             }
         }
+        if self.show_about {
+            egui::Modal::new(Id::new("about")).show(ctx, |ui| {
+                ui.set_width(360.0);
+                let (r, _) = ui.allocate_exact_size(Vec2::new(360.0, 56.0), egui::Sense::hover());
+                paint_logo(ui.painter(), r);
+                ui.label("A clean-room, GameMaker 8.1 compatible game development environment.");
+                ui.label(
+                    egui::RichText::new("Not affiliated with or endorsed by YoYo Games.")
+                        .small()
+                        .weak(),
+                );
+                ui.add_space(6.0);
+                if ui.button("OK").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    self.show_about = false;
+                }
+            });
+        }
         if self.show_prefs {
             let mut open = true;
             egui::Window::new("Preferences").open(&mut open).show(ctx, |ui| {
@@ -950,32 +1241,71 @@ impl eframe::App for IdeApp {
             self.shortcuts(&ctx);
         }
 
-        egui::Panel::top("menu").show(ui, |ui| {
-            self.menu_bar(ui);
-            self.toolbar(ui);
-        });
-        egui::Panel::bottom("status").show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(&self.status);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(format!("{} forms open", self.forms.len()));
-                });
+        let chrome = egui::Frame::new()
+            .fill(theme::PANEL)
+            .inner_margin(egui::Margin::symmetric(2, 1));
+        egui::Panel::top("menu")
+            .frame(chrome)
+            .show(ui, |ui| self.menu_bar(ui));
+        egui::Panel::top("toolbar")
+            .frame(chrome.inner_margin(egui::Margin {
+                left: 4,
+                right: 4,
+                top: 2,
+                bottom: 3,
+            }))
+            .show(ui, |ui| {
+                let r = ui.max_rect();
+                ui.painter().hline(
+                    r.x_range(),
+                    r.top() - 1.5,
+                    egui::Stroke::new(1.0, theme::SHADOW),
+                );
+                ui.painter().hline(
+                    r.x_range(),
+                    r.top() - 0.5,
+                    egui::Stroke::new(1.0, egui::Color32::WHITE),
+                );
+                self.toolbar(ui);
             });
-        });
+        egui::Panel::bottom("status")
+            .frame(chrome.inner_margin(egui::Margin::symmetric(2, 2)))
+            .show(ui, |ui| self.status_bar(ui));
         let actions = egui::Panel::left("tree")
             .resizable(true)
-            .default_size(240.0)
-            .show(ui, |ui| tree_ui(ui, &self.project, &mut self.tree))
+            .default_size(230.0)
+            .size_range(140.0..=600.0)
+            .frame(
+                egui::Frame::new()
+                    .fill(theme::LIST_BG)
+                    .stroke(egui::Stroke::new(1.0, theme::SHADOW)),
+            )
+            .show(ui, |ui| {
+                logo(ui);
+                tree_ui(ui, &self.project, &mut self.tree, &mut self.tex, self.gen)
+            })
             .inner;
         for a in actions {
             self.apply_tree(a);
         }
         let area = egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(egui::Color32::from_gray(150)))
+            .frame(egui::Frame::new().fill(theme::WORKSPACE))
             .show(ui, |ui| {
                 let r = ui.available_rect_before_wrap();
+                // sunken edge of the workspace
+                let p = ui.painter();
+                p.hline(
+                    r.x_range(),
+                    r.top() + 0.5,
+                    egui::Stroke::new(1.0, egui::Color32::from_gray(110)),
+                );
+                p.vline(
+                    r.left() + 0.5,
+                    r.y_range(),
+                    egui::Stroke::new(1.0, egui::Color32::from_gray(110)),
+                );
                 ui.allocate_rect(r, egui::Sense::hover());
-                r
+                r.shrink(1.0)
             })
             .inner;
         self.forms_ui(&ctx, area);
@@ -986,4 +1316,81 @@ impl eframe::App for IdeApp {
         self.prefs.save();
         crate::run::cleanup();
     }
+}
+
+/// Title-bar icon of a form.
+fn form_icon(key: ResKey) -> Icon {
+    match key {
+        ResKey::Res(kind, _) => Icon::of_kind(kind),
+        ResKey::GameInfo => Icon::GameInfo,
+        ResKey::Settings => Icon::Settings,
+        ResKey::Extensions => Icon::Extensions,
+        ResKey::Constants | ResKey::Triggers => Icon::Constants,
+        ResKey::IncludedFiles => Icon::Extensions,
+    }
+}
+
+/// The form's "OK" button with a green check mark.
+fn ok_button(ui: &mut egui::Ui) -> egui::Response {
+    let mut job = egui::text::LayoutJob::default();
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    job.append(
+        "✔",
+        0.0,
+        egui::TextFormat::simple(font.clone(), egui::Color32::from_rgb(20, 140, 40)),
+    );
+    job.append(
+        " OK",
+        0.0,
+        egui::TextFormat::simple(font, egui::Color32::from_gray(10)),
+    );
+    ui.add(egui::Button::new(job).min_size(Vec2::new(64.0, 22.0)))
+}
+
+/// Wordmark banner at the top of the resource panel.
+fn logo(ui: &mut egui::Ui) {
+    let w = ui.available_width();
+    let (r, _) = ui.allocate_exact_size(Vec2::new(w, 44.0), egui::Sense::hover());
+    paint_logo(ui.painter(), r);
+}
+
+fn paint_logo(p: &egui::Painter, r: egui::Rect) {
+    use egui::{Color32, Mesh, Shape};
+    let mut mesh = Mesh::default();
+    let (a, b) = (
+        Color32::from_rgb(255, 255, 255),
+        Color32::from_rgb(214, 228, 245),
+    );
+    mesh.colored_vertex(r.left_top(), a);
+    mesh.colored_vertex(r.right_top(), b);
+    mesh.colored_vertex(r.right_bottom(), b);
+    mesh.colored_vertex(r.left_bottom(), a);
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    p.add(Shape::mesh(mesh));
+    p.hline(
+        r.x_range(),
+        r.bottom() - 0.5,
+        egui::Stroke::new(1.0, theme::SHADOW),
+    );
+    let icon = egui::Rect::from_min_size(
+        r.min + Vec2::new(8.0, (r.height() - 28.0) / 2.0),
+        Vec2::splat(28.0),
+    );
+    icons::paint(p, icon, Icon::Sprite, true);
+    let x = icon.max.x + 8.0;
+    p.text(
+        egui::pos2(x, r.center().y - 1.0),
+        egui::Align2::LEFT_BOTTOM,
+        "gm81-clean",
+        egui::FontId::proportional(19.0),
+        Color32::from_rgb(16, 48, 120),
+    );
+    p.text(
+        egui::pos2(x + 1.0, r.center().y + 1.0),
+        egui::Align2::LEFT_TOP,
+        "game development environment",
+        egui::FontId::proportional(10.5),
+        Color32::from_gray(90),
+    );
 }

@@ -6,6 +6,7 @@
 //! `STEP:down:KEY`, `STEP:up:KEY`, `STEP:press:KEY` (down, then up two steps
 //! later), `STEP:move:X:Y`, `STEP:click:X:Y`, `STEP:char:C`.
 
+mod standalone;
 mod window;
 
 use gm_runner::{Game, InputEvent};
@@ -106,7 +107,8 @@ fn parse_args() -> Result<Option<Opts>, String> {
         }
         i += 1;
     }
-    o.file = file.ok_or("no game file given")?;
+    // no file: a standalone executable carries its game (specs/exe-format.md)
+    o.file = file.or_else(standalone::extract_own_game).ok_or("no game file given")?;
     Ok(Some(o))
 }
 
