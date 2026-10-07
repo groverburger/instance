@@ -777,3 +777,15 @@ end-to-end by `specs/tools/gmk_dump.py` with exact consumption to EOF. Observed:
 - So the 810 differences previously marked [I] are confirmed as "none beyond the header
   version" for every section present in this sample. Paths, fonts, timelines, triggers,
   constants, tiles and included files remain unverified (no instances in this sample).
+
+## Addendum: 701 → 8.1 conversion rules (black-box, from the treasure.gmk/.gm81 pair)
+
+- §8.2 correction (resolves FF-13): the first encoded byte of a 701 stream is stored raw
+  (as in `.dat`); with that rule the 701 game id equals the id the 8.1 IDE writes.
+- On load of a 701 project, the IDE converts images to RGBA:
+  - "transparent": every pixel equal to the bottom-left pixel's colour becomes alpha 0.
+  - "smooth edges" (with transparent): each remaining opaque pixel loses 32 alpha per
+    fully-transparent 8-neighbour (out-of-image neighbours don't count).
+  - sprite `precise` → collision shape 0 (precise), else 1 (rectangle); converted sprites
+    get "separate collision masks" on.
+  - settings: `disable_screensaver` becomes true.
