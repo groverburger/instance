@@ -18,3 +18,18 @@ PE icon resource is optional, P2).
 Loading executables compiled by YoYo's GameMaker 8.1 is a separate, future feature:
 its embedded-data layout must be derived by black-box comparison of (.gm81, .exe)
 pairs compiled by the user, never by examining the runner's code.
+
+## Extension packages in standalone executables (resolves EXT-2)
+
+When the project references extension packages, the payload is followed by an
+extension bundle, and the footer magic becomes "GM81CLN\x02" with an extra field:
+
+    [ runner ][ project payload ][ bundle ][ footer, 40 bytes:
+        u8[8] magic = "GM81CLN\x02"
+        u64 LE payload_offset, u64 LE payload_length
+        u64 LE bundle_offset,  u64 LE bundle_length ]
+
+bundle = u32 LE count, then per package: u32 LE name length + UTF-8 name,
+u32 LE .ged length + bytes, u32 LE .dat length + bytes (the package files as installed).
+The runner loads bundled packages before searching the extension search path.
+Version 1 footers (24 bytes, no bundle) remain valid.
