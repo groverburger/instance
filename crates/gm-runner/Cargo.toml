@@ -5,3 +5,12 @@ license.workspace = true
 version.workspace = true
 
 [dependencies]
+fontdue = "0.9.4"
+gm-format = { path = "../gm-format" }
+gml = { path = "../gml" }
+png = "0.18.1"
+rfd = "0.17.2"
+rodio = "0.22.2"
+softbuffer = "0.4.8"
+ttf-parser = "0.25.1"
+winit = "0.30.13"
