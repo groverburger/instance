@@ -168,3 +168,35 @@ every case is to make small sample projects in the IDE (black-box) and diff/pars
 - Partially answers IDE-10: Move Fixed arg0 is a 9-char 0/1 mask over the 3×3 grid in
   numeric-keypad order (index 0 = down-left, 4 = stop, 7 = up; verified in samples). IDE-16: `.gmspr` format
   is now in §9; `.gmbck` etc. presumed analogous.
+
+## [IMPL-FMT] gm-format implementation notes (2026-10-07)
+
+Observations made while implementing `crates/gm-format` against the sample files
+(treasure.gmk v701 vs treasure.gm81, which the 8.1 IDE saved from it):
+
+- FF-13 resolved (proposed): the **first encoded byte of a v701 stream is stored raw**,
+  like the `.dat` payload. Decoding it raw gives game id 308668 for treasure.gmk, equal to
+  the id stored in treasure.gm81; decoding it like the other bytes gives 308683.
+  `gmk_dump.py` still decodes it (affects only the low byte of game_id).
+  Spec §8.2 should be updated.
+- v701 sprite/background conversion (spec §0.2 "[I]" transparency) confirmed and extended:
+  with `transparent` set, every pixel whose RGB equals the bottom-left pixel becomes
+  alpha 0 (RGB kept); with `smooth_edges` additionally set, every remaining opaque pixel
+  loses 32 alpha per alpha-0 pixel among its 8 neighbours (out-of-image neighbours do not
+  count). This reproduces the RGBA of all treasure.gm81 sprite frames exactly.
+  `precise = 1` → collision_shape 0, else 1; the IDE sets `separate_collision_masks = 1`
+  on converted sprites; alpha_tolerance 0; bbox values copied. Please add to spec §8.3.
+- v701 settings lack `disable_screensaver`; the converted .gm81 has it = 1 (implementation
+  uses true). All other settings/rooms/objects/actions/tree match field-for-field.
+- Writers emit settings_version 800 for both v800 and v810 (per the spec addendum).
+- tutorial1.gmk and treasure.gm81 re-written by gm-format have byte-identical inflated
+  block contents (only zlib compression differs), so every per-record version number in
+  §12 for those records is confirmed.
+- Not covered by any sample and therefore still per-spec [I]: trigger, constant, path,
+  font (v800), timeline, tile and included-file records; loading-bar / custom load images
+  (stored as opaque blobs; only written when loading_bar == 2 / show_custom_load_image);
+  0-frame sprites (mask fields omitted) and 0-size images (no pixel blob).
+- Model choices worth reviewing: v701 `smooth_edges`/`preload` flags and the v701 image
+  width/height are not kept in the model (converted as above); font `range_start` is split
+  into range_start (low 16 bits) / charset (bits 16-23) / antialias (bits 24-31) and
+  recombined on write.
