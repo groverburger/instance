@@ -88,6 +88,28 @@ struct BatchKey {
     mode: u32,
 }
 
+/// Raw handles of a window, captured on its event-loop thread.
+#[derive(Clone, Copy)]
+pub struct WindowHandles {
+    pub window: RawWindowHandle,
+    pub display: RawDisplayHandle,
+}
+
+// SAFETY: the handles are plain identifiers (an HWND on Windows); the window
+// they name is kept alive by the Arc<Window> passed along with them.
+unsafe impl Send for WindowHandles {}
+
+impl WindowHandles {
+    /// Captures the handles (call on the thread that owns the event loop).
+    pub fn of(win: &winit::window::Window) -> Result<WindowHandles, String> {
+        use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+        Ok(WindowHandles {
+            window: win.window_handle().map_err(gl_err)?.as_raw(),
+            display: win.display_handle().map_err(gl_err)?.as_raw(),
+        })
+    }
+}
+
 /// What keeps the native window alive.
 enum WindowHold {
     #[allow(dead_code)]
@@ -141,13 +163,12 @@ fn gl_err(e: impl std::fmt::Display) -> String {
 }
 
 impl GlBackend {
-    /// Creates a context for a winit window (vsync per `vsync`).
-    pub fn for_window(win: std::sync::Arc<winit::window::Window>, vsync: bool) -> Result<GlBackend, String> {
-        use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
-        let rwh = win.window_handle().map_err(gl_err)?.as_raw();
-        let rdh = win.display_handle().map_err(gl_err)?.as_raw();
+    /// Creates a context for a winit window (vsync per `vsync`). The raw
+    /// handles must have been obtained on the window's thread (see
+    /// [`WindowHandles::of`]); the context may be created on another thread.
+    pub fn for_window(win: std::sync::Arc<winit::window::Window>, h: WindowHandles, vsync: bool) -> Result<GlBackend, String> {
         let size = win.inner_size();
-        Self::create(rdh, rwh, size.width.max(1), size.height.max(1), vsync, WindowHold::Winit(win))
+        Self::create(h.display, h.window, size.width.max(1), size.height.max(1), vsync, WindowHold::Winit(win))
     }
 
     /// Creates a context on a hidden native window (offscreen rendering for

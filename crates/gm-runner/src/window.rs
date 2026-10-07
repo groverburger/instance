@@ -3,7 +3,10 @@
 //! thread (the context is made current there on the winit window) or, as a
 //! fallback, by copying software-rendered pixels to the window with softbuffer.
 
-use gm_runner::draw::gl::GlBackend;
+use gm_runner::draw::gl::{GlBackend, WindowHandles};
+
+/// The window and its raw handles, sent to the game thread for OpenGL.
+type WinMsg = (Arc<Window>, Result<WindowHandles, String>);
 use gm_runner::draw::Backend;
 use gm_runner::{Game, InputEvent, UiHooks};
 use std::num::NonZeroU32;
@@ -89,7 +92,7 @@ struct App {
     slot: Arc<Mutex<Slot>>,
     input: Sender<InputEvent>,
     window: Option<Arc<Window>>,
-    win_tx: Option<Sender<Arc<Window>>>,
+    win_tx: Option<Sender<WinMsg>>,
     surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
     exit_code: i32,
     last_caption: String,
@@ -225,7 +228,7 @@ impl App {
             s.win_h = size.height;
         }
         if let Some(tx) = self.win_tx.take() {
-            let _ = tx.send(win.clone());
+            let _ = tx.send((win.clone(), WindowHandles::of(&win)));
         }
         self.window = Some(win);
     }
@@ -545,7 +548,7 @@ fn game_thread(
     slot: Arc<Mutex<Slot>>,
     proxy: EventLoopProxy<UserEvent>,
     renderer: Renderer,
-    win_rx: Receiver<Arc<Window>>,
+    win_rx: Receiver<WinMsg>,
 ) -> i32 {
     let mut vm = gml::Vm::new();
     let mut g = match gm_runner::load_game(&path, &mut vm, false) {
@@ -559,13 +562,14 @@ fn game_thread(
     let mut use_gl = false;
     if renderer == Renderer::Gl {
         match win_rx.recv() {
-            Ok(win) => match GlBackend::for_window(win, g.settings.vsync & 1 != 0) {
+            Ok((win, Ok(h))) => match GlBackend::for_window(win, h, g.settings.vsync & 1 != 0) {
                 Ok(gl) => {
                     g.gfx.set_backend(Box::new(gl));
                     use_gl = true;
                 }
                 Err(e) => eprintln!("gm-runner: OpenGL initialisation failed ({}); using the software renderer", e),
             },
+            Ok((_, Err(e))) => eprintln!("gm-runner: no window handle for OpenGL ({}); using the software renderer", e),
             Err(_) => return 1,
         }
     }
