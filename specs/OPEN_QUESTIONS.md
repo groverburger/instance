@@ -200,3 +200,92 @@ Observations made while implementing `crates/gm-format` against the sample files
   width/height are not kept in the model (converted as above); font `range_start` is split
   into range_start (low 16 bits) / charset (bits 16-23) / antialias (bits 24-31) and
   recombined on write.
+
+## [IMPL-GML] crates/gml implementation choices (2026-10-07)
+
+Choices made where specs/gml-language.md or builtins.json are silent. Each is easy to
+change; please confirm or correct.
+
+Language / interpreter
+- G-1: Variadic minimum argument count = number of listed args minus 2 (fnames lists two
+  illustrative trailing args): `choose/min/max/mean/median/execute_string/execute_file/
+  script_execute/external_call` need >= 1, `external_define` >= 5. Max is 16.
+- G-2: `argument_count` is read-only (spec recommendation), although builtins.json marks it
+  writable. `argumentN[k]` with k > 0 is an "Unknown variable" error.
+- G-3: `global.<name>` where `<name>` is an *instance* built-in (e.g. `global.x`) is a user
+  global variable called `x`; `global.<global built-in>` is the built-in.
+- G-4: Built-in array variables accept the 2-D form only with first index 0
+  (`alarm[0,3]` = `alarm[3]`); a non-array built-in accepts only index 0.
+- G-5: Assignment evaluation order: owner, indices, (current value for `op=`), then RHS.
+  For `obj.v op= e` the owner/indices are evaluated once; the read uses the first
+  instance and the result is written to all instances.
+- G-6: `local.name` without a `var` declaration creates a hidden local slot for `name`;
+  a run-time owner value of -7 (`o = local; o.x`) only finds such slots/declared locals.
+- G-7: Nested program executions (script calls, execute_string, host re-entry) are
+  limited to `Settings::max_call_depth` = 256 by default (not 10 000) because each level
+  uses native stack; the runner may raise it when running on a big-stack thread.
+- G-8: Parser nesting limit: 160 levels of statements/parentheses ("Code is nested too
+  deeply."). `for` header semicolons are optional, as in the grammar.
+- G-9: Errors: compile errors for a built-in function name used without brackets (read or
+  assigned) and for indexing a constant. Owners are converted with to_int and saturated
+  to the i32 range. Reading `obj.v` when the object has no instance, `noone.v`, or a
+  variable of a non-existent instance id is an error; the corresponding writes are no-ops.
+  Assigning a user variable through implicit `self` when self does not exist is an error.
+- G-10: `with` skips snapshot targets (other than the first, and other than self/other)
+  for which `Host::instance_exists` is false at their turn.
+- G-11: `string()` of NaN/inf gives "nan"/"inf"/"-inf"; a non-integral value that rounds
+  to zero prints without a minus sign ("0.00"); two-decimal rounding is half-away-from-zero
+  on the exact binary value (2.675 -> "2.67", 0.125 -> "0.13").
+- G-12: `execute_string` caches compiled code by source text (256 entries).
+  `execute_file` reads the file through `Host::read_file` (default: std::fs, relative to
+  the current directory).
+- G-13: Built-in constants whose value is null in builtins.json get distinct values in
+  listing order within their family: os_win32..os_android = 0..5,
+  device_ios_iphone/_retina/ipad = 0..2, text_type/button_type/input_type = 0..2.
+
+Library (chapter 402)
+- G-20: Math functions raise "Invalid argument to function f." when finite inputs give a
+  non-finite result (sqrt(-1), ln(0), log of <= 0, arcsin(2), power(0,-1), exp(1000)).
+- G-21: `round` uses ties-to-even (like to_int). `sign(0)` = 0. `frac(-3.25)` = -0.25.
+- G-22: `real(str)` parses the longest numeric prefix after leading whitespace
+  (`[+-]digits[.digits][e[+-]digits]`), 0 if none; `real(real)` returns the value and
+  `string(string)` returns the string. String functions given a real (and vice versa)
+  raise "Wrong type of arguments to function f.".
+- G-23: String positions are 1-based byte positions rounded with to_int. `string_copy`/
+  `string_delete` clamp index < 1 to 1 and count to the end; `string_char_at` out of
+  range gives ""; `string_insert` past the end appends; an empty substring is never
+  found (`string_pos` 0, `string_count` 0, replace is a no-op); `string_count` counts
+  non-overlapping matches. `chr(v)` = the single byte `v mod 256`; `ord("")` = 0.
+- G-24: `string_lower/upper` map ASCII and the Latin-1 letter ranges (0xC0-0xDE <->
+  0xE0-0xFE, except 0xD7/0xF7); `string_letters/digits/lettersdigits` keep ASCII only.
+- G-25: `min/max` accept all-real or all-string arguments (ordinal string order); mixed is
+  an error. `median` of an even count is the lower middle value.
+- G-26: Random generator: SplitMix64, seed 0 at VM creation (the runner calls randomize()
+  at game start per runtime.md §2). `random_get_seed` returns the last seed set.
+  `irandom(x)` uses floor(x); `irandom_range` floors both bounds and accepts them in
+  either order. Sequences are not GM-compatible.
+- G-27: Dates: day 0 = 1899-12-30, fraction = time of day. `date_get_week` = ISO-8601
+  week; `date_get_weekday` 1 = Sunday .. 7 = Saturday (matching current_weekday in
+  runtime.md); spans are absolute, year = 365.25 days, month = 30.4375 days;
+  `date_create_*` with invalid parts return 0; valid years 1..9999; the `*_string`
+  functions use ISO formats "yyyy-mm-dd", "hh:mm:ss", "yyyy-mm-dd hh:mm:ss" instead of the
+  system locale. Current time = OS local time (Windows), UTC elsewhere.
+- G-28: Clipboard functions are not pure; they are delegated to the host.
+
+Data structures (chapter 411)
+- G-30: Each kind has its own id space starting at 0; the lowest free id is reused after a
+  destroy. Using a non-existent id is a runtime error.
+- G-31: `ds_set_precision` default 1e-7; it applies to real comparisons in list find,
+  map keys, priority values and grid value searches.
+- G-32: Maps are sorted multimaps (reals before strings, strings ordinal). `ds_map_add`
+  with an existing key adds a duplicate; replace/delete/find act on the first match.
+  Missing keys, empty pops/heads, `find_first/last/next/previous` with no answer and
+  out-of-range list/grid reads return 0. `ds_list_sort` orders reals before strings.
+- G-33: Out-of-range `ds_list_insert/replace/delete` and `ds_grid_set*` are ignored.
+  Grid coordinates are rounded with to_int; regions are normalised (corners swapped)
+  and clipped; a disk contains cells whose centre (integer coordinates) is within
+  distance r of (xm, ym). `ds_grid_add` with mismatched types and `ds_grid_multiply` on
+  strings leave the cell unchanged. Aggregates ignore string cells (0 if none).
+  `ds_grid_value_x/y` return -1 when not found; search order is row by row.
+- G-34: `ds_*_write` produce an implementation-defined hex text format (not compatible
+  with files written by GM 8.1); `ds_*_read` of a malformed string is a runtime error.
