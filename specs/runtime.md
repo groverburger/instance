@@ -834,6 +834,13 @@ area), `view_xport/yport/wport/hport` (region area), `view_angle`
 unlimited), `view_object` (object → first instance of it; or a specific instance
 id). Global `view_enabled`; `view_current*` (view being drawn, valid in Draw).
 
+**Oversized borders (verified against user projects):** when `2*hborder >= wview`
+(resp. `2*vborder >= hview`) the two edge rules contradict each other; applying them
+against the previous view position makes the view jump between two positions every
+step (visible flicker in pokemonEngine15, Amathyst, JetpackGame, which all ran fine
+in GM 8.1). On such an axis the view is centred on the instance (`xview = cx - wview/2`),
+which also matches the common "border = half the view keeps the player centred" idiom.
+
 **UNSPECIFIED – recommended follow algorithm** (run once per step before draw):
 ```
 inst = target instance (first in instance order) ; if none: skip

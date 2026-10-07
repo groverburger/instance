@@ -398,20 +398,8 @@ impl Game {
             };
             let (rw, rh) = (self.rs.width as f64, self.rs.height as f64);
             let vs = &mut self.rs.views[v];
-            let mut tx = vs.xview;
-            let mut ty = vs.yview;
-            if cx - vs.hborder < vs.xview {
-                tx = cx - vs.hborder;
-            }
-            if cx + vs.hborder > vs.xview + vs.wview {
-                tx = cx + vs.hborder - vs.wview;
-            }
-            if cy - vs.vborder < vs.yview {
-                ty = cy - vs.vborder;
-            }
-            if cy + vs.vborder > vs.yview + vs.hview {
-                ty = cy + vs.vborder - vs.hview;
-            }
+            let mut tx = follow_axis(vs.xview, vs.wview, vs.hborder, cx);
+            let mut ty = follow_axis(vs.yview, vs.hview, vs.vborder, cy);
             if vs.hspeed >= 0.0 {
                 tx = vs.xview + (tx - vs.xview).clamp(-vs.hspeed, vs.hspeed);
             }
@@ -473,5 +461,45 @@ impl Game {
 
     pub fn room_exists(&self, r: i32) -> bool {
         r >= 0 && self.rooms.get(r as usize).map(|x| x.is_some()).unwrap_or(false)
+    }
+}
+
+/// Target view position on one axis for an instance at `c` (runtime.md §12.2).
+///
+/// The view moves just far enough to keep the instance `border` away from both
+/// edges. When `2 * border >= size` both edges can't be satisfied at once; the view
+/// is then centred on the instance instead of alternating between the two edges
+/// every step (border = half the view is the usual GM idiom for a centred camera).
+pub(crate) fn follow_axis(view: f64, size: f64, border: f64, c: f64) -> f64 {
+    if 2.0 * border >= size {
+        return c - size / 2.0;
+    }
+    if c - border < view {
+        c - border
+    } else if c + border > view + size {
+        c + border - size
+    } else {
+        view
+    }
+}
+
+#[cfg(test)]
+mod follow_tests {
+    use super::follow_axis;
+
+    #[test]
+    fn follow_keeps_border_and_settles() {
+        // normal borders: move just enough
+        assert_eq!(follow_axis(0.0, 240.0, 32.0, 100.0), 0.0);
+        assert_eq!(follow_axis(0.0, 240.0, 32.0, 230.0), 22.0);
+        assert_eq!(follow_axis(100.0, 240.0, 32.0, 110.0), 78.0);
+        // oversized borders (pokemonEngine15: view 240, border 240): centred, stable
+        let mut v = 0.0;
+        for _ in 0..5 {
+            v = follow_axis(v, 240.0, 240.0, 200.0);
+            assert_eq!(v, 80.0);
+        }
+        // border of exactly half the view centres too
+        assert_eq!(follow_axis(0.0, 240.0, 120.0, 300.0), 180.0);
     }
 }
