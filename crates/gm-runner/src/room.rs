@@ -244,7 +244,7 @@ impl Game {
         }
         // 2. capture old image for transitions
         let old_image = if had_room && self.transition_kind != 0 {
-            Some(self.gfx.back.clone())
+            Some(self.gfx.read_back())
         } else {
             None
         };
@@ -371,7 +371,7 @@ impl Game {
             (self.rs.width as f64, self.rs.height as f64)
         };
         let (w, h) = (w.max(1.0) as u32, h.max(1.0) as u32);
-        if w != self.region_w || h != self.region_h || self.gfx.back.w != w || self.gfx.back.h != h {
+        if w != self.region_w || h != self.region_h || self.gfx.back_size() != (w, h) {
             self.region_w = w;
             self.region_h = h;
             self.gfx.resize_back(w, h);

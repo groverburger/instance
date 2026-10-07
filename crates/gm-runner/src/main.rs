@@ -1,8 +1,15 @@
 //! `gm-runner <project.gmk|.gm81> [--headless] [--frames N] [--screenshot out.png]
-//! [--screenshot-every K DIR] [--input SCRIPT] [--coverage]`
+//! [--screenshot-every K DIR] [--input SCRIPT] [--renderer gl|software]
+//! [--compare-renderers DIR] [--coverage]`
 //!
-//! Without `--headless` the game opens in a window (winit + softbuffer, software
-//! rendering). `--input` takes a comma-separated scripted input queue of
+//! Without `--headless` the game opens in a window rendered with OpenGL (falling
+//! back to the software renderer if OpenGL cannot be initialised; `--renderer
+//! software` forces it). Headless runs use the software renderer unless
+//! `--renderer gl` is given (OpenGL on a hidden window). `--compare-renderers DIR`
+//! runs headless with both renderers fed the same draw calls and compares their
+//! frames (every `--screenshot-every K` steps, or the last frame), writing
+//! `soft`, `gl` and `diff` PNGs to DIR.
+//! `--input` takes a comma-separated scripted input queue of
 //! `STEP:down:KEY`, `STEP:up:KEY`, `STEP:press:KEY` (down, then up two steps
 //! later), `STEP:move:X:Y`, `STEP:click:X:Y`, `STEP:char:C`. `--random-input SEED`
 //! adds a deterministic pseudo-random key/mouse script; `--max-seconds S` aborts a
@@ -13,8 +20,10 @@
 mod standalone;
 mod window;
 
+use gm_runner::draw::backend::Backend;
 use gm_runner::{Game, InputEvent};
 use std::path::PathBuf;
+use window::Renderer;
 
 struct Opts {
     file: PathBuf,
@@ -23,6 +32,8 @@ struct Opts {
     screenshot: Option<PathBuf>,
     every: Option<(u64, PathBuf)>,
     input: Vec<(u64, InputEvent)>,
+    renderer: Option<Renderer>,
+    compare: Option<PathBuf>,
     max_seconds: Option<f64>,
     random_input: Option<u64>,
 }
@@ -109,6 +120,8 @@ fn parse_args() -> Result<Option<Opts>, String> {
         screenshot: None,
         every: None,
         input: Vec::new(),
+        renderer: None,
+        compare: None,
         max_seconds: None,
         random_input: None,
     };
@@ -129,6 +142,17 @@ fn parse_args() -> Result<Option<Opts>, String> {
                 o.every = Some((k.max(1), PathBuf::from(next()?)));
             }
             "--input" => o.input = parse_input(&next()?)?,
+            "--renderer" => {
+                o.renderer = Some(match next()?.as_str() {
+                    "gl" | "opengl" => Renderer::Gl,
+                    "software" | "soft" => Renderer::Software,
+                    r => return Err(format!("unknown renderer '{}' (gl or software)", r)),
+                })
+            }
+            "--compare-renderers" => {
+                o.compare = Some(PathBuf::from(next()?));
+                o.headless = true;
+            }
             "--random-input" => o.random_input = Some(next()?.parse().map_err(|_| "bad --random-input")?),
             "--max-seconds" => o.max_seconds = Some(next()?.parse().map_err(|_| "bad --max-seconds")?),
             "--coverage" => {
@@ -141,7 +165,7 @@ fn parse_args() -> Result<Option<Opts>, String> {
                 return Ok(None);
             }
             "--help" | "-h" => {
-                println!("usage: gm-runner FILE.gmk|FILE.gm81 [--headless] [--frames N] [--screenshot OUT.png] [--screenshot-every K DIR] [--input SCRIPT] [--coverage] [--max-seconds S] [--random-input SEED]");
+                println!("usage: gm-runner FILE.gmk|FILE.gm81 [--headless] [--frames N] [--screenshot OUT.png] [--screenshot-every K DIR] [--input SCRIPT] [--renderer gl|software] [--compare-renderers DIR] [--coverage] [--max-seconds S] [--random-input SEED]");
                 return Ok(None);
             }
             _ if a.starts_with("--") => return Err(format!("unknown option {}", a)),
@@ -162,6 +186,26 @@ fn parse_args() -> Result<Option<Opts>, String> {
     Ok(Some(o))
 }
 
+/// Compares the two renderers' back buffers; saves images when `save`.
+fn compare_frames(g: &mut Game, dir: &std::path::Path, step: u64, save: bool, worst: &mut (u8, usize, u64)) {
+    let a = g.gfx.be.read_back();
+    let Some(b) = g.gfx.be.read_back_secondary() else { return };
+    let tol = 8;
+    let (mx, n) = gm_runner::draw::dual::compare(&a, &b, tol);
+    let pct = 100.0 * n as f64 / a.px.len().max(1) as f64;
+    eprintln!("compare step {:5}: max channel diff {:3}, {:6} px (> {}) = {:.3}%", step, mx, n, tol, pct);
+    if n > worst.1 {
+        *worst = (mx.max(worst.0), n, step);
+    } else {
+        worst.0 = worst.0.max(mx);
+    }
+    if save {
+        let _ = a.save_png(&dir.join(format!("step{:05}_soft.png", step)), true);
+        let _ = b.save_png(&dir.join(format!("step{:05}_gl.png", step)), true);
+        let _ = gm_runner::draw::dual::diff_image(&a, &b, tol).save_png(&dir.join(format!("step{:05}_diff.png", step)), true);
+    }
+}
+
 fn run_headless(o: Opts) -> i32 {
     let mut vm = gml::Vm::new();
     let mut g: Game = match gm_runner::load_game(&o.file, &mut vm, true) {
@@ -171,6 +215,25 @@ fn run_headless(o: Opts) -> i32 {
             return 1;
         }
     };
+    if let Some(dir) = &o.compare {
+        let _ = std::fs::create_dir_all(dir);
+        match gm_runner::draw::gl::GlBackend::hidden() {
+            Ok(gl) => {
+                let soft: Box<dyn Backend> = Box::new(gm_runner::draw::soft::SoftBackend::default());
+                g.gfx.set_backend(Box::new(gm_runner::draw::dual::DualBackend { a: soft, b: Box::new(gl) }));
+            }
+            Err(e) => {
+                eprintln!("gm-runner: cannot create an OpenGL context: {}", e);
+                return 1;
+            }
+        }
+    } else if o.renderer == Some(Renderer::Gl) {
+        match gm_runner::draw::gl::GlBackend::hidden() {
+            Ok(gl) => g.gfx.set_backend(Box::new(gl)),
+            Err(e) => eprintln!("gm-runner: OpenGL initialisation failed ({}); using the software renderer", e),
+        }
+    }
+    eprintln!("gm-runner: renderer: {}", g.gfx.be.name());
     g.scripted_input = o.input;
     if let Some(limit) = o.max_seconds {
         // watchdog: a game that hangs (endless loop in GML) must not block forever
@@ -187,6 +250,8 @@ fn run_headless(o: Opts) -> i32 {
     if let Some((_, d)) = &o.every {
         let _ = std::fs::create_dir_all(d);
     }
+    let sync = g.gfx.be.name() != "software";
+    let mut worst = (0u8, 0usize, 0u64);
     let t0 = std::time::Instant::now();
     let mut slowest = (0.0f64, 0u64);
     for f in 0..o.frames {
@@ -199,26 +264,50 @@ fn run_headless(o: Opts) -> i32 {
             eprintln!("FATAL: {}", e);
             break;
         }
+        if sync {
+            // wait for the GPU so timings are honest
+            let t = std::time::Instant::now();
+            let _ = g.gfx.be.pixel(gm_runner::draw::Target::Back, 0, 0);
+            g.draw_time += t.elapsed().as_secs_f64();
+        }
         let el = ts.elapsed().as_secs_f64();
         if el > slowest.0 {
             slowest = (el, f);
         }
         if let Some((k, d)) = &o.every {
             if (f + 1) % k == 0 {
-                let _ = g.frame_image().save_png(&d.join(format!("frame{:05}.png", f + 1)), true);
+                match &o.compare {
+                    Some(cd) => compare_frames(&mut g, cd, f + 1, true, &mut worst),
+                    None => {
+                        let _ = g.frame_image().save_png(&d.join(format!("frame{:05}.png", f + 1)), true);
+                    }
+                }
             }
         }
     }
+    let steps = g.frame.max(1) as f64;
     eprintln!(
-        "ran {} steps in {:.2}s (drawing {:.2}s); room {} ({}), {} instances, caption {:?}",
+        "ran {} steps in {:.2}s (drawing {:.2}s = {:.3} ms/frame, total {:.3} ms/step); room {} ({}), {} instances, caption {:?}",
         g.frame,
         t0.elapsed().as_secs_f64(),
         g.draw_time,
+        g.draw_time * 1000.0 / steps,
+        t0.elapsed().as_secs_f64() * 1000.0 / steps,
         g.room,
         g.rooms.get(g.room.max(0) as usize).and_then(|r| r.as_ref()).map(|r| r.data.name.clone()).unwrap_or_default(),
         g.instances.len(),
         g.caption()
     );
+    if let Some(s) = g.gfx.be.stats() {
+        eprintln!("renderer stats: {}", s);
+    }
+    if let Some(cd) = &o.compare {
+        if o.every.is_none() {
+            let fr = g.frame;
+            compare_frames(&mut g, cd, fr, true, &mut worst);
+        }
+        eprintln!("compare: worst step {} with {} differing pixels, max channel diff {}", worst.2, worst.1, worst.0);
+    }
     eprintln!("slowest step: {:.4}s (step {})", slowest.0, slowest.1);
     if !g.unsupported_calls.is_empty() {
         let list: Vec<String> = g.unsupported_calls.iter().map(|(n, c)| format!("{} x{}", n, c)).collect();
@@ -274,7 +363,8 @@ fn main() {
             .expect("spawn game thread");
         h.join().unwrap_or(3)
     } else {
-        window::run(o.file, o.input)
+        let r = o.renderer.unwrap_or(Renderer::Gl);
+        window::run(o.file, o.input, r)
     };
     std::process::exit(code);
 }

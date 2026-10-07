@@ -18,6 +18,9 @@ cargo build --release
 target/release/gm-ide [project.gm81]          # editor; F5 runs the game
 target/release/gm-runner game.gm81            # play a .gmk (v701/v800) or .gm81 project
 target/release/gm-runner game.gm81 --headless --frames 300 --screenshot out.png
+target/release/gm-runner game.gm81 --renderer software   # force the CPU renderer (default: OpenGL, falls back)
+target/release/gm-runner game.gm81 --compare-renderers DIR --frames 300 --screenshot-every 50 DIR
+                                              # render with both renderers and diff the frames
 target/release/gmk-info game.gm81 [--tree]    # print a resource summary
 cargo test --workspace                        # sample tests read $GM81_SAMPLES
 target/release/gm-runner game.gm81 --headless --frames 600 --random-input 1 --max-seconds 60
@@ -44,5 +47,5 @@ Joysticks are read with gilrs (`GM81_JOYSTICK=0` disables, `GM81_JOY_DPAD_AS_STI
 `GM81_JOY_RAW=1`); `--input` also accepts `STEP:joy1:button:N:down|up`,
 `STEP:joy1:axis:x|y|z|r|u|v:VALUE`, `STEP:joy1:pov:ANGLE`, `STEP:joy1:connect|disconnect`.
 
-Not supported yet: D3D 3D mode (in progress); loading .exe files compiled by YoYo's GameMaker.
+Not supported yet: loading .exe files compiled by YoYo's GameMaker.
 Open spec questions and implementation choices: `specs/OPEN_QUESTIONS.md`.

@@ -1,8 +1,10 @@
 //! Drawing state, the per-frame draw (runtime.md §13), text layout, surfaces and
 //! room transitions.
 
+use crate::draw::backend::{Backend, RState, Target, Tex};
 use crate::draw::font::{split_lines, Face, FontSystem};
-use crate::draw::painter::{Painter, Xf};
+use crate::draw::painter::{Painter, Pipe, Xf};
+use crate::draw::soft::SoftBackend;
 use crate::draw::{rgba, rgba8, Blend, Canvas, Clip, Texture};
 use crate::events::ev;
 use crate::game::Game;
@@ -11,8 +13,10 @@ use std::rc::Rc;
 
 /// Global draw state and render targets.
 pub struct Gfx {
-    pub back: Canvas,
-    pub surfaces: Vec<Option<Canvas>>,
+    /// The renderer (software or OpenGL); owns the back buffer and surfaces.
+    pub be: Box<dyn Backend>,
+    /// Sizes of existing surfaces by id.
+    pub surfaces: Vec<Option<(u32, u32)>>,
     /// -1 = back buffer.
     pub target: i32,
     pub pass_xf: Xf,
@@ -27,33 +31,53 @@ pub struct Gfx {
     pub interpolate: bool,
     pub texture_repeat: bool,
     pub fonts: FontSystem,
-    /// Hook used to show intermediate frames (transitions, screen_refresh,
+    /// Hook used to show frames (end of step, transitions, screen_refresh,
     /// message boxes). None in headless mode.
-    pub present: Option<Box<dyn FnMut(&Texture)>>,
+    pub present: Option<Box<dyn FnMut(&mut dyn Backend)>>,
     /// Texture ids (sprite_get_texture etc.).
     pub textures: Vec<TexRef>,
     pub tex_ids: std::collections::HashMap<usize, i32>,
     /// Primitive under construction: kind, texture, vertices (x, y, u, v, colour, alpha).
     pub prim: Option<(i32, i32, Vec<(f64, f64, f64, f64, i32, f64)>)>,
+    /// 3D state (d3d_*).
+    pub d3d: crate::d3d::D3d,
+    /// Pending vsync change (`set_synchronization`).
+    pub vsync_change: Option<bool>,
 }
 
-/// A texture id target.
+/// A texture id target. Images are stored padded to power-of-two sizes
+/// (d3d.md §10) together with the original size.
 #[derive(Clone)]
 pub enum TexRef {
-    Static(Rc<Texture>),
+    Static(Rc<Texture>, Rc<Texture>),
     Surface(i32),
+}
+
+/// Next power of two (≥ 1).
+pub fn pow2(n: u32) -> u32 {
+    n.max(1).next_power_of_two()
+}
+
+/// Copy of an image padded with transparent black to power-of-two sizes.
+fn padded(t: &Rc<Texture>) -> Rc<Texture> {
+    let (w, h) = (pow2(t.w), pow2(t.h));
+    if w == t.w && h == t.h {
+        return t.clone();
+    }
+    let mut p = Texture::new(w, h);
+    p.blit(t, 0, 0, t.w as i32, t.h as i32, 0, 0);
+    Rc::new(p)
 }
 
 impl Gfx {
     pub fn new(interpolate: bool) -> Self {
-        let back = Canvas::new(640, 480);
-        let clip = Clip::full(&back);
+        let be: Box<dyn Backend> = Box::new(SoftBackend::new(640, 480));
         Gfx {
-            back,
+            be,
             surfaces: Vec::new(),
             target: -1,
             pass_xf: Xf::IDENTITY,
-            pass_clip: clip,
+            pass_clip: Clip { x0: 0, y0: 0, x1: 640, y1: 480 },
             color: 0,
             alpha: 1.0,
             font: -1,
@@ -68,48 +92,79 @@ impl Gfx {
             textures: Vec::new(),
             tex_ids: std::collections::HashMap::new(),
             prim: None,
+            d3d: crate::d3d::D3d::default(),
+            vsync_change: None,
         }
+    }
+
+    /// Replaces the renderer (keeps the back buffer size; surfaces are lost).
+    pub fn set_backend(&mut self, mut be: Box<dyn Backend>) {
+        let (w, h) = self.be.back_size();
+        be.resize_back(w, h);
+        self.be = be;
+        for s in self.surfaces.iter_mut() {
+            *s = None;
+        }
+        self.target = -1;
+    }
+
+    pub fn back_size(&self) -> (u32, u32) {
+        self.be.back_size()
+    }
+
+    pub fn back_clip(&self) -> Clip {
+        let (w, h) = self.be.back_size();
+        Clip { x0: 0, y0: 0, x1: w as i32, y1: h as i32 }
     }
 
     pub fn resize_back(&mut self, w: u32, h: u32) {
-        self.back = Canvas::new(w, h);
-        self.pass_clip = Clip::full(&self.back);
+        self.be.resize_back(w, h);
+        self.pass_clip = self.back_clip();
         self.pass_xf = Xf::IDENTITY;
     }
 
-    /// The current target canvas, transform and clip.
+    /// The back buffer contents.
+    pub fn read_back(&mut self) -> Texture {
+        self.be.read_back()
+    }
+
+    /// Size of a surface.
+    pub fn surface_size(&self, id: i32) -> Option<(u32, u32)> {
+        if id < 0 {
+            return None;
+        }
+        *self.surfaces.get(id as usize)?
+    }
+
+    /// Target of the current drawing, with its transform and clip.
+    fn current(&self) -> (Target, Xf, Clip, bool) {
+        if let Some((w, h)) = self.surface_size(self.target) {
+            return (Target::Surface(self.target), Xf::IDENTITY, Clip { x0: 0, y0: 0, x1: w as i32, y1: h as i32 }, true);
+        }
+        (Target::Back, self.pass_xf, self.pass_clip, false)
+    }
+
+    /// Selects the current target in the backend and returns the transform and
+    /// render state for drawing into it.
+    pub fn pipe_state(&mut self) -> (Pipe, RState) {
+        let (t, xf, clip, surf) = self.current();
+        self.be.set_target(t);
+        let size = if let Target::Surface(id) = t { self.surface_size(id).unwrap_or((1, 1)) } else { self.be.back_size() };
+        let mut pipe = Pipe { xf, ..Pipe::default() };
+        let mut st = RState::new_2d(self.blend, clip, self.interpolate, self.texture_repeat);
+        self.d3d.configure(&mut pipe, &mut st, xf, size, surf);
+        (pipe, st)
+    }
+
+    /// The current target painter (selects the target in the backend).
     pub fn painter(&mut self) -> Painter<'_> {
-        let blend = self.blend;
-        let bilinear = self.interpolate;
-        if self.target >= 0 {
-            if let Some(Some(s)) = self.surfaces.get_mut(self.target as usize) {
-                let clip = Clip::full(s);
-                return Painter {
-                    target: s,
-                    xf: Xf::IDENTITY,
-                    clip,
-                    blend,
-                    bilinear,
-                };
-            }
-        }
-        Painter {
-            target: &mut self.back,
-            xf: self.pass_xf,
-            clip: self.pass_clip,
-            blend,
-            bilinear,
-        }
+        let (pipe, st) = self.pipe_state();
+        Painter { be: &mut *self.be, pipe, st }
     }
 
     /// Current target size.
     pub fn target_size(&self) -> (u32, u32) {
-        if self.target >= 0 {
-            if let Some(Some(s)) = self.surfaces.get(self.target as usize) {
-                return (s.w, s.h);
-            }
-        }
-        (self.back.w, self.back.h)
+        self.surface_size(self.target).unwrap_or_else(|| self.be.back_size())
     }
 
     /// Registers a texture and returns its id.
@@ -118,24 +173,83 @@ impl Gfx {
         if let Some(&id) = self.tex_ids.get(&key) {
             return id;
         }
-        self.textures.push(TexRef::Static(t.clone()));
+        self.textures.push(TexRef::Static(padded(t), t.clone()));
         let id = self.textures.len() as i32 - 1;
         self.tex_ids.insert(key, id);
         id
     }
 
-    /// Resolves a texture id.
-    pub fn texture(&self, id: i32) -> Option<Rc<Texture>> {
-        match self.textures.get(id.max(0) as usize)? {
-            TexRef::Static(t) if id >= 0 => Some(t.clone()),
-            TexRef::Surface(s) => self.surfaces.get(*s as usize)?.as_ref().map(|c| Rc::new(c.clone())),
-            _ => None,
+    /// Resolves a texture id: the texture and the factors mapping texture
+    /// coordinates (relative to the power-of-two texture) onto it.
+    pub fn texture(&self, id: i32) -> Option<(Tex, f32, f32)> {
+        if id < 0 {
+            return None;
+        }
+        match self.textures.get(id as usize)? {
+            TexRef::Static(t, _) => Some((Tex::Img(t.clone()), 1.0, 1.0)),
+            TexRef::Surface(s) => {
+                let t = self.surface_tex(*s)?;
+                let (w, h) = (t.w(), t.h());
+                Some((t, pow2(w) as f32 / w as f32, pow2(h) as f32 / h as f32))
+            }
+        }
+    }
+
+    /// `texture_get_width/height`: image size relative to the padded texture.
+    pub fn texture_frac(&self, id: i32) -> (f64, f64) {
+        if id < 0 {
+            return (0.0, 0.0);
+        }
+        let (w, h) = match self.textures.get(id as usize) {
+            Some(TexRef::Static(_, o)) => (o.w, o.h),
+            Some(TexRef::Surface(s)) => match self.surface_size(*s) {
+                Some(sz) => sz,
+                None => return (0.0, 0.0),
+            },
+            None => return (0.0, 0.0),
+        };
+        (w as f64 / pow2(w) as f64, h as f64 / pow2(h) as f64)
+    }
+
+    /// A surface as a texture source.
+    pub fn surface_tex(&self, id: i32) -> Option<Tex> {
+        let (w, h) = self.surface_size(id)?;
+        Some(Tex::Surf { id, w, h })
+    }
+
+    /// Creates a surface; returns its id.
+    pub fn surface_create(&mut self, w: u32, h: u32) -> i32 {
+        let id = match self.surfaces.iter().position(|s| s.is_none()) {
+            Some(p) => p,
+            None => {
+                self.surfaces.push(None);
+                self.surfaces.len() - 1
+            }
+        };
+        self.surfaces[id] = Some((w, h));
+        self.be.surface_create(id as i32, w, h);
+        id as i32
+    }
+
+    pub fn surface_free(&mut self, id: i32) {
+        if self.surface_size(id).is_none() {
+            return;
+        }
+        self.surfaces[id as usize] = None;
+        self.be.surface_free(id);
+        if self.target == id {
+            self.target = -1;
         }
     }
 
     pub fn present_now(&mut self) {
+        if let Some(v) = self.vsync_change.take() {
+            if let Some(gl) = self.be.as_gl() {
+                gl.set_vsync(v);
+            }
+        }
         if let Some(p) = self.present.as_mut() {
-            p(&self.back);
+            p(&mut *self.be);
         }
     }
 
@@ -144,7 +258,7 @@ impl Gfx {
     #[allow(clippy::too_many_arguments)]
     pub fn draw_tex(
         &mut self,
-        tex: &Texture,
+        tex: &Tex,
         left: f64,
         top: f64,
         w: f64,
@@ -355,7 +469,7 @@ impl Game {
                         let left = if sf.2 { (0..f.w).find(|&x| (0..f.h).any(|y| f.get(x, y)[3] > 0)).unwrap_or(0) as f64 } else { 0.0 };
                         let (px, py) = ((pen - left) * xs, ly * ys);
                         let (gx, gy) = (x + px * c + py * sn, y - px * sn + py * c);
-                        self.gfx.draw_tex(&f, 0.0, 0.0, f.w as f64, f.h as f64, 0.0, 0.0, gx, gy, xs, ys, angle, cols, alpha);
+                        self.gfx.draw_tex(&Tex::Img(f.clone()), 0.0, 0.0, f.w as f64, f.h as f64, 0.0, 0.0, gx, gy, xs, ys, angle, cols, alpha);
                     }
                     pen += adv;
                 }
@@ -429,9 +543,9 @@ impl Game {
                         col_at(gx, gy + gh),
                     ];
                     let uv = [(0.0, 0.0), (gw as f32, 0.0), (gw as f32, gh as f32), (0.0, gh as f32)];
-                    let tex: Rc<Texture> = g.tex.clone();
+                    let tex = Tex::Img(g.tex.clone());
                     let mut p = self.gfx.painter();
-                    p.bilinear = xs != 1.0 || ys != 1.0 || angle != 0.0;
+                    p.st.bilinear = xs != 1.0 || ys != 1.0 || angle != 0.0;
                     p.quad_tex(&tex, pts, uv, cs, false);
                 }
                 pen += g.advance as f64;
@@ -452,7 +566,7 @@ impl Game {
         let (ox, oy) = (s.origin_x as f64, s.origin_y as f64);
         self.gfx.texture_repeat = false;
         self.gfx.draw_tex(
-            &tex,
+            &Tex::Img(tex.clone()),
             0.0,
             0.0,
             tex.w as f64,
@@ -510,10 +624,11 @@ impl Game {
             vec![b.y]
         };
         self.gfx.texture_repeat = false;
+        let tx = Tex::Img(tex.clone());
         for &yy in &ys {
             for &xx in &xs {
                 self.gfx.draw_tex(
-                    &tex,
+                    &tx,
                     0.0,
                     0.0,
                     tex.w as f64,
@@ -534,7 +649,7 @@ impl Game {
 
     fn draw_tile(&mut self, t: &crate::room::TileState) {
         let Some(bg) = self.background(t.background) else { return };
-        let tex = bg.tex.clone();
+        let tex = Tex::Img(bg.tex.clone());
         self.gfx.draw_tex(
             &tex, t.left, t.top, t.width, t.height, 0.0, 0.0, t.x, t.y, t.xscale, t.yscale, 0.0, [t.blend; 4], t.alpha,
         );
@@ -542,16 +657,25 @@ impl Game {
 
     /// One drawing pass (§13.1 step 3).
     fn draw_pass(&mut self, vm: &mut Vm, area: (f64, f64, f64, f64)) -> Result<(), Error> {
+        // 3D: projection reset and depth cleared per pass (d3d.md §1, §5)
+        self.gfx.d3d.proj = crate::d3d::Proj::Default;
+        self.gfx.d3d.depth = 0.0;
+        if self.gfx.d3d.on {
+            self.gfx.be.set_target(Target::Back);
+            self.gfx.be.clear_depth();
+        }
         if self.rs.show_color {
             let c = rgba8(self.rs.bg_color, 1.0);
             self.gfx.painter().clear_clip(c);
         }
+        self.gfx.d3d.no_depth = true;
         for i in 0..8 {
             let b = &self.rs.backgrounds[i];
             if b.visible && !b.foreground {
                 self.draw_layer(i, area);
             }
         }
+        self.gfx.d3d.no_depth = false;
         // depth-sorted list: (depth, kind, index); kind 0 tile, 1 instance, 2 particles
         let mut items: Vec<(f64, u8, usize, i32)> = Vec::new();
         for (k, t) in self.rs.tiles.iter().enumerate() {
@@ -568,7 +692,8 @@ impl Game {
             items.push((d, 2, k, k as i32));
         }
         items.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
-        for (_, kind, k, id) in items {
+        for (depth, kind, k, id) in items {
+            self.gfx.d3d.depth = depth;
             match kind {
                 0 => {
                     if let Some(t) = self.rs.tiles.get(k).cloned() {
@@ -602,6 +727,8 @@ impl Game {
                 _ => self.draw_particle_system(k as i32),
             }
         }
+        self.gfx.d3d.depth = 0.0;
+        self.gfx.d3d.no_depth = true;
         for i in 0..8 {
             let b = &self.rs.backgrounds[i];
             if b.visible && b.foreground {
@@ -614,6 +741,7 @@ impl Game {
             let cs = self.cursor_sprite;
             self.draw_sprite_ext(cs, sub, mx, my, 1.0, 1.0, 0.0, 0xFFFFFF, 1.0);
         }
+        self.gfx.d3d.no_depth = false;
         Ok(())
     }
 
@@ -622,8 +750,10 @@ impl Game {
         let saved_target = self.gfx.target;
         self.gfx.target = -1;
         let outside = rgba8(self.settings.color_outside_room as i32, 1.0);
-        self.gfx.back.fill(outside);
-        let full = Clip::full(&self.gfx.back);
+        let full = self.gfx.back_clip();
+        self.gfx.be.set_target(Target::Back);
+        self.gfx.be.clear(full, outside, true);
+        self.gfx.d3d.saved_proj = None;
         let use_views = self.rs.views_enabled && self.rs.views.iter().any(|v| v.visible);
         if use_views {
             for v in 0..8 {
@@ -635,6 +765,17 @@ impl Game {
                 self.gfx.pass_xf = Xf::view(
                     vs.xview, vs.yview, vs.wview, vs.hview, vs.angle, vs.xport, vs.yport, vs.wport, vs.hport,
                 );
+                self.gfx.d3d.pass = crate::d3d::Pass {
+                    vx: vs.xview,
+                    vy: vs.yview,
+                    vw: vs.wview,
+                    vh: vs.hview,
+                    angle: vs.angle,
+                    px: vs.xport,
+                    py: vs.yport,
+                    pw: vs.wport,
+                    ph: vs.hport,
+                };
                 self.gfx.pass_clip = Clip {
                     x0: vs.xport as i32,
                     y0: vs.yport as i32,
@@ -665,7 +806,19 @@ impl Game {
                 ty: 0.0,
             };
             self.gfx.pass_clip = full;
-            let area = (0.0, 0.0, self.rs.width as f64, self.rs.height as f64);
+            let (rw, rh) = (self.rs.width as f64, self.rs.height as f64);
+            self.gfx.d3d.pass = crate::d3d::Pass {
+                vx: 0.0,
+                vy: 0.0,
+                vw: rw,
+                vh: rh,
+                angle: 0.0,
+                px: 0.0,
+                py: 0.0,
+                pw: self.region_w as f64,
+                ph: self.region_h as f64,
+            };
+            let area = (0.0, 0.0, rw, rh);
             self.draw_pass(vm, area)?;
         }
         // drawing outside the draw event uses plain room coordinates
@@ -681,7 +834,7 @@ impl Game {
             return Ok(());
         }
         self.draw_frame(vm)?;
-        let new = self.gfx.back.clone();
+        let new = self.gfx.read_back();
         let steps = self.transition_steps.max(1);
         let (w, h) = (new.w as f64, new.h as f64);
         let dt = std::time::Duration::from_secs_f64(1.0 / self.rs.speed.max(1.0));
@@ -702,8 +855,8 @@ impl Game {
                 ];
                 let ctx = gml::Ctx::new(gml::special::NOONE, gml::special::NOONE);
                 let r = <Game as gml::Host>::call_script(self, vm, &ctx, scr, &args);
-                self.gfx.surfaces[sa as usize] = None;
-                self.gfx.surfaces[sb as usize] = None;
+                self.gfx.surface_free(sa);
+                self.gfx.surface_free(sb);
                 r?;
             } else {
                 let mut out = old.clone();
@@ -743,7 +896,7 @@ impl Game {
                         }
                     }
                 }
-                self.gfx.back = out;
+                self.gfx.be.write(Target::Back, 0, 0, &out);
             }
             self.gfx.present_now();
             let el = t0.elapsed();
@@ -754,14 +907,34 @@ impl Game {
         Ok(())
     }
 
+    /// `surface_set_target`: installs the surface's orthographic projection,
+    /// remembering the pass projection (d3d.md §5.5).
+    pub fn set_surface_target(&mut self, id: i32) {
+        if self.gfx.target < 0 {
+            self.gfx.d3d.saved_proj = Some(self.gfx.d3d.proj);
+        }
+        self.gfx.d3d.proj = crate::d3d::Proj::Default;
+        self.gfx.target = id;
+        if self.gfx.d3d.on {
+            self.gfx.be.set_target(Target::Surface(id));
+            self.gfx.be.clear_depth();
+        }
+    }
+
+    /// `surface_reset_target`: back to the back buffer and the pass projection.
+    pub fn reset_surface_target(&mut self) {
+        if self.gfx.target >= 0 {
+            if let Some(p) = self.gfx.d3d.saved_proj.take() {
+                self.gfx.d3d.proj = p;
+            }
+        }
+        self.gfx.target = -1;
+    }
+
     /// Stores a canvas as a new surface; returns its id.
     pub fn alloc_surface(&mut self, c: Canvas) -> i32 {
-        if let Some(p) = self.gfx.surfaces.iter().position(|s| s.is_none()) {
-            self.gfx.surfaces[p] = Some(c);
-            p as i32
-        } else {
-            self.gfx.surfaces.push(Some(c));
-            (self.gfx.surfaces.len() - 1) as i32
-        }
+        let id = self.gfx.surface_create(c.w, c.h);
+        self.gfx.be.write(Target::Surface(id), 0, 0, &c);
+        id
     }
 }

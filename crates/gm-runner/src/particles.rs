@@ -832,7 +832,7 @@ impl Game {
                 let tex = self.particles.shape_tex(pt.shape);
                 let (w, h) = (tex.w as f64, tex.h as f64);
                 self.gfx.draw_tex(
-                    &tex,
+                    &crate::draw::Tex::Img(tex.clone()),
                     0.0,
                     0.0,
                     w,

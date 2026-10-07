@@ -4,6 +4,7 @@ use crate::game::Game;
 use gml::{Ctx, Error, FunctionId, Value, Vm};
 use std::sync::OnceLock;
 
+pub mod d3d;
 pub mod draw;
 pub mod files;
 pub mod game;
@@ -107,6 +108,7 @@ fn table() -> &'static Table {
         motion::register(&mut list);
         input::register(&mut list);
         draw::register(&mut list);
+        d3d::register(&mut list);
         sound::register(&mut list);
         ui::register(&mut list);
         res::register(&mut list);

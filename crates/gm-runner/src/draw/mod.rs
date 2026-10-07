@@ -2,10 +2,16 @@
 //! optional texture, and the D3D-style blend equation used by GameMaker
 //! (runtime.md §13.4).
 
+pub mod backend;
+pub mod dual;
 pub mod font;
+pub mod gl;
+pub mod mat;
+pub mod soft;
 pub mod painter;
 
-pub use painter::Painter;
+pub use backend::{Backend, Prim, RState, Target, Tex, Vertex};
+pub use painter::{Painter, Pipe};
 
 /// An RGBA image (sprite frame, background, surface or back buffer).
 #[derive(Clone, Debug, Default)]
@@ -206,7 +212,7 @@ impl Sampler<'_> {
     }
 
     #[inline]
-    fn sample(&self, u: f32, v: f32) -> [f32; 4] {
+    pub fn sample(&self, u: f32, v: f32) -> [f32; 4] {
         if self.tex.w == 0 || self.tex.h == 0 {
             return [0.0; 4];
         }

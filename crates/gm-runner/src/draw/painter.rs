@@ -1,7 +1,9 @@
-//! High-level primitives drawn in user (room) coordinates through an affine
-//! transform onto a canvas.
+//! High-level primitives drawn in user (room) coordinates through a transform
+//! onto the current target of a [`Backend`].
 
-use super::{triangle, Blend, Canvas, Clip, Sampler, Texture, Vtx};
+use super::backend::{Backend, Prim, RState, Tex, Vertex};
+use super::mat::M4;
+use super::Clip;
 
 /// An affine transform `x' = a·x + b·y + tx`, `y' = c·x + d·y + ty`.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -37,6 +39,7 @@ impl Xf {
 
     /// Maps the room rectangle (vx,vy,vw,vh) rotated by `angle` degrees about its
     /// centre onto the port (px,py,pw,ph).
+    #[allow(clippy::too_many_arguments)]
     pub fn view(vx: f64, vy: f64, vw: f64, vh: f64, angle: f64, px: f64, py: f64, pw: f64, ph: f64) -> Xf {
         let sx = if vw != 0.0 { pw / vw } else { 1.0 };
         let sy = if vh != 0.0 { ph / vh } else { 1.0 };
@@ -79,44 +82,131 @@ impl Xf {
             ty: -(ic * self.tx + id * self.ty),
         })
     }
+
+    /// As a 4×4 matrix (z passes through, w = 1).
+    pub fn to_m4(&self) -> M4 {
+        [[self.a, self.b, 0.0, self.tx], [self.c, self.d, 0.0, self.ty], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+    }
 }
 
-/// Drawing onto one canvas.
-pub struct Painter<'a> {
-    pub target: &'a mut Canvas,
+/// Room → target transform state shared by all drawing calls.
+#[derive(Clone, Copy, Debug)]
+pub struct Pipe {
+    /// 2D affine room → pixel transform (used when `m` is None).
     pub xf: Xf,
-    pub clip: Clip,
-    pub blend: Blend,
-    pub bilinear: bool,
+    /// Full room (x, y, z) → pixel-homogeneous transform (3D mode or a world
+    /// transform); overrides `xf`.
+    pub m: Option<M4>,
+    /// z coordinate given to 2D drawing (the depth in 3D mode).
+    pub z: f64,
+    /// Fog: (room → fog-distance row, start, end) giving the per-vertex factor.
+    pub fog: Option<([f64; 4], f64, f64)>,
+    /// Colour multiplier (ambient light on normal-less geometry).
+    pub tint: Option<[f32; 3]>,
+}
+
+impl Default for Pipe {
+    fn default() -> Self {
+        Pipe {
+            xf: Xf::IDENTITY,
+            m: None,
+            z: 0.0,
+            fog: None,
+            tint: None,
+        }
+    }
+}
+
+impl Pipe {
+    /// Linear fog factor for a room-space point.
+    #[inline]
+    pub fn fog_at(&self, x: f64, y: f64, z: f64) -> f32 {
+        match &self.fog {
+            Some((row, s, e)) => {
+                let d = row[0] * x + row[1] * y + row[2] * z + row[3];
+                // unclamped: interpolated per pixel, clamped by the backend
+                if e > s {
+                    ((d - s) / (e - s)) as f32
+                } else if d >= *s {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            None => 0.0,
+        }
+    }
+
+    #[inline]
+    pub fn vert3(&self, x: f64, y: f64, z: f64, u: f32, v: f32, c: [f32; 4]) -> Vertex {
+        let fog = self.fog_at(x, y, z);
+        let c = match self.tint {
+            Some(t) => [c[0] * t[0], c[1] * t[1], c[2] * t[2], c[3]],
+            None => c,
+        };
+        match &self.m {
+            None => {
+                let (tx, ty) = self.xf.apply(x, y);
+                Vertex {
+                    x: tx as f32,
+                    y: ty as f32,
+                    z: 0.5,
+                    w: 1.0,
+                    u,
+                    v,
+                    c,
+                    fog,
+                }
+            }
+            Some(m) => {
+                let p = super::mat::apply(m, [x, y, z, 1.0]);
+                Vertex {
+                    x: p[0] as f32,
+                    y: p[1] as f32,
+                    z: p[2] as f32,
+                    w: p[3] as f32,
+                    u,
+                    v,
+                    c,
+                    fog,
+                }
+            }
+        }
+    }
+
+    #[inline]
+    pub fn vert(&self, x: f64, y: f64, u: f32, v: f32, c: [f32; 4]) -> Vertex {
+        self.vert3(x, y, self.z, u, v, c)
+    }
+}
+
+/// Drawing onto the current target of a backend.
+pub struct Painter<'a> {
+    pub be: &'a mut dyn Backend,
+    pub pipe: Pipe,
+    pub st: RState,
 }
 
 impl Painter<'_> {
     #[inline]
-    fn v(&self, x: f64, y: f64, u: f32, v: f32, c: [f32; 4]) -> Vtx {
-        let (tx, ty) = self.xf.apply(x, y);
-        Vtx {
-            x: tx as f32,
-            y: ty as f32,
-            u,
-            v,
-            c,
-        }
+    fn v(&self, x: f64, y: f64, u: f32, v: f32, c: [f32; 4]) -> Vertex {
+        self.pipe.vert(x, y, u, v, c)
     }
 
     /// Clears the whole target (ignores blending and clip).
     pub fn clear(&mut self, c: [u8; 4]) {
-        self.target.fill(c);
+        let all = Clip {
+            x0: 0,
+            y0: 0,
+            x1: i32::MAX / 2,
+            y1: i32::MAX / 2,
+        };
+        self.be.clear(all, c, true);
     }
 
-    /// Fills the clip area with a colour (no blending).
+    /// Fills the clip area with a colour (no blending); also clears depth.
     pub fn clear_clip(&mut self, c: [u8; 4]) {
-        let clip = self.clip.intersect(Clip::full(self.target));
-        let w = self.target.w as i32;
-        for y in clip.y0..clip.y1 {
-            for x in clip.x0..clip.x1 {
-                self.target.px[(y * w + x) as usize] = c;
-            }
-        }
+        self.be.clear(self.st.clip, c, true);
     }
 
     /// A coloured triangle.
@@ -126,76 +216,49 @@ impl Painter<'_> {
             self.v(p[1].0, p[1].1, 0.0, 0.0, c[1]),
             self.v(p[2].0, p[2].1, 0.0, 0.0, c[2]),
         ];
-        triangle(self.target, self.clip, self.blend, v, None);
+        self.be.draw(&self.st, None, Prim::Triangles, &v);
     }
 
     /// A textured triangle (uv in texel coordinates).
-    pub fn tri_tex(&mut self, tex: &Texture, p: [(f64, f64); 3], uv: [(f32, f32); 3], c: [[f32; 4]; 3], repeat: bool) {
+    pub fn tri_tex(&mut self, tex: &Tex, p: [(f64, f64); 3], uv: [(f32, f32); 3], c: [[f32; 4]; 3], repeat: bool) {
+        let (tw, th) = (tex.w().max(1) as f32, tex.h().max(1) as f32);
         let v = [
-            self.v(p[0].0, p[0].1, uv[0].0, uv[0].1, c[0]),
-            self.v(p[1].0, p[1].1, uv[1].0, uv[1].1, c[1]),
-            self.v(p[2].0, p[2].1, uv[2].0, uv[2].1, c[2]),
+            self.v(p[0].0, p[0].1, uv[0].0 / tw, uv[0].1 / th, c[0]),
+            self.v(p[1].0, p[1].1, uv[1].0 / tw, uv[1].1 / th, c[1]),
+            self.v(p[2].0, p[2].1, uv[2].0 / tw, uv[2].1 / th, c[2]),
         ];
-        let s = Sampler {
-            tex,
-            bilinear: self.bilinear,
-            repeat,
-        };
-        triangle(self.target, self.clip, self.blend, v, Some(s));
-    }
-
-    /// If the quad maps to an axis-aligned rectangle in target space with
-    /// axis-aligned texture coordinates and one colour, returns its target corners.
-    fn axis_rect(&self, p: &[(f64, f64); 4], uv: &[(f32, f32); 4], c: &[[f32; 4]; 4]) -> Option<(f32, f32, f32, f32)> {
-        if !(c[0] == c[1] && c[1] == c[2] && c[2] == c[3]) {
-            return None;
-        }
-        if !(uv[0].1 == uv[1].1 && uv[1].0 == uv[2].0 && uv[2].1 == uv[3].1 && uv[3].0 == uv[0].0) {
-            return None;
-        }
-        let q: Vec<(f64, f64)> = p.iter().map(|&(x, y)| self.xf.apply(x, y)).collect();
-        let eq = |a: f64, b: f64| (a - b).abs() < 1e-6;
-        if eq(q[0].1, q[1].1) && eq(q[1].0, q[2].0) && eq(q[2].1, q[3].1) && eq(q[3].0, q[0].0) {
-            return Some((q[0].0 as f32, q[0].1 as f32, q[2].0 as f32, q[2].1 as f32));
-        }
-        None
+        let mut st = self.st;
+        st.repeat = repeat;
+        self.be.draw(&st, Some(tex), Prim::Triangles, &v);
     }
 
     /// A textured quad; corners in order top-left, top-right, bottom-right,
-    /// bottom-left.
-    pub fn quad_tex(&mut self, tex: &Texture, p: [(f64, f64); 4], uv: [(f32, f32); 4], c: [[f32; 4]; 4], repeat: bool) {
-        if tex.w == 0 || tex.h == 0 {
+    /// bottom-left; uv in texel coordinates.
+    pub fn quad_tex(&mut self, tex: &Tex, p: [(f64, f64); 4], uv: [(f32, f32); 4], c: [[f32; 4]; 4], repeat: bool) {
+        if tex.w() == 0 || tex.h() == 0 {
             return;
         }
-        if let Some((x0, y0, x1, y1)) = self.axis_rect(&p, &uv, &c) {
-            // corner 0 maps to uv[0]; corner 2 to uv[2] (handles mirrored quads)
-            let (mut ua, mut ub, mut va, mut vb) = (uv[0].0, uv[2].0, uv[0].1, uv[2].1);
-            let (mut xa, mut xb, mut ya, mut yb) = (x0, x1, y0, y1);
-            if xa > xb {
-                std::mem::swap(&mut xa, &mut xb);
-                std::mem::swap(&mut ua, &mut ub);
-            }
-            if ya > yb {
-                std::mem::swap(&mut ya, &mut yb);
-                std::mem::swap(&mut va, &mut vb);
-            }
-            let s = Sampler { tex, bilinear: self.bilinear, repeat };
-            super::rect_fast(self.target, self.clip, self.blend, xa, ya, xb, yb, (ua, va, ub, vb), c[0], Some(s));
-            return;
-        }
-        self.tri_tex(tex, [p[0], p[1], p[2]], [uv[0], uv[1], uv[2]], [c[0], c[1], c[2]], repeat);
-        self.tri_tex(tex, [p[0], p[2], p[3]], [uv[0], uv[2], uv[3]], [c[0], c[2], c[3]], repeat);
+        let (tw, th) = (tex.w() as f32, tex.h() as f32);
+        let v = [
+            self.v(p[0].0, p[0].1, uv[0].0 / tw, uv[0].1 / th, c[0]),
+            self.v(p[1].0, p[1].1, uv[1].0 / tw, uv[1].1 / th, c[1]),
+            self.v(p[2].0, p[2].1, uv[2].0 / tw, uv[2].1 / th, c[2]),
+            self.v(p[3].0, p[3].1, uv[3].0 / tw, uv[3].1 / th, c[3]),
+        ];
+        let mut st = self.st;
+        st.repeat = repeat;
+        self.be.draw(&st, Some(tex), Prim::Quads, &v);
     }
 
     /// A coloured quad (corners tl, tr, br, bl).
     pub fn quad(&mut self, p: [(f64, f64); 4], c: [[f32; 4]; 4]) {
-        let uv = [(0.0, 0.0); 4];
-        if let Some((x0, y0, x1, y1)) = self.axis_rect(&p, &uv, &c) {
-            super::rect_fast(self.target, self.clip, self.blend, x0, y0, x1, y1, (0.0, 0.0, 0.0, 0.0), c[0], None);
-            return;
-        }
-        self.tri([p[0], p[1], p[2]], [c[0], c[1], c[2]]);
-        self.tri([p[0], p[2], p[3]], [c[0], c[2], c[3]]);
+        let v = [
+            self.v(p[0].0, p[0].1, 0.0, 0.0, c[0]),
+            self.v(p[1].0, p[1].1, 0.0, 0.0, c[1]),
+            self.v(p[2].0, p[2].1, 0.0, 0.0, c[2]),
+            self.v(p[3].0, p[3].1, 0.0, 0.0, c[3]),
+        ];
+        self.be.draw(&self.st, None, Prim::Quads, &v);
     }
 
     /// `draw_rectangle` family: inclusive pixel corners; colours tl, tr, br, bl.
@@ -215,6 +278,7 @@ impl Painter<'_> {
     }
 
     /// A line of width `w` (pixel-centred).
+    #[allow(clippy::too_many_arguments)]
     pub fn line(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, w: f64, c1: [f32; 4], c2: [f32; 4]) {
         let (dx, dy) = (x2 - x1, y2 - y1);
         let len = (dx * dx + dy * dy).sqrt();
@@ -245,6 +309,7 @@ impl Painter<'_> {
     }
 
     /// Ellipse inscribed in the box; centre colour `cc`, edge colour `ce`.
+    #[allow(clippy::too_many_arguments)]
     pub fn ellipse(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, cc: [f32; 4], ce: [f32; 4], outline: bool, precision: i32) {
         let (cx, cy) = ((x1 + x2) / 2.0, (y1 + y2) / 2.0);
         let (rx, ry) = ((x2 - x1).abs() / 2.0, (y2 - y1).abs() / 2.0);
@@ -261,16 +326,13 @@ impl Painter<'_> {
             }
         } else {
             // shift by half a pixel so the filled shape is centred on pixel centres
+            let mut v = Vec::with_capacity(n * 3);
             for i in 0..n {
-                self.tri(
-                    [
-                        (cx + 0.5, cy + 0.5),
-                        (pts[i].0 + 0.5, pts[i].1 + 0.5),
-                        (pts[i + 1].0 + 0.5, pts[i + 1].1 + 0.5),
-                    ],
-                    [cc, ce, ce],
-                );
+                v.push(self.v(cx + 0.5, cy + 0.5, 0.0, 0.0, cc));
+                v.push(self.v(pts[i].0 + 0.5, pts[i].1 + 0.5, 0.0, 0.0, ce));
+                v.push(self.v(pts[i + 1].0 + 0.5, pts[i + 1].1 + 0.5, 0.0, 0.0, ce));
             }
+            self.be.draw(&self.st, None, Prim::Triangles, &v);
         }
     }
 }
@@ -278,6 +340,8 @@ impl Painter<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::draw::soft::SoftBackend;
+    use crate::draw::Blend;
 
     #[test]
     fn view_xf() {
@@ -291,26 +355,17 @@ mod tests {
 
     #[test]
     fn rect_pixels() {
-        let mut c = Canvas::new(10, 10);
         let col = [1.0, 1.0, 1.0, 1.0];
-        let mut p = Painter {
-            target: &mut c,
-            xf: Xf::IDENTITY,
-            clip: Clip { x0: 0, y0: 0, x1: 10, y1: 10 },
-            blend: Blend::NORMAL,
-            bilinear: false,
-        };
+        let st = RState::new_2d(Blend::NORMAL, Clip { x0: 0, y0: 0, x1: 10, y1: 10 }, false, false);
+        let mut be = SoftBackend::new(10, 10);
+        let mut p = Painter { be: &mut be, pipe: Pipe::default(), st };
         p.rect(1.0, 1.0, 3.0, 3.0, [col; 4], false);
+        let c = be.read_back();
         assert_eq!(c.px.iter().filter(|p| p[3] > 0).count(), 9);
-        let mut c = Canvas::new(10, 10);
-        let mut p = Painter {
-            target: &mut c,
-            xf: Xf::IDENTITY,
-            clip: Clip { x0: 0, y0: 0, x1: 10, y1: 10 },
-            blend: Blend::NORMAL,
-            bilinear: false,
-        };
+        let mut be = SoftBackend::new(10, 10);
+        let mut p = Painter { be: &mut be, pipe: Pipe::default(), st };
         p.rect(1.0, 1.0, 4.0, 4.0, [col; 4], true);
+        let c = be.read_back();
         assert_eq!(c.px.iter().filter(|p| p[3] > 0).count(), 12);
         assert_eq!(c.get(2, 2)[3], 0);
     }

@@ -81,18 +81,15 @@ fn load_frames(path: &std::path::Path, n: i32, removeback: bool, smooth: bool) -
     Some(out)
 }
 
-fn screen_part(g: &Game, surf: Option<i32>, x: i32, y: i32, w: i32, h: i32) -> Result<Texture, Error> {
+fn screen_part(g: &mut Game, surf: Option<i32>, x: i32, y: i32, w: i32, h: i32) -> Result<Texture, Error> {
     let src = match surf {
-        Some(s) => g
-            .gfx
-            .surfaces
-            .get(s.max(0) as usize)
-            .and_then(|c| c.as_ref())
-            .ok_or_else(|| Error::new(format!("Surface does not exist: {}", s)))?,
-        None => &g.gfx.back,
+        Some(s) => {
+            g.gfx.surface_size(s).ok_or_else(|| Error::new(format!("Surface does not exist: {}", s)))?;
+            crate::draw::Target::Surface(s)
+        }
+        None => crate::draw::Target::Back,
     };
-    let mut t = Texture::new(w.max(1) as u32, h.max(1) as u32);
-    t.blit(src, x, y, w, h, 0, 0);
+    let mut t = g.gfx.be.read(src, x, y, w.max(1) as u32, h.max(1) as u32);
     if surf.is_none() {
         for p in t.px.iter_mut() {
             p[3] = 255;

@@ -1644,6 +1644,8 @@ version = "0.1.0"
 dependencies = [
  "fontdue",
  "gilrs",
+ "glow",
+ "glutin",
  "gm-dllcall",
  "gm-format",
  "gm-net",
@@ -1651,6 +1653,7 @@ dependencies = [
  "libloading",
  "midly",
  "png",
+ "raw-window-handle",
  "rfd",
  "rodio",
  "rustysynth",
