@@ -88,7 +88,11 @@ fn dotted_v(p: &Painter, x: f32, y0: f32, y1: f32) {
     let x = x.round() + 0.5;
     let mut y = (y0 / 2.0).ceil() * 2.0;
     while y < y1 {
-        p.rect_filled(Rect::from_min_size(pos2(x - 0.5, y), vec2(1.0, 1.0)), 0.0, LINE);
+        p.rect_filled(
+            Rect::from_min_size(pos2(x - 0.5, y), vec2(1.0, 1.0)),
+            0.0,
+            LINE,
+        );
         y += 2.0;
     }
 }
@@ -103,7 +107,11 @@ fn dotted_h(p: &Painter, y: f32, x0: f32, x1: f32) {
 }
 
 /// Thumbnail texture for a leaf (sprite first frame, object's sprite, background).
-fn thumbnail(cx: &mut Cx, ctx: &egui::Context, n: &TreeNode) -> Option<(egui::TextureId, egui::Vec2)> {
+fn thumbnail(
+    cx: &mut Cx,
+    ctx: &egui::Context,
+    n: &TreeNode,
+) -> Option<(egui::TextureId, egui::Vec2)> {
     let idx = usize::try_from(n.index).ok()?;
     let sprite = |cx: &mut Cx, si: usize| {
         let s = cx.p.sprites.get(si)?.as_ref()?;
@@ -119,7 +127,9 @@ fn thumbnail(cx: &mut Cx, ctx: &egui::Context, n: &TreeNode) -> Option<(egui::Te
         }
         ResourceKind::Background => {
             let b = cx.p.backgrounds.get(idx)?.as_ref()?;
-            let t = cx.tex.get(ctx, owner_key("bck", idx), 0, cx.gen, &b.image)?;
+            let t = cx
+                .tex
+                .get(ctx, owner_key("bck", idx), 0, cx.gen, &b.image)?;
             Some((t, vec2(b.image.width as f32, b.image.height as f32)))
         }
         _ => None,
@@ -231,18 +241,33 @@ fn node_ui(
     // expander
     let has_children = is_folder && !n.children.is_empty();
     if has_children {
-        let b = egui::Rect::from_center_size(pos2(col_x(depth).round() + 0.5, cy.round() + 0.5), vec2(9.0, 9.0));
+        let b = egui::Rect::from_center_size(
+            pos2(col_x(depth).round() + 0.5, cy.round() + 0.5),
+            vec2(9.0, 9.0),
+        );
         let r = ui.interact(b.expand(2.0), open_id.with("exp"), Sense::click());
         if r.clicked() {
             open = !open;
             ui.data_mut(|d| d.insert_persisted(open_id, open));
         }
         if visible {
-            painter.rect(b, 0.0, Color32::WHITE, Stroke::new(1.0, Color32::from_gray(145)), egui::StrokeKind::Middle);
+            painter.rect(
+                b,
+                0.0,
+                Color32::WHITE,
+                Stroke::new(1.0, Color32::from_gray(145)),
+                egui::StrokeKind::Middle,
+            );
             let ink = Stroke::new(1.0, Color32::from_gray(30));
-            painter.line_segment([b.center() - vec2(2.5, 0.0), b.center() + vec2(2.5, 0.0)], ink);
+            painter.line_segment(
+                [b.center() - vec2(2.5, 0.0), b.center() + vec2(2.5, 0.0)],
+                ink,
+            );
             if !open {
-                painter.line_segment([b.center() - vec2(0.0, 2.5), b.center() + vec2(0.0, 2.5)], ink);
+                painter.line_segment(
+                    [b.center() - vec2(0.0, 2.5), b.center() + vec2(0.0, 2.5)],
+                    ink,
+                );
             }
         }
     }
@@ -251,11 +276,25 @@ fn node_ui(
     let icon_r = Rect::from_min_size(pos2(icon_x, cy - 8.0), vec2(16.0, 16.0));
     if visible {
         if is_folder {
-            icons::paint(&painter, icon_r, if open && has_children { Icon::FolderOpen } else { Icon::Folder }, true);
+            icons::paint(
+                &painter,
+                icon_r,
+                if open && has_children {
+                    Icon::FolderOpen
+                } else {
+                    Icon::Folder
+                },
+                true,
+            );
         } else if let Some((t, size)) = thumbnail(cx, ui.ctx(), n) {
             let s = 16.0 / size.x.max(size.y).max(1.0);
             let fit = Rect::from_center_size(icon_r.center(), size * s);
-            painter.image(t, fit, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            painter.image(
+                t,
+                fit,
+                Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                Color32::WHITE,
+            );
         } else {
             icons::paint(&painter, icon_r, Icon::of_kind(n.kind), true);
         }
@@ -265,13 +304,22 @@ fn node_ui(
     let text_x = icon_r.max.x + 3.0;
     let font = egui::TextStyle::Body.resolve(ui.style());
     let galley = painter.layout_no_wrap(n.name.clone(), font.clone(), Color32::BLACK);
-    let label_r = Rect::from_min_size(pos2(text_x, row.min.y + 1.0), vec2(galley.size().x + 6.0, ROW_H - 2.0));
+    let label_r = Rect::from_min_size(
+        pos2(text_x, row.min.y + 1.0),
+        vec2(galley.size().x + 6.0, ROW_H - 2.0),
+    );
     let renaming = cx.st.renaming.as_ref().is_some_and(|(rp, _)| *rp == path);
     if renaming {
         let mut finished = None;
         if let Some((_, name)) = cx.st.renaming.as_mut() {
-            let edit_r = Rect::from_min_size(label_r.min, vec2((row.max.x - text_x - 4.0).max(80.0), ROW_H - 2.0));
-            let r = ui.put(edit_r, egui::TextEdit::singleline(name).margin(vec2(2.0, 0.0)));
+            let edit_r = Rect::from_min_size(
+                label_r.min,
+                vec2((row.max.x - text_x - 4.0).max(80.0), ROW_H - 2.0),
+            );
+            let r = ui.put(
+                edit_r,
+                egui::TextEdit::singleline(name).margin(vec2(2.0, 0.0)),
+            );
             r.request_focus();
             if r.lost_focus() {
                 finished = Some(name.clone());
@@ -287,7 +335,14 @@ fn node_ui(
     } else {
         let hit = Rect::from_min_max(icon_r.min - vec2(1.0, 0.0), label_r.max);
         let r = ui.interact(hit, open_id.with("row"), Sense::click_and_drag());
-        r.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, cx.st.selected.as_ref() == Some(&path), &n.name));
+        r.widget_info(|| {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::SelectableLabel,
+                true,
+                cx.st.selected.as_ref() == Some(&path),
+                &n.name,
+            )
+        });
         let selected = cx.st.selected.as_ref() == Some(&path);
         if visible {
             let color = if selected {

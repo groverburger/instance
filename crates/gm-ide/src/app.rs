@@ -407,7 +407,10 @@ impl IdeApp {
     /// Window ids of the open forms (for layout tests).
     #[cfg(test)]
     pub(crate) fn test_form_ids(&self) -> Vec<Id> {
-        self.forms.iter().map(|f| Id::new(("form", f.uid))).collect()
+        self.forms
+            .iter()
+            .map(|f| Id::new(("form", f.uid)))
+            .collect()
     }
 
     #[cfg(test)]
@@ -559,7 +562,10 @@ impl IdeApp {
             });
             ui.menu_button("Scripts", |ui| {
                 if ui.button("Create Script").clicked() {
-                    self.create(ResourceKind::Script, self.placement_for(ResourceKind::Script));
+                    self.create(
+                        ResourceKind::Script,
+                        self.placement_for(ResourceKind::Script),
+                    );
                     ui.close();
                 }
                 ui.separator();
@@ -573,14 +579,16 @@ impl IdeApp {
                 if scripts.is_empty() {
                     ui.add_enabled(false, egui::Button::new("(no scripts)"));
                 }
-                egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
-                    for (i, name) in scripts {
-                        if ui.button(name).clicked() {
-                            self.open_form(ResKey::Res(ResourceKind::Script, i));
-                            ui.close();
+                egui::ScrollArea::vertical()
+                    .max_height(400.0)
+                    .show(ui, |ui| {
+                        for (i, name) in scripts {
+                            if ui.button(name).clicked() {
+                                self.open_form(ResKey::Res(ResourceKind::Script, i));
+                                ui.close();
+                            }
                         }
-                    }
-                });
+                    });
             });
             ui.menu_button("Run", |ui| {
                 if ui.button("Run normally (F5)").clicked() {
@@ -611,7 +619,10 @@ impl IdeApp {
             }
             ui.close();
         }
-        if ui.add_enabled(any, egui::Button::new("Arrange Tiled")).clicked() {
+        if ui
+            .add_enabled(any, egui::Button::new("Arrange Tiled"))
+            .clicked()
+        {
             let n = self.forms.len().max(1);
             let cols = (n as f32).sqrt().ceil() as usize;
             let rows = n.div_ceil(cols);
@@ -626,13 +637,19 @@ impl IdeApp {
             }
             ui.close();
         }
-        if ui.add_enabled(any, egui::Button::new("Minimise All")).clicked() {
+        if ui
+            .add_enabled(any, egui::Button::new("Minimise All"))
+            .clicked()
+        {
             for f in &mut self.forms {
                 f.mdi.minimised = true;
             }
             ui.close();
         }
-        if ui.add_enabled(any, egui::Button::new("Close All")).clicked() {
+        if ui
+            .add_enabled(any, egui::Button::new("Close All"))
+            .clicked()
+        {
             for f in &mut self.forms {
                 f.close_prompt = true;
             }
@@ -661,10 +678,26 @@ impl IdeApp {
         let cell = |ui: &mut egui::Ui, w: f32, text: &str| {
             let (r, _) = ui.allocate_exact_size(Vec2::new(w, 18.0), egui::Sense::hover());
             let p = ui.painter();
-            p.hline(r.x_range(), r.top() + 0.5, egui::Stroke::new(1.0, theme::SHADOW));
-            p.vline(r.left() + 0.5, r.y_range(), egui::Stroke::new(1.0, theme::SHADOW));
-            p.hline(r.x_range(), r.bottom() - 0.5, egui::Stroke::new(1.0, egui::Color32::WHITE));
-            p.vline(r.right() - 0.5, r.y_range(), egui::Stroke::new(1.0, egui::Color32::WHITE));
+            p.hline(
+                r.x_range(),
+                r.top() + 0.5,
+                egui::Stroke::new(1.0, theme::SHADOW),
+            );
+            p.vline(
+                r.left() + 0.5,
+                r.y_range(),
+                egui::Stroke::new(1.0, theme::SHADOW),
+            );
+            p.hline(
+                r.x_range(),
+                r.bottom() - 0.5,
+                egui::Stroke::new(1.0, egui::Color32::WHITE),
+            );
+            p.vline(
+                r.right() - 0.5,
+                r.y_range(),
+                egui::Stroke::new(1.0, egui::Color32::WHITE),
+            );
             p.with_clip_rect(r.shrink(2.0)).text(
                 r.left_center() + Vec2::new(5.0, 0.0),
                 egui::Align2::LEFT_CENTER,
@@ -683,11 +716,19 @@ impl IdeApp {
             let right = 120.0;
             let mid = (total * 0.45).min(520.0);
             let left = (total - mid - right - 4.0).max(40.0);
-            let status = if self.status.is_empty() { "Ready" } else { &self.status };
+            let status = if self.status.is_empty() {
+                "Ready"
+            } else {
+                &self.status
+            };
             cell(ui, left, status);
             cell(ui, mid, &file);
             let n = self.forms.len();
-            cell(ui, right, &format!("{n} window{} open", if n == 1 { "" } else { "s" }));
+            cell(
+                ui,
+                right,
+                &format!("{n} window{} open", if n == 1 { "" } else { "s" }),
+            );
         });
     }
 
@@ -711,7 +752,11 @@ impl IdeApp {
             .map_or_else(|| "game".to_string(), |s| s.to_string_lossy().into_owned());
         let mut d = rfd::FileDialog::new()
             .add_filter("Executable", &[if cfg!(windows) { "exe" } else { "bin" }])
-            .set_file_name(if cfg!(windows) { format!("{stem}.exe") } else { stem });
+            .set_file_name(if cfg!(windows) {
+                format!("{stem}.exe")
+            } else {
+                stem
+            });
         if let Some(dir) = self.path.as_ref().and_then(|p| p.parent()) {
             d = d.set_directory(dir);
         }
@@ -721,7 +766,9 @@ impl IdeApp {
                 self.status = format!("Created {}", out.display());
                 self.messages.extend(warnings);
             }
-            Err(e) => self.messages.push(format!("Cannot create the executable: {e}")),
+            Err(e) => self
+                .messages
+                .push(format!("Cannot create the executable: {e}")),
         }
     }
 
@@ -751,23 +798,47 @@ impl IdeApp {
                 self.save(false);
             }
             icons::tool_separator(ui);
-            if tb(ui, Icon::CreateExe, "Create a stand-alone executable for the game", true)
-                .clicked()
+            if tb(
+                ui,
+                Icon::CreateExe,
+                "Create a stand-alone executable for the game",
+                true,
+            )
+            .clicked()
             {
                 self.create_executable();
             }
-            tb(ui, Icon::Publish, "Publish your game (not available)", false);
+            tb(
+                ui,
+                Icon::Publish,
+                "Publish your game (not available)",
+                false,
+            );
             icons::tool_separator(ui);
             let running = self.runner.is_some();
             if tb(ui, Icon::Run, "Run the game (F5)", !running).clicked() {
                 self.run_game();
             }
-            tb(ui, Icon::Debug, "Run the game in debug mode (not available)", false);
+            tb(
+                ui,
+                Icon::Debug,
+                "Run the game in debug mode (not available)",
+                false,
+            );
             icons::tool_separator(ui);
             for (k, label, _) in LIST_KINDS {
-                let article = if label.starts_with(['A', 'E', 'I', 'O', 'U']) { "an" } else { "a" };
-                if tb(ui, Icon::of_kind(k), &format!("Create {article} {}", label.to_lowercase()), true)
-                    .clicked()
+                let article = if label.starts_with(['A', 'E', 'I', 'O', 'U']) {
+                    "an"
+                } else {
+                    "a"
+                };
+                if tb(
+                    ui,
+                    Icon::of_kind(k),
+                    &format!("Create {article} {}", label.to_lowercase()),
+                    true,
+                )
+                .clicked()
                 {
                     self.create(k, self.placement_for(k));
                 }
@@ -826,18 +897,28 @@ impl IdeApp {
                     prefs: &self.prefs,
                     alloc: &mut self.alloc,
                 };
-                mdi::show(ctx, wid, area, slot, &mut f.mdi, &title, icon, active, |ui| {
-                    ui.horizontal(|ui| {
-                        if ok_button(ui).clicked() {
-                            ok = true;
-                        }
-                        if ui.button("Cancel").clicked() {
-                            cancel = true;
-                        }
-                    });
-                    ui.separator();
-                    f.editor.ui(ui, &mut cx);
-                })
+                mdi::show(
+                    ctx,
+                    wid,
+                    area,
+                    slot,
+                    &mut f.mdi,
+                    &title,
+                    icon,
+                    active,
+                    |ui| {
+                        ui.horizontal(|ui| {
+                            if ok_button(ui).clicked() {
+                                ok = true;
+                            }
+                            if ui.button("Cancel").clicked() {
+                                cancel = true;
+                            }
+                        });
+                        ui.separator();
+                        f.editor.ui(ui, &mut cx);
+                    },
+                )
             };
             if out.activated {
                 self.active = Some(f.uid);
@@ -1010,7 +1091,11 @@ impl IdeApp {
                 let (r, _) = ui.allocate_exact_size(Vec2::new(360.0, 56.0), egui::Sense::hover());
                 paint_logo(ui.painter(), r);
                 ui.label("A clean-room, GameMaker 8.1 compatible game development environment.");
-                ui.label(egui::RichText::new("Not affiliated with or endorsed by YoYo Games.").small().weak());
+                ui.label(
+                    egui::RichText::new("Not affiliated with or endorsed by YoYo Games.")
+                        .small()
+                        .weak(),
+                );
                 ui.add_space(6.0);
                 if ui.button("OK").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     self.show_about = false;
@@ -1171,8 +1256,16 @@ impl eframe::App for IdeApp {
             }))
             .show(ui, |ui| {
                 let r = ui.max_rect();
-                ui.painter().hline(r.x_range(), r.top() - 1.5, egui::Stroke::new(1.0, theme::SHADOW));
-                ui.painter().hline(r.x_range(), r.top() - 0.5, egui::Stroke::new(1.0, egui::Color32::WHITE));
+                ui.painter().hline(
+                    r.x_range(),
+                    r.top() - 1.5,
+                    egui::Stroke::new(1.0, theme::SHADOW),
+                );
+                ui.painter().hline(
+                    r.x_range(),
+                    r.top() - 0.5,
+                    egui::Stroke::new(1.0, egui::Color32::WHITE),
+                );
                 self.toolbar(ui);
             });
         egui::Panel::bottom("status")
@@ -1201,8 +1294,16 @@ impl eframe::App for IdeApp {
                 let r = ui.available_rect_before_wrap();
                 // sunken edge of the workspace
                 let p = ui.painter();
-                p.hline(r.x_range(), r.top() + 0.5, egui::Stroke::new(1.0, egui::Color32::from_gray(110)));
-                p.vline(r.left() + 0.5, r.y_range(), egui::Stroke::new(1.0, egui::Color32::from_gray(110)));
+                p.hline(
+                    r.x_range(),
+                    r.top() + 0.5,
+                    egui::Stroke::new(1.0, egui::Color32::from_gray(110)),
+                );
+                p.vline(
+                    r.left() + 0.5,
+                    r.y_range(),
+                    egui::Stroke::new(1.0, egui::Color32::from_gray(110)),
+                );
                 ui.allocate_rect(r, egui::Sense::hover());
                 r.shrink(1.0)
             })
@@ -1238,7 +1339,11 @@ fn ok_button(ui: &mut egui::Ui) -> egui::Response {
         0.0,
         egui::TextFormat::simple(font.clone(), egui::Color32::from_rgb(20, 140, 40)),
     );
-    job.append(" OK", 0.0, egui::TextFormat::simple(font, egui::Color32::from_gray(10)));
+    job.append(
+        " OK",
+        0.0,
+        egui::TextFormat::simple(font, egui::Color32::from_gray(10)),
+    );
     ui.add(egui::Button::new(job).min_size(Vec2::new(64.0, 22.0)))
 }
 
@@ -1252,7 +1357,10 @@ fn logo(ui: &mut egui::Ui) {
 fn paint_logo(p: &egui::Painter, r: egui::Rect) {
     use egui::{Color32, Mesh, Shape};
     let mut mesh = Mesh::default();
-    let (a, b) = (Color32::from_rgb(255, 255, 255), Color32::from_rgb(214, 228, 245));
+    let (a, b) = (
+        Color32::from_rgb(255, 255, 255),
+        Color32::from_rgb(214, 228, 245),
+    );
     mesh.colored_vertex(r.left_top(), a);
     mesh.colored_vertex(r.right_top(), b);
     mesh.colored_vertex(r.right_bottom(), b);
@@ -1260,8 +1368,15 @@ fn paint_logo(p: &egui::Painter, r: egui::Rect) {
     mesh.add_triangle(0, 1, 2);
     mesh.add_triangle(0, 2, 3);
     p.add(Shape::mesh(mesh));
-    p.hline(r.x_range(), r.bottom() - 0.5, egui::Stroke::new(1.0, theme::SHADOW));
-    let icon = egui::Rect::from_min_size(r.min + Vec2::new(8.0, (r.height() - 28.0) / 2.0), Vec2::splat(28.0));
+    p.hline(
+        r.x_range(),
+        r.bottom() - 0.5,
+        egui::Stroke::new(1.0, theme::SHADOW),
+    );
+    let icon = egui::Rect::from_min_size(
+        r.min + Vec2::new(8.0, (r.height() - 28.0) / 2.0),
+        Vec2::splat(28.0),
+    );
     icons::paint(p, icon, Icon::Sprite, true);
     let x = icon.max.x + 8.0;
     p.text(

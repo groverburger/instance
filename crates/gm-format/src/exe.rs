@@ -158,7 +158,10 @@ mod tests {
 
     #[test]
     fn plain_files_have_no_payload() {
-        assert_eq!(read_embedded(b"MZ just a runner with no footer at all......"), None);
+        assert_eq!(
+            read_embedded(b"MZ just a runner with no footer at all......"),
+            None
+        );
         let mut bad = build(b"MZ", b"p", None);
         let n = bad.len();
         bad[n - 1] = 0xff; // absurd length

@@ -349,6 +349,79 @@ fn create_executable_round_trip() {
     );
 }
 
+fn drag(
+    h: &mut egui_kittest::Harness<'_, crate::app::IdeApp>,
+    from: eframe::egui::Pos2,
+    by: eframe::egui::Vec2,
+) {
+    use eframe::egui::{Event, PointerButton};
+    h.event(Event::PointerMoved(from));
+    h.run_steps(1);
+    h.event(Event::PointerButton {
+        pos: from,
+        button: PointerButton::Primary,
+        pressed: true,
+        modifiers: Default::default(),
+    });
+    h.run_steps(1);
+    for i in 1..=5 {
+        h.event(Event::PointerMoved(from + by * (i as f32 / 5.0)));
+        h.run_steps(1);
+    }
+    h.event(Event::PointerButton {
+        pos: from + by,
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Default::default(),
+    });
+    h.run_steps(2);
+}
+
+/// MDI child windows: move by the caption, resize by the corner, maximise, minimise.
+#[test]
+fn ui_mdi_move_resize_maximise() {
+    use eframe::egui::vec2;
+    use egui_kittest::kittest::Queryable;
+    let mut h = harness();
+    h.state_mut().test_set_project(synthetic_project());
+    h.state_mut()
+        .open_form(ResKey::Res(ResourceKind::Script, 0));
+    h.run_steps(4);
+    let id = h.state().test_form_ids()[0];
+    let rect = |h: &egui_kittest::Harness<'_, crate::app::IdeApp>| {
+        h.ctx.memory(|m| m.area_rect(id)).unwrap()
+    };
+    let r0 = rect(&h);
+    drag(&mut h, r0.min + vec2(60.0, 12.0), vec2(50.0, 30.0));
+    let r1 = rect(&h);
+    assert!(
+        (r1.min - r0.min - vec2(50.0, 30.0)).length() < 1.5,
+        "{r0:?} -> {r1:?}"
+    );
+    assert!((r1.size() - r0.size()).length() < 0.5);
+    drag(&mut h, r1.max - vec2(2.0, 2.0), vec2(-60.0, -40.0));
+    let r2 = rect(&h);
+    assert!(
+        (r2.size() - r1.size() - vec2(-60.0, -40.0)).length() < 1.5,
+        "{r1:?} -> {r2:?}"
+    );
+    h.get_by_label("Maximise").click();
+    h.run_steps(3);
+    let r3 = rect(&h);
+    assert!(r3.width() > r2.width() + 100.0 && r3.height() > r2.height() + 100.0);
+    h.get_by_label("Restore").click();
+    h.run_steps(3);
+    assert!((rect(&h).size() - r2.size()).length() < 1.5);
+    h.get_by_label("Minimise").click();
+    h.run_steps(3);
+    assert!(rect(&h).height() < 40.0);
+    assert_eq!(
+        h.state().test_state().2,
+        1,
+        "minimising keeps the form open"
+    );
+}
+
 /// A small synthetic project with one populated resource of each kind.
 fn synthetic_project() -> gm_format::Project {
     let mut p = ops::new_project();
@@ -382,8 +455,7 @@ fn ui_forms_do_not_grow() {
             ResKey::IncludedFiles,
         ];
         for (k, _, _) in LIST_KINDS {
-            if let Some(i) =
-                (0..ops::slot_count(&proj, k)).find(|&i| ops::res_exists(&proj, k, i))
+            if let Some(i) = (0..ops::slot_count(&proj, k)).find(|&i| ops::res_exists(&proj, k, i))
             {
                 keys.push(ResKey::Res(k, i));
             }

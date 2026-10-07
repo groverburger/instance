@@ -1,7 +1,9 @@
 //! Classic light Windows look: grey chrome, white lists, blue selection, Segoe UI
 //! (loaded from the system when present).
 
-use eframe::egui::{self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke, TextStyle};
+use eframe::egui::{
+    self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke, TextStyle,
+};
 
 pub const PANEL: Color32 = Color32::from_rgb(240, 240, 240);
 pub const WORKSPACE: Color32 = Color32::from_rgb(171, 171, 171);
@@ -37,9 +39,10 @@ fn system_font(names: &[&str]) -> Option<Vec<u8>> {
 pub fn apply(ctx: &egui::Context) {
     let mut fonts = FontDefinitions::default();
     if let Some(bytes) = system_font(&["segoeui.ttf", "tahoma.ttf"]) {
-        fonts
-            .font_data
-            .insert("system-ui".into(), std::sync::Arc::new(FontData::from_owned(bytes)));
+        fonts.font_data.insert(
+            "system-ui".into(),
+            std::sync::Arc::new(FontData::from_owned(bytes)),
+        );
         fonts
             .families
             .entry(FontFamily::Proportional)
@@ -47,9 +50,10 @@ pub fn apply(ctx: &egui::Context) {
             .insert(0, "system-ui".into());
     }
     if let Some(bytes) = system_font(&["consola.ttf", "cour.ttf"]) {
-        fonts
-            .font_data
-            .insert("system-mono".into(), std::sync::Arc::new(FontData::from_owned(bytes)));
+        fonts.font_data.insert(
+            "system-mono".into(),
+            std::sync::Arc::new(FontData::from_owned(bytes)),
+        );
         fonts
             .families
             .entry(FontFamily::Monospace)

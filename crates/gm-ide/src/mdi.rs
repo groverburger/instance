@@ -8,7 +8,8 @@
 //! window grow every frame.
 
 use eframe::egui::{
-    self, pos2, vec2, Align2, Color32, Context, CursorIcon, FontId, Id, LayerId, Order, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2,
+    self, pos2, vec2, Align2, Color32, Context, CursorIcon, FontId, Id, LayerId, Order, Rect,
+    Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2,
 };
 
 use crate::icons::{self, Icon};
@@ -53,8 +54,14 @@ pub fn outer_size(content: Vec2) -> Vec2 {
 /// Clamp `r` into `area`: size limited to the area, position moved inside.
 pub fn clamp_into(r: Rect, area: Rect) -> Rect {
     let size = r.size().min(area.size()).max(MIN_SIZE.min(area.size()));
-    let x = r.min.x.clamp(area.min.x, (area.max.x - size.x).max(area.min.x));
-    let y = r.min.y.clamp(area.min.y, (area.max.y - size.y).max(area.min.y));
+    let x = r
+        .min
+        .x
+        .clamp(area.min.x, (area.max.x - size.x).max(area.min.x));
+    let y = r
+        .min
+        .y
+        .clamp(area.min.y, (area.max.y - size.y).max(area.min.y));
     Rect::from_min_size(pos2(x, y), size)
 }
 
@@ -107,12 +114,21 @@ fn caption_button(ui: &mut Ui, id: Id, r: Rect, kind: Caption) -> bool {
     let s = Stroke::new(1.4, ink);
     match kind {
         Caption::Min => {
-            p.line_segment([c + vec2(-3.5, 3.0), c + vec2(3.0, 3.0)], Stroke::new(2.0, ink));
+            p.line_segment(
+                [c + vec2(-3.5, 3.0), c + vec2(3.0, 3.0)],
+                Stroke::new(2.0, ink),
+            );
         }
         Caption::Max => {
             let b = Rect::from_center_size(c, vec2(8.0, 7.0));
             p.rect_stroke(b, 0.0, Stroke::new(1.0, ink), StrokeKind::Inside);
-            p.line_segment([b.left_top() + vec2(0.0, 1.0), b.right_top() + vec2(0.0, 1.0)], Stroke::new(2.0, ink));
+            p.line_segment(
+                [
+                    b.left_top() + vec2(0.0, 1.0),
+                    b.right_top() + vec2(0.0, 1.0),
+                ],
+                Stroke::new(2.0, ink),
+            );
         }
         Caption::Restore => {
             let b1 = Rect::from_min_size(c + vec2(-2.0, -4.5), vec2(6.0, 5.0));
@@ -129,11 +145,24 @@ fn caption_button(ui: &mut Ui, id: Id, r: Rect, kind: Caption) -> bool {
     resp.clicked()
 }
 
-/// Paint the classic title bar gradient and caption; returns the caption-buttons area.
-fn title_bar(ui: &mut Ui, id: Id, bar: Rect, title: &str, icon: Icon, active: bool, st: &mut MdiState, out: &mut MdiOut) {
+/// Paint the classic title bar (gradient, icon, caption) and handle its buttons and dragging.
+#[allow(clippy::too_many_arguments)]
+fn title_bar(
+    ui: &mut Ui,
+    id: Id,
+    bar: Rect,
+    title: &str,
+    icon: Icon,
+    active: bool,
+    st: &mut MdiState,
+    out: &mut MdiOut,
+) {
     let p = ui.painter().clone();
     let (a, b) = if active {
-        (Color32::from_rgb(10, 36, 106), Color32::from_rgb(166, 202, 240))
+        (
+            Color32::from_rgb(10, 36, 106),
+            Color32::from_rgb(166, 202, 240),
+        )
     } else {
         (Color32::from_gray(128), Color32::from_gray(192))
     };
@@ -159,7 +188,11 @@ fn title_bar(ui: &mut Ui, id: Id, bar: Rect, title: &str, icon: Icon, active: bo
         Align2::LEFT_CENTER,
         title,
         FontId::proportional(12.5),
-        if active { Color32::WHITE } else { Color32::from_gray(225) },
+        if active {
+            Color32::WHITE
+        } else {
+            Color32::from_gray(225)
+        },
     );
     // drag / double-click on the caption
     let resp = ui.interact(bar, id.with("caption"), Sense::click_and_drag());
@@ -179,13 +212,22 @@ fn title_bar(ui: &mut Ui, id: Id, bar: Rect, title: &str, icon: Icon, active: bo
     let mut x = bar.max.x - 2.0 - bw;
     let y = bar.min.y + 2.0;
     let btn = |ui: &mut Ui, kind: Caption, x: f32| {
-        caption_button(ui, id.with(("btn", kind as u8)), Rect::from_min_size(pos2(x, y), vec2(bw, bh)), kind)
+        caption_button(
+            ui,
+            id.with(("btn", kind as u8)),
+            Rect::from_min_size(pos2(x, y), vec2(bw, bh)),
+            kind,
+        )
     };
     if btn(ui, Caption::Close, x) {
         out.close = true;
     }
     x -= bw + 3.0;
-    let max_kind = if st.maximised && !st.minimised { Caption::Restore } else { Caption::Max };
+    let max_kind = if st.maximised && !st.minimised {
+        Caption::Restore
+    } else {
+        Caption::Max
+    };
     if btn(ui, max_kind, x) {
         if st.minimised {
             st.minimised = false;
@@ -196,7 +238,11 @@ fn title_bar(ui: &mut Ui, id: Id, bar: Rect, title: &str, icon: Icon, active: bo
         out.activated = true;
     }
     x -= bw;
-    let min_kind = if st.minimised { Caption::Restore } else { Caption::Min };
+    let min_kind = if st.minimised {
+        Caption::Restore
+    } else {
+        Caption::Min
+    };
     if btn(ui, min_kind, x) {
         st.minimised = !st.minimised;
         out.activated = !st.minimised;
@@ -223,6 +269,11 @@ pub fn show(
         area
     } else {
         clamp_into(st.rect, area)
+    };
+    // Keep the frame on whole physical pixels (crisp 1px bevels).
+    let r = {
+        use egui::emath::GuiRounding as _;
+        r.round_to_pixels(ctx.pixels_per_point()).round_ui()
     };
     let layer = LayerId::new(Order::Middle, id);
     egui::Area::new(id)
@@ -278,14 +329,46 @@ fn resize_handles(ui: &mut Ui, id: Id, r: Rect, st: &mut MdiState) {
     let c = 12.0;
     // (dx-min, dy-min, dx-max, dy-max) masks for each handle
     let handles: [(Rect, [f32; 4], CursorIcon); 8] = [
-        (Rect::from_min_max(r.min, pos2(r.max.x, r.min.y + e)), [0., 1., 0., 0.], CursorIcon::ResizeNorth),
-        (Rect::from_min_max(pos2(r.min.x, r.max.y - e), r.max), [0., 0., 0., 1.], CursorIcon::ResizeSouth),
-        (Rect::from_min_max(r.min, pos2(r.min.x + e, r.max.y)), [1., 0., 0., 0.], CursorIcon::ResizeWest),
-        (Rect::from_min_max(pos2(r.max.x - e, r.min.y), r.max), [0., 0., 1., 0.], CursorIcon::ResizeEast),
-        (Rect::from_min_size(r.min, Vec2::splat(c)), [1., 1., 0., 0.], CursorIcon::ResizeNorthWest),
-        (Rect::from_min_max(pos2(r.max.x - c, r.min.y), pos2(r.max.x, r.min.y + c)), [0., 1., 1., 0.], CursorIcon::ResizeNorthEast),
-        (Rect::from_min_max(pos2(r.min.x, r.max.y - c), pos2(r.min.x + c, r.max.y)), [1., 0., 0., 1.], CursorIcon::ResizeSouthWest),
-        (Rect::from_min_max(r.max - Vec2::splat(c), r.max), [0., 0., 1., 1.], CursorIcon::ResizeSouthEast),
+        (
+            Rect::from_min_max(r.min, pos2(r.max.x, r.min.y + e)),
+            [0., 1., 0., 0.],
+            CursorIcon::ResizeNorth,
+        ),
+        (
+            Rect::from_min_max(pos2(r.min.x, r.max.y - e), r.max),
+            [0., 0., 0., 1.],
+            CursorIcon::ResizeSouth,
+        ),
+        (
+            Rect::from_min_max(r.min, pos2(r.min.x + e, r.max.y)),
+            [1., 0., 0., 0.],
+            CursorIcon::ResizeWest,
+        ),
+        (
+            Rect::from_min_max(pos2(r.max.x - e, r.min.y), r.max),
+            [0., 0., 1., 0.],
+            CursorIcon::ResizeEast,
+        ),
+        (
+            Rect::from_min_size(r.min, Vec2::splat(c)),
+            [1., 1., 0., 0.],
+            CursorIcon::ResizeNorthWest,
+        ),
+        (
+            Rect::from_min_max(pos2(r.max.x - c, r.min.y), pos2(r.max.x, r.min.y + c)),
+            [0., 1., 1., 0.],
+            CursorIcon::ResizeNorthEast,
+        ),
+        (
+            Rect::from_min_max(pos2(r.min.x, r.max.y - c), pos2(r.min.x + c, r.max.y)),
+            [1., 0., 0., 1.],
+            CursorIcon::ResizeSouthWest,
+        ),
+        (
+            Rect::from_min_max(r.max - Vec2::splat(c), r.max),
+            [0., 0., 1., 1.],
+            CursorIcon::ResizeSouthEast,
+        ),
     ];
     for (i, (hr, m, cursor)) in handles.into_iter().enumerate() {
         // corners overlap the title bar's caption buttons; keep top corners small
@@ -342,7 +425,9 @@ pub fn bring_to_front(ctx: &Context, id: Id) {
 /// Rectangle of the `i`-th window when cascading.
 pub fn cascade_rect(area: Rect, i: usize, size: Vec2) -> Rect {
     let step = TITLE_H + BORDER + 4.0;
-    let n = ((area.height() - size.y.min(area.height())) / step).floor().max(1.0) as usize;
+    let n = ((area.height() - size.y.min(area.height())) / step)
+        .floor()
+        .max(1.0) as usize;
     let k = (i % n.max(1)) as f32;
     clamp_into(
         Rect::from_min_size(area.min + vec2(8.0 + k * step, 8.0 + k * step), size),

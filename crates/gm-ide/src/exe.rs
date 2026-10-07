@@ -70,8 +70,7 @@ pub fn create_executable(
     if p.rooms.iter().flatten().next().is_none() {
         return Err("A game needs at least one room.".into());
     }
-    let runner_bytes =
-        std::fs::read(runner).map_err(|e| format!("{}: {e}", runner.display()))?;
+    let runner_bytes = std::fs::read(runner).map_err(|e| format!("{}: {e}", runner.display()))?;
     if exe::read_embedded(&runner_bytes).is_some() {
         return Err(format!(
             "{} already contains a game; choose the plain runner.",
