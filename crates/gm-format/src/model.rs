@@ -183,7 +183,13 @@ pub struct Settings {
     pub display_errors: bool,
     pub write_errors_to_log: bool,
     pub abort_on_all_errors: bool,
+    /// Bit 0 of the stored "uninitialized" flags word (spec §2 addendum).
     pub treat_uninitialized_as_zero: bool,
+    /// The other bits of that flags word, preserved verbatim. GM 8.1 projects commonly
+    /// store bit 1 (value 2); its meaning is not verified (assumed to be the 8.1
+    /// "error on uninitialized arguments" option). 0 when absent.
+    #[serde(default)]
+    pub uninitialized_extra_bits: i32,
     pub author: String,
     /// Free-text version string.
     pub version_text: String,
@@ -240,6 +246,7 @@ impl Default for Settings {
             write_errors_to_log: false,
             abort_on_all_errors: false,
             treat_uninitialized_as_zero: false,
+            uninitialized_extra_bits: 0,
             author: String::new(),
             version_text: "100".into(),
             info_last_changed: 0.0,
@@ -304,7 +311,7 @@ pub struct Sprite {
     pub origin_x: i32,
     pub origin_y: i32,
     pub frames: Vec<RgbaImage>,
-    /// 0 precise, 1 rectangle, 2 disk, 3 diamond. Not stored when there are no frames.
+    /// 0 precise, 1 rectangle, 2 disk, 3 diamond. Stored even when there are no frames.
     pub collision_shape: i32,
     pub alpha_tolerance: i32,
     pub separate_collision_masks: bool,

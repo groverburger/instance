@@ -366,7 +366,10 @@ fn read_settings(r: &mut Reader<'_>, v8: bool) -> Result<(Settings, Vec<Constant
     s.display_errors = r.bool()?;
     s.write_errors_to_log = r.bool()?;
     s.abort_on_all_errors = r.bool()?;
-    s.treat_uninitialized_as_zero = r.bool()?;
+    // An i32 bit set, not a plain bool: GM 8.1 stores e.g. 2 here (spec §2 addendum).
+    let flags = r.i32()?;
+    s.treat_uninitialized_as_zero = flags & 1 != 0;
+    s.uninitialized_extra_bits = flags & !1;
     s.author = r.string()?;
     s.version_text = r.string()?;
     s.info_last_changed = r.f64()?;
@@ -453,16 +456,16 @@ fn read_sprite(r: &mut Reader<'_>, h: Header, v8: bool) -> Result<Sprite> {
         s.origin_y = r.i32()?;
         let n = r.count("frame")?;
         s.frames = (0..n).map(|_| read_img800(r)).collect::<Result<_>>()?;
-        if n > 0 {
-            s.collision_shape = r.i32()?;
-            s.alpha_tolerance = r.i32()?;
-            s.separate_collision_masks = r.bool()?;
-            s.bbox_mode = r.i32()?;
-            s.bbox_left = r.i32()?;
-            s.bbox_right = r.i32()?;
-            s.bbox_bottom = r.i32()?;
-            s.bbox_top = r.i32()?;
-        }
+        // The collision/bbox trailer is present even when there are no frames
+        // (spec §5.2 addendum, verified on user data).
+        s.collision_shape = r.i32()?;
+        s.alpha_tolerance = r.i32()?;
+        s.separate_collision_masks = r.bool()?;
+        s.bbox_mode = r.i32()?;
+        s.bbox_left = r.i32()?;
+        s.bbox_right = r.i32()?;
+        s.bbox_bottom = r.i32()?;
+        s.bbox_top = r.i32()?;
     } else {
         let w = r.i32()?.max(0) as u32;
         let hgt = r.i32()?.max(0) as u32;
@@ -1117,7 +1120,7 @@ fn write_settings(b: &mut Writer, s: &Settings) -> Result<()> {
     b.bool(s.display_errors);
     b.bool(s.write_errors_to_log);
     b.bool(s.abort_on_all_errors);
-    b.bool(s.treat_uninitialized_as_zero);
+    b.i32(s.treat_uninitialized_as_zero as i32 | (s.uninitialized_extra_bits & !1));
     b.string(&s.author);
     b.string(&s.version_text);
     b.f64(s.info_last_changed);
@@ -1142,16 +1145,15 @@ pub(crate) fn write_sprite_body(b: &mut Writer, s: &Sprite) -> Result<()> {
     for f in &s.frames {
         write_img800(b, f)?;
     }
-    if !s.frames.is_empty() {
-        b.i32(s.collision_shape);
-        b.i32(s.alpha_tolerance);
-        b.bool(s.separate_collision_masks);
-        b.i32(s.bbox_mode);
-        b.i32(s.bbox_left);
-        b.i32(s.bbox_right);
-        b.i32(s.bbox_bottom);
-        b.i32(s.bbox_top);
-    }
+    // Always written, also for a sprite without frames (spec §5.2).
+    b.i32(s.collision_shape);
+    b.i32(s.alpha_tolerance);
+    b.bool(s.separate_collision_masks);
+    b.i32(s.bbox_mode);
+    b.i32(s.bbox_left);
+    b.i32(s.bbox_right);
+    b.i32(s.bbox_bottom);
+    b.i32(s.bbox_top);
     Ok(())
 }
 
