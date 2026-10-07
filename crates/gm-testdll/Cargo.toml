@@ -1,0 +1,13 @@
+[package]
+name = "gm-testdll"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+description = "Small native DLL used to test external_define/external_call (x64 and x86)"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]

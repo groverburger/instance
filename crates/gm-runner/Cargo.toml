@@ -6,8 +6,11 @@ version.workspace = true
 
 [dependencies]
 fontdue = "0.9.4"
+gm-dllcall = { path = "../gm-dllcall" }
 gm-format = { path = "../gm-format" }
+gm-net = { path = "../gm-net" }
 gml = { path = "../gml" }
+libloading = "0.8"
 png = "0.18.1"
 rfd = "0.17.2"
 rodio = "0.22.2"

@@ -1544,6 +1544,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "gm-dllcall"
+version = "0.1.0"
+
+[[package]]
 name = "gm-format"
 version = "0.1.0"
 dependencies = [
@@ -1568,18 +1572,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "gm-net"
+version = "0.1.0"
+dependencies = [
+ "if-addrs",
+ "socket2",
+]
+
+[[package]]
 name = "gm-runner"
 version = "0.1.0"
 dependencies = [
  "fontdue",
+ "gm-dllcall",
  "gm-format",
+ "gm-net",
  "gml",
+ "libloading",
  "png",
  "rfd",
  "rodio",
  "softbuffer",
  "ttf-parser",
  "winit",
+]
+
+[[package]]
+name = "gm-testdll"
+version = "0.1.0"
+
+[[package]]
+name = "gm81-dllhost32"
+version = "0.1.0"
+dependencies = [
+ "gm-dllcall",
+ "libloading",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1778,6 +1806,16 @@ checksum = "cb68373c0d6620ef8105e855e7745e18b0d00d3bdb07fb532e434244cdb9a714"
 dependencies = [
  "icu_normalizer",
  "icu_properties",
+]
+
+[[package]]
+name = "if-addrs"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0a05c691e1fae256cf7013d99dad472dc52d5543322761f83ec8d47eab40d2b"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3405,6 +3443,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd538fb6910ac1099850255cf94a94df6551fbdd602454387d0adb2d1ca6dead"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "socket2"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

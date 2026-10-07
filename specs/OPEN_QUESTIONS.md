@@ -517,6 +517,12 @@ Resolve by black-box tests with GM 8.1 (screenshots of small test games).
 - EXT-2: Standalone exe must embed used packages; proposed extension of exe-format.md
   (package bundle after the project payload). Needs an owner decision.
 - EXT-3: Meaning of .ged calling-convention codes (12, 11, 2) and argument_count -1.
+  Implementer observation (2026-10-07, black-box): calling the shipped `Printing.dll`
+  export `pr_set_font_size` (code 12, one real) through a typed **stdcall** call
+  crashes the 32-bit helper, while a typed **cdecl** call works — so code 12 appears
+  to mean cdecl (and 11 presumably stdcall), the reverse of the [I] guess in
+  extensions.md §3.3. gm81-clean's x86 bridge now uses a convention-agnostic thunk
+  (restores ESP after the call), so either reading works.
 - EXT-4: Exact timing of extension init functions relative to Game Start/Create events
   and of final functions relative to Game End; are finals called on game_restart?
 - EXT-5: Are extension constant values evaluated as GML expressions or literal?

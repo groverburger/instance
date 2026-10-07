@@ -110,6 +110,8 @@ fn table() -> &'static Table {
         res::register(&mut list);
         files::register(&mut list);
         part::register(&mut list);
+        crate::net::register(&mut list);
+        crate::ext::register_builtins(&mut list);
         let mut stub_list: Reg = Vec::new();
         stubs::register(&mut stub_list);
         let n = gml::builtins::FUNCTIONS.len();
