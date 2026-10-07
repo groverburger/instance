@@ -487,3 +487,48 @@ fn ui_forms_do_not_grow() {
         }
     }
 }
+
+/// Rects of every button in the accessibility tree, in tree order.
+fn button_rects(
+    h: &egui_kittest::Harness<'_, crate::app::IdeApp>,
+) -> Vec<(String, eframe::egui::Rect)> {
+    use egui_kittest::kittest::{by, NodeT, Queryable};
+    h.query_all(by().role(eframe::egui::accesskit::Role::Button))
+        .map(|n| (n.accesskit_node().label().unwrap_or_default(), n.rect()))
+        .collect()
+}
+
+/// Hovering a button must not change its size or move any other widget (the hover
+/// frame is drawn inside the button's rect).
+#[test]
+fn ui_hover_does_not_move_neighbours() {
+    let mut h = harness();
+    let mut p = ops::new_project();
+    ops::create_resource(&mut p, ResourceKind::Sprite, &ops::Placement::End);
+    ops::create_resource(&mut p, ResourceKind::Object, &ops::Placement::End);
+    h.state_mut().test_set_project(p);
+    h.state_mut()
+        .open_form(ResKey::Res(ResourceKind::Sprite, 0));
+    h.run_steps(3);
+    h.state_mut()
+        .open_form(ResKey::Res(ResourceKind::Object, 0));
+    h.run_steps(3);
+    // park the pointer on the empty workspace
+    h.hover_at(eframe::egui::pos2(1500.0, 900.0));
+    h.run_steps(3);
+    let before = button_rects(&h);
+    assert!(before.len() > 30, "only {} buttons found", before.len());
+    eprintln!("{:?}", before.iter().map(|b| &b.0).collect::<Vec<_>>());
+    for (label, r) in &before {
+        h.hover_at(r.center());
+        h.run_steps(2);
+        let after = button_rects(&h);
+        assert_eq!(after.len(), before.len(), "hovering {label:?}");
+        for ((l0, r0), (_, r1)) in before.iter().zip(&after) {
+            assert!(
+                (r0.min - r1.min).length() < 0.01 && (r0.max - r1.max).length() < 0.01,
+                "hovering {label:?} moved {l0:?} from {r0:?} to {r1:?}"
+            );
+        }
+    }
+}
