@@ -151,6 +151,9 @@ every case is to make small sample projects in the IDE (black-box) and diff/pars
   inside settings — not present. (§2)
 - FF-11: Sprite with 0 frames (are the 8 mask fields omitted?), img800 with width or
   height 0 (is the pixel blob omitted?), sound with has_data = 0 — not present. (§0.2, §5.1, §5.2)
+  **Sprite part resolved (verified from user data):** the 8 trailer fields are present
+  also for 0 frames (file-formats.md addendum "0-frame sprites"). 0-size images and
+  has_data = 0 sounds remain open.
 - FF-12: Enum meanings verified only for observed values: sound kind 2/3, sound effect
   bit order, collision shapes 2/3, bbox_mode, scaling sign convention, colour depth /
   resolution / frequency / priority indices. (§2, §5)
@@ -162,6 +165,12 @@ every case is to make small sample projects in the IDE (black-box) and diff/pars
   in the built-in libs; meaning unknown (only matters for user libraries). (§10.2)
 - FF-16: Action argument value encoding for kind 15 (font string) — only
   "Arial,10,0,1,0,0,0" seen; meaning of the trailing fields. (§5.9)
+- FF-18: Settings "uninitialized" flags word (file-formats.md §2 +12 and the user-corpus
+  addendum): bit 0 = treat uninitialized variables as 0 [V]; bit 1 (value 2) is stored by
+  the 8.1 IDE in most user projects — meaning unverified (presumably the 8.1 Errors-tab
+  option about uninitialized arguments, cf. IDE-12). Any further bits unknown. gm-format
+  keeps bit 0 as `treat_uninitialized_as_zero` and preserves the rest verbatim in
+  `uninitialized_extra_bits`.
 - FF-17: Event sub-numbers for mouse/other/step beyond the values observed (left
   pressed = 6:4, outside room = 7:0, game start = 7:2, no more lives = 7:6, end step
   3:2 presumed) — should be settled in the events/runtime spec (relates to RT-18).
@@ -196,6 +205,7 @@ Observations made while implementing `crates/gm-format` against the sample files
   font (v800), timeline, tile and included-file records; loading-bar / custom load images
   (stored as opaque blobs; only written when loading_bar == 2 / show_custom_load_image);
   0-frame sprites (mask fields omitted) and 0-size images (no pixel blob).
+  *Correction (user corpus):* 0-frame sprites DO store the mask fields; see FF-11.
 - Model choices worth reviewing: v701 `smooth_edges`/`preload` flags and the v701 image
   width/height are not kept in the model (converted as above); font `range_start` is split
   into range_start (low 16 bits) / charset (bits 16-23) / antialias (bits 24-31) and
