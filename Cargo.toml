@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/gm-format", "crates/gml", "crates/gm-runner", "crates/gm-ide", "crates/gm-net", "crates/gm-dllcall", "crates/gm81-dllhost32", "crates/gm-testdll"]
+members = ["crates/gm-format", "crates/gm-gmx", "crates/gml", "crates/gm-runner", "crates/gm-ide", "crates/gm-net", "crates/gm-dllcall", "crates/gm81-dllhost32", "crates/gm-testdll"]
 
 [workspace.package]
 edition = "2021"
