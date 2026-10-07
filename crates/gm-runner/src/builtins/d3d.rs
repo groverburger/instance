@@ -12,8 +12,9 @@ type R = Result<Value, Error>;
 impl Game {
     /// Draws recorded vertices with the current state and draw colour.
     pub fn d3d_draw(&mut self, kind: i32, tex: Option<(Tex, f32, f32)>, verts: &[MV], offset: [f64; 3]) {
-        let (pipe, st) = self.gfx.pipe_state();
+        let (pipe, mut st) = self.gfx.pipe_state();
         let gfx = &mut self.gfx;
+        st.cull = gfx.d3d.cull_state();
         gfx.d3d.draw_mesh(&mut *gfx.be, &pipe, &st, kind, tex.as_ref(), verts, offset, (gfx.color, gfx.alpha));
     }
 

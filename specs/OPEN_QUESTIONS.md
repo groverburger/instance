@@ -433,3 +433,18 @@ Sound / UI / files
 - R-27: Not supported (stubs that return 0/""/false): multiplayer (413), DLL calls
   (414), 3D mode (415; d3d_start returns false), joysticks (none present), CD audio,
   video/web splash screens, message_* dialog styling, clipboard (not yet).
+
+## [D3D-IMPL] Implementer notes on 3D / renderer (gm-runner, 2026-10-07)
+
+- D3D-IMPL-1: Culling of 2D-emitted geometry. d3d.md §3.2 says culling applies to
+  2D-drawn triangles in 3D mode, but under `d3d_set_projection_ortho` (y down) every
+  sprite/rectangle is clockwise on screen, so a HUD drawn with culling on would vanish.
+  The runner culls only d3d primitives, shapes and models. Needs black-box check.
+- D3D-IMPL-2: Equal-depth draw order vs. per-pass projection reset. Pokemon3d.gm81
+  (all instances depth 0; the camera object created after most scenery) only looks
+  right if the camera's Draw (which calls d3d_set_projection_ext) runs before the
+  scenery — i.e. if GM draws equal-depth instances newest-first, or does not reset the
+  projection each pass. runtime.md §13.2 says creation order; please verify which.
+- D3D-IMPL-3: Shapes are generated with the front face on the side of the spec's
+  normal (floor: +z, wall: (y2−y1, −(x2−x1), 0)); verify against GM.
+- D3D-IMPL-4: R-27 is superseded for 415: 3D mode is implemented (software and OpenGL).

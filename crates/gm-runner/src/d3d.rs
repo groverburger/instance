@@ -419,7 +419,9 @@ impl D3d {
         if self.on {
             st.depth_test = self.hidden && !self.no_depth;
             st.depth_write = self.hidden && self.zwrite && !self.no_depth;
-            st.cull = if self.culling { Cull::KeepCcw } else { Cull::None };
+            // 2D-emitted geometry is never culled (deviation from d3d.md §3.2:
+            // under the 2D-oriented ortho projection every sprite/rectangle is
+            // clockwise and HUD overlays would vanish); see `cull_state`.
             if let Some(row) = fog_row {
                 let c = rgba(self.fog_col, 1.0);
                 st.fog = Some([c[0], c[1], c[2]]);
@@ -429,6 +431,15 @@ impl D3d {
                 let a = rgba(self.ambient, 1.0);
                 pipe.tint = Some([a[0], a[1], a[2]]);
             }
+        }
+    }
+
+    /// Culling for 3D primitives, shapes and models.
+    pub fn cull_state(&self) -> Cull {
+        if self.on && self.culling {
+            Cull::KeepCcw
+        } else {
+            Cull::None
         }
     }
 
