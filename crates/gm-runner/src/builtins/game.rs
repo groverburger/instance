@@ -254,8 +254,8 @@ pub fn register(l: &mut Reg) {
     l.push(("transition_define", |g, _, _, a| {
         let kind = a.i(0)?;
         let name = a.s(1)?;
-        match g.script_names.get(&name) {
-            Some(&s) => {
+        match g.script_names.get(&name).copied().or_else(|| g.ext.resolve(&name)) {
+            Some(s) => {
                 g.transitions.insert(kind, s);
                 zero()
             }

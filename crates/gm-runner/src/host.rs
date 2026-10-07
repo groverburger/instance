@@ -563,7 +563,7 @@ impl Host for Game {
     }
 
     fn resolve_script(&self, name: &str) -> Option<i32> {
-        self.script_names.get(name).copied()
+        self.script_names.get(name).copied().or_else(|| self.ext.resolve(name))
     }
 
     fn instance_vars(&mut self, id: i32) -> Option<&mut VarTable> {
@@ -620,6 +620,9 @@ impl Host for Game {
     }
 
     fn call_script(&mut self, vm: &mut Vm, ctx: &Ctx, script: i32, args: &[Value]) -> Result<Value, Error> {
+        if script >= crate::ext::EXT_SCRIPT_BASE {
+            return crate::ext::call(self, vm, ctx, (script - crate::ext::EXT_SCRIPT_BASE) as usize, args);
+        }
         let prog = match self.scripts.get(script.max(0) as usize).and_then(|s| s.as_ref()) {
             Some(s) if script >= 0 => match &s.prog {
                 Some(p) => p.clone(),

@@ -1518,6 +1518,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "gm-dllcall"
+version = "0.1.0"
+
+[[package]]
 name = "gm-format"
 version = "0.1.0"
 dependencies = [
@@ -1552,14 +1556,30 @@ name = "gm-runner"
 version = "0.1.0"
 dependencies = [
  "fontdue",
+ "gm-dllcall",
  "gm-format",
+ "gm-net",
  "gml",
+ "libloading",
  "png",
  "rfd",
  "rodio",
  "softbuffer",
  "ttf-parser",
  "winit",
+]
+
+[[package]]
+name = "gm-testdll"
+version = "0.1.0"
+
+[[package]]
+name = "gm81-dllhost32"
+version = "0.1.0"
+dependencies = [
+ "gm-dllcall",
+ "libloading",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

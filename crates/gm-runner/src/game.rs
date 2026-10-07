@@ -235,6 +235,10 @@ pub struct Game {
     pub parameters: Vec<String>,
     /// Non-blocking input source (frontend), used by io_handle / keyboard_wait.
     pub pump: Option<Box<dyn FnMut() -> Vec<InputEvent>>>,
+    /// Multiplayer state (`mplay_*`).
+    pub net: gm_net::Mplay,
+    /// Extension packages and the DLL bridge.
+    pub ext: crate::ext::Extensions,
 }
 
 impl Game {
@@ -437,6 +441,8 @@ impl Game {
             included_files: p.included_files.clone(),
             parameters: std::env::args().collect(),
             pump: None,
+            net: crate::net::new_state(p.game_id),
+            ext: Default::default(),
         };
         // resource names → constants
         macro_rules! names {
@@ -466,6 +472,8 @@ impl Game {
                 g.script_names.insert(s.name.clone(), i as i32);
             }
         }
+        // extension packages: functions and constants (extensions.md §2.3)
+        crate::ext::load(&mut g, vm, &p.extension_packages)?;
         // user constants (in order, may refer to earlier ones)
         for c in &p.constants {
             let v = match vm.compile_expression(&format!("constant {}", c.name), c.value.as_bytes(), &g) {
@@ -482,6 +490,7 @@ impl Game {
             g.constants.insert(c.name.clone(), v);
         }
         g.compile_all(vm, &p);
+        crate::ext::compile(&mut g, vm);
         g.build_event_tables();
         Ok(g)
     }
@@ -932,6 +941,7 @@ impl Game {
             Some(&r) => r,
             None => return Err(Error::fatal("The game has no rooms.")),
         };
+        crate::ext::run_inits(self, vm)?;
         self.goto_room(vm, first, true)
     }
 
@@ -953,6 +963,7 @@ impl Game {
                 }
             }
         }
+        crate::net::pump(self);
         let r = self.step_inner(vm);
         self.frame += 1;
         // fps
@@ -1131,6 +1142,8 @@ impl Game {
                 self.run_event(vm, id, ev::OTHER, ev_other::GAME_END, id)?;
             }
         }
+        crate::ext::run_finals(self, vm);
+        self.net.end();
         self.audio.stop_all();
         self.ended = true;
         Ok(())
