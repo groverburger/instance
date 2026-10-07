@@ -3,6 +3,7 @@
 use eframe::egui::{self, Color32, Sense, Stroke, Ui, Vec2};
 use gm_format::{Project, ResourceKind, Sprite};
 
+use super::sprite_frames::{SpriteEditorAction, SpriteFramesEditor};
 use super::{commit_slot, name_field, slot_dirty, Cx, Editor, Request, ResKey};
 use crate::imageio::{self, LoadOptions};
 use crate::widgets::{image_preview, owner_key};
@@ -15,6 +16,8 @@ pub struct SpriteEditor {
     frame: usize,
     opts: LoadOptions,
     zoom: f32,
+    /// The sprite editor window (Edit Sprite), when open.
+    frames_editor: Option<SpriteFramesEditor>,
 }
 
 impl SpriteEditor {
@@ -27,6 +30,7 @@ impl SpriteEditor {
             frame: 0,
             opts: LoadOptions::SPRITE,
             zoom: 0.0,
+            frames_editor: None,
         }
     }
 
@@ -71,6 +75,22 @@ impl Editor for SpriteEditor {
     fn ui(&mut self, ui: &mut Ui, cx: &mut Cx) {
         let mut frames_changed = false;
         let mut mask_changed = false;
+        if let Some(ed) = &mut self.frames_editor {
+            let id = egui::Id::new(("sprite-frames-editor", self.uid));
+            match ed.show(&cx.ctx, cx.tex, id) {
+                SpriteEditorAction::None => {}
+                SpriteEditorAction::Close { save } => {
+                    if save && ed.frames != self.work.frames {
+                        self.work.frames = std::mem::take(&mut ed.frames);
+                        frames_changed = true;
+                    }
+                    self.frames_editor = None;
+                }
+            }
+        }
+        if self.frames_editor.is_some() {
+            ui.disable();
+        }
         ui.horizontal_top(|ui| {
             // ---------------- left column: properties
             ui.vertical(|ui| {
@@ -111,6 +131,13 @@ impl Editor for SpriteEditor {
                                 }
                             }
                         }
+                    }
+                    if ui.button("Edit Sprite…").clicked() {
+                        self.frames_editor = Some(SpriteFramesEditor::new(
+                            self.work.frames.clone(),
+                            &self.work.name,
+                            self.uid,
+                        ));
                     }
                     if ui.button("Save…").clicked() {
                         if let Some(f) = rfd::FileDialog::new()
