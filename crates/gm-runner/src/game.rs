@@ -155,6 +155,13 @@ pub struct Game {
     pub ancestors: Vec<Vec<i32>>,
     /// Objects that have a collision handler at all (fast skip).
     pub has_collision: Vec<bool>,
+    /// Per event (type, number): which objects have an effective handler.
+    pub event_objs: HashMap<(i32, i32), Rc<Vec<bool>>>,
+    /// Per object: the objects it has a collision handler with.
+    pub collision_partners: Vec<Vec<i32>>,
+    /// Per object: has any mouse event / any outside-boundary event.
+    pub has_mouse: Vec<bool>,
+    pub has_boundary: Vec<bool>,
 
     // ---------------------------------------------------------- runtime
     pub instances: Vec<Instance>,
@@ -237,6 +244,8 @@ pub struct Game {
     pub pump: Option<Box<dyn FnMut() -> Vec<InputEvent>>>,
     /// Timing instrumentation (`GM_PROFILE`).
     pub prof: Option<Box<crate::profile::Profiler>>,
+    /// Calls of stubbed or unsupported built-in functions (diagnostics).
+    pub unsupported_calls: std::collections::BTreeMap<&'static str, u64>,
     /// Collision broad phase (see spatial.rs).
     pub spatial: std::cell::RefCell<crate::spatial::SpatialIndex>,
     /// Per-object instance lists (see spatial.rs).
@@ -360,6 +369,10 @@ impl Game {
             collision_table: HashMap::new(),
             ancestors: Vec::new(),
             has_collision: Vec::new(),
+            event_objs: HashMap::new(),
+            collision_partners: Vec::new(),
+            has_mouse: Vec::new(),
+            has_boundary: Vec::new(),
             instances: Vec::new(),
             inst_index: HashMap::new(),
             next_instance_id: p.last_instance_id.max(gml::special::FIRST_INSTANCE_ID) + 1,
@@ -444,6 +457,7 @@ impl Game {
             parameters: std::env::args().collect(),
             pump: None,
             prof: crate::profile::Profiler::from_env(),
+            unsupported_calls: Default::default(),
             spatial: Default::default(),
             objlists: Default::default(),
         };
@@ -489,6 +503,13 @@ impl Game {
                 }
             };
             g.constants.insert(c.name.clone(), v);
+        }
+        for name in &p.extension_packages {
+            // extension packages (specs/extensions.md) are not loaded by this runner yet
+            eprintln!(
+                "warning: extension package '{}' is not available; code using its functions will report \"Unknown function or script\"",
+                name
+            );
         }
         g.compile_all(vm, &p);
         g.build_event_tables();
@@ -653,7 +674,21 @@ impl Game {
                 m
             })
             .collect();
+        let mut eo: HashMap<(i32, i32), Vec<bool>> = HashMap::new();
+        for (i, m) in self.effective.iter().enumerate() {
+            for k in m.keys() {
+                eo.entry(*k).or_insert_with(|| vec![false; n])[i] = true;
+            }
+        }
+        self.event_objs = eo.into_iter().map(|(k, v)| (k, Rc::new(v))).collect();
+        self.has_mouse = self.effective.iter().map(|m| m.keys().any(|(t, _)| *t == ev::MOUSE)).collect();
+        self.has_boundary = self
+            .effective
+            .iter()
+            .map(|m| m.keys().any(|(t, n)| *t == ev::OTHER && (*n == 0 || *n == 1 || (40..58).contains(n))))
+            .collect();
         self.collision_table.clear();
+        self.collision_partners = vec![Vec::new(); n];
         self.has_collision = vec![false; n];
         for a in 0..n {
             if self.objects[a].is_none() {
@@ -675,6 +710,7 @@ impl Game {
                     for &target in &self.ancestors[b] {
                         if let Some(l) = o.events.get(&(ev::COLLISION, target)) {
                             self.collision_table.insert((a as i32, b as i32), (owner, l.clone()));
+                            self.collision_partners[a].push(b as i32);
                             break 'outer;
                         }
                     }
@@ -945,7 +981,8 @@ impl Game {
     /// Shows an error through the UI. Returns true if the game should abort.
     pub fn ui_error(&mut self, msg: &str, fatal: bool) -> bool {
         let fatal = fatal || self.settings.abort_on_all_errors;
-        if self.settings.write_errors_to_log {
+        // (while loading, the game folder is not known yet: no log file)
+        if self.settings.write_errors_to_log && !self.working_directory.is_empty() {
             use std::io::Write;
             if let Ok(mut f) = std::fs::OpenOptions::new()
                 .create(true)

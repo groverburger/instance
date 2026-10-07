@@ -4,7 +4,9 @@
 //! Without `--headless` the game opens in a window (winit + softbuffer, software
 //! rendering). `--input` takes a comma-separated scripted input queue of
 //! `STEP:down:KEY`, `STEP:up:KEY`, `STEP:press:KEY` (down, then up two steps
-//! later), `STEP:move:X:Y`, `STEP:click:X:Y`, `STEP:char:C`.
+//! later), `STEP:move:X:Y`, `STEP:click:X:Y`, `STEP:char:C`. `--random-input SEED`
+//! adds a deterministic pseudo-random key/mouse script; `--max-seconds S` aborts a
+//! headless run that takes longer (exit code 4).
 
 mod window;
 
@@ -19,6 +21,43 @@ struct Opts {
     every: Option<(u64, PathBuf)>,
     input: Vec<(u64, InputEvent)>,
     max_seconds: Option<f64>,
+    random_input: Option<u64>,
+}
+
+/// A deterministic "monkey" input script for `frames` steps: held arrow/WASD/
+/// space/enter/Z/X keys, mouse moves and left/right clicks inside a 640x480 area.
+/// Escape and function keys are never pressed.
+fn random_input(seed: u64, frames: u64) -> Vec<(u64, InputEvent)> {
+    let mut state = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407) | 1;
+    let mut rnd = move |n: u64| -> u64 {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state % n.max(1)
+    };
+    const KEYS: [u8; 13] = [37, 38, 39, 40, 32, 13, b'W', b'A', b'S', b'D', b'Z', b'X', 16];
+    let mut out = Vec::new();
+    let mut f = 3;
+    while f < frames {
+        match rnd(10) {
+            0..=4 => {
+                let k = KEYS[rnd(KEYS.len() as u64) as usize];
+                let hold = 1 + rnd(20);
+                out.push((f, InputEvent::KeyDown(k)));
+                out.push((f + hold, InputEvent::KeyUp(k)));
+            }
+            5..=7 => {
+                let (x, y) = (rnd(640) as f64, rnd(480) as f64);
+                let b = if rnd(4) == 0 { 2 } else { 1 };
+                out.push((f, InputEvent::MouseMove(x, y)));
+                out.push((f, InputEvent::MouseDown(b)));
+                out.push((f + 1 + rnd(4), InputEvent::MouseUp(b)));
+            }
+            _ => out.push((f, InputEvent::MouseMove(rnd(640) as f64, rnd(480) as f64))),
+        }
+        f += 2 + rnd(8);
+    }
+    out
 }
 
 fn parse_input(s: &str) -> Result<Vec<(u64, InputEvent)>, String> {
@@ -67,6 +106,7 @@ fn parse_args() -> Result<Option<Opts>, String> {
         every: None,
         input: Vec::new(),
         max_seconds: None,
+        random_input: None,
     };
     let mut file = None;
     let mut i = 0;
@@ -85,6 +125,7 @@ fn parse_args() -> Result<Option<Opts>, String> {
                 o.every = Some((k.max(1), PathBuf::from(next()?)));
             }
             "--input" => o.input = parse_input(&next()?)?,
+            "--random-input" => o.random_input = Some(next()?.parse().map_err(|_| "bad --random-input")?),
             "--max-seconds" => o.max_seconds = Some(next()?.parse().map_err(|_| "bad --max-seconds")?),
             "--coverage" => {
                 let (imp, stub, native, total) = gm_runner::builtins::coverage();
@@ -96,7 +137,7 @@ fn parse_args() -> Result<Option<Opts>, String> {
                 return Ok(None);
             }
             "--help" | "-h" => {
-                println!("usage: gm-runner FILE.gmk|FILE.gm81 [--headless] [--frames N] [--screenshot OUT.png] [--screenshot-every K DIR] [--input SCRIPT] [--coverage] [--max-seconds S]");
+                println!("usage: gm-runner FILE.gmk|FILE.gm81 [--headless] [--frames N] [--screenshot OUT.png] [--screenshot-every K DIR] [--input SCRIPT] [--coverage] [--max-seconds S] [--random-input SEED]");
                 return Ok(None);
             }
             _ if a.starts_with("--") => return Err(format!("unknown option {}", a)),
@@ -110,6 +151,9 @@ fn parse_args() -> Result<Option<Opts>, String> {
         i += 1;
     }
     o.file = file.ok_or("no game file given")?;
+    if let Some(seed) = o.random_input {
+        o.input.extend(random_input(seed, o.frames));
+    }
     Ok(Some(o))
 }
 
@@ -171,6 +215,10 @@ fn run_headless(o: Opts) -> i32 {
         g.caption()
     );
     eprintln!("slowest step: {:.4}s (step {})", slowest.0, slowest.1);
+    if !g.unsupported_calls.is_empty() {
+        let list: Vec<String> = g.unsupported_calls.iter().map(|(n, c)| format!("{} x{}", n, c)).collect();
+        eprintln!("stubbed/unsupported functions called: {}", list.join(", "));
+    }
     g.profile_report();
     if let Some(p) = o.screenshot {
         if let Err(e) = g.frame_image().save_png(&p, true) {

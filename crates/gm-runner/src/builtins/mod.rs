@@ -143,7 +143,11 @@ fn table() -> &'static Table {
 
 /// Dispatches a world function.
 pub fn dispatch(g: &mut Game, vm: &mut Vm, ctx: &Ctx, f: FunctionId, args: &[Value]) -> Result<Value, Error> {
-    match table().fns[f.0 as usize] {
+    let t = table();
+    if t.stubbed[f.0 as usize] || t.fns[f.0 as usize].is_none() {
+        *g.unsupported_calls.entry(f.name()).or_insert(0) += 1;
+    }
+    match t.fns[f.0 as usize] {
         Some(func) => {
             let a = A { v: args, f };
             if table().geometry[f.0 as usize] {

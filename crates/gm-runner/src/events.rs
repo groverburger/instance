@@ -209,6 +209,8 @@ impl Game {
 
     /// Delivers an event to all instances having a handler (§4.3).
     pub fn broadcast(&mut self, vm: &mut Vm, t: i32, n: i32) -> Result<(), Error> {
+        // objects having a handler for this event (none: nothing to do)
+        let Some(mask) = self.event_objs.get(&(t, n)).cloned() else { return Ok(()) };
         let mut k = 0;
         while k < self.instances.len() {
             let (id, obj, alive) = {
@@ -216,7 +218,7 @@ impl Game {
                 (i.id, i.object_index, i.alive())
             };
             k += 1;
-            if !alive {
+            if !alive || obj < 0 || !mask.get(obj as usize).copied().unwrap_or(false) {
                 continue;
             }
             if let Some((owner, list)) = self.handler(obj, t, n) {
@@ -235,6 +237,9 @@ impl Game {
         while k < self.instances.len() {
             let (id, obj) = (self.instances[k].id, self.instances[k].object_index);
             k += 1;
+            if !self.instances[k - 1].alarm.iter().any(|&a| a > 0.0) {
+                continue;
+            }
             for a in 0..crate::instance::ALARMS {
                 let Some(i) = self.inst(id) else { break };
                 if !i.alive() {
@@ -247,7 +252,9 @@ impl Game {
                 if !has {
                     continue;
                 }
-                let i = self.inst_mut(id).unwrap();
+                // (alarms do not affect collision geometry: no need to mark the instance)
+                let kk = self.inst_index[&id];
+                let i = &mut self.instances[kk];
                 i.alarm[a] -= 1.0;
                 if i.alarm[a] <= 0.0 {
                     i.alarm[a] = -1.0;
@@ -319,11 +326,7 @@ impl Game {
             if !alive || obj < 0 {
                 continue;
             }
-            let has_any = self
-                .effective
-                .get(obj as usize)
-                .map(|m| m.keys().any(|(t, _)| *t == ev::MOUSE))
-                .unwrap_or(false);
+            let has_any = self.has_mouse.get(obj as usize).copied().unwrap_or(false);
             if !has_any {
                 continue;
             }
@@ -527,7 +530,7 @@ impl Game {
                 (i.id, i.object_index, i.alive())
             };
             k += 1;
-            if !alive || obj < 0 {
+            if !alive || obj < 0 || !self.has_boundary.get(obj as usize).copied().unwrap_or(false) {
                 continue;
             }
             let Some(eff) = self.effective.get(obj as usize) else { continue };
@@ -587,6 +590,21 @@ impl Game {
     /// Collision event phase (§8.6).
     pub fn collision_events(&mut self, vm: &mut Vm) -> Result<(), Error> {
         let n = self.instances.len();
+        // objects with at least one live instance (exact object); refreshed after
+        // handlers run, as they may create instances
+        let present_now = |g: &Game| -> Vec<bool> {
+            let mut p = vec![false; g.objects.len()];
+            for i in &g.instances {
+                if i.alive() && i.object_index >= 0 {
+                    if let Some(x) = p.get_mut(i.object_index as usize) {
+                        *x = true;
+                    }
+                }
+            }
+            p
+        };
+        let mut present = present_now(self);
+        let mut handlers_ran = false;
         for ai in 0..n {
             if ai >= self.instances.len() {
                 break;
@@ -596,6 +614,12 @@ impl Game {
                 (i.id, i.object_index, i.alive())
             };
             if !alive || aobj < 0 || !self.has_collision.get(aobj as usize).copied().unwrap_or(false) {
+                continue;
+            }
+            if std::mem::take(&mut handlers_ran) {
+                present = present_now(self);
+            }
+            if !self.collision_partners[aobj as usize].iter().any(|&b| present.get(b as usize).copied().unwrap_or(false)) {
                 continue;
             }
             // Broad phase: the instances (after position `from`) whose boxes overlap
@@ -640,6 +664,7 @@ impl Game {
                     i.x = i.xprevious;
                     i.y = i.yprevious;
                 }
+                handlers_ran = true;
                 self.run_handler(vm, a, owner, &list, ev::COLLISION, bobj, b)?;
                 if self.pending.is_some() {
                     return Ok(());
@@ -689,6 +714,7 @@ impl Game {
 
     /// Animation advance and Animation End events (§7.3).
     pub fn advance_animation(&mut self, vm: &mut Vm) -> Result<(), Error> {
+        let anim_end = self.event_objs.get(&(ev::OTHER, ev_other::ANIMATION_END)).cloned();
         let mut k = 0;
         while k < self.instances.len() {
             let (id, alive, spr, speed) = {
@@ -699,13 +725,15 @@ impl Game {
             if !alive {
                 continue;
             }
-            let n = self.sprite(spr).map(|s| s.frames.len()).unwrap_or(0) as f64;
+            let (n, masks) = self.sprite(spr).map(|s| (s.frames.len(), s.masks.len())).unwrap_or((0, 0));
+            let n = n as f64;
             if n == 0.0 {
                 continue;
             }
             let mut ended = false;
             {
-                let i = self.inst_mut(id).unwrap();
+                // the collision box only depends on image_index with per-frame masks
+                let i = if masks > 1 { self.inst_at_mut(k - 1) } else { &mut self.instances[k - 1] };
                 i.image_index += speed;
                 if i.image_index >= n {
                     i.image_index -= n;
@@ -715,7 +743,9 @@ impl Game {
                     ended = true;
                 }
             }
-            if ended {
+            let obj = self.instances[k - 1].object_index;
+            let has_end = obj >= 0 && anim_end.as_ref().map(|m| m.get(obj as usize).copied().unwrap_or(false)).unwrap_or(false);
+            if ended && has_end {
                 self.run_event(vm, id, ev::OTHER, ev_other::ANIMATION_END, id)?;
                 if self.pending.is_some() {
                     return Ok(());

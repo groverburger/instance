@@ -67,6 +67,11 @@ fn main() {
                 r.views_enabled,
                 r.creation_code
             ));
+            for (k, v) in r.views.iter().enumerate() {
+                if v.visible {
+                    out.push_str(&format!("view {}: {:?}\n", k, v));
+                }
+            }
             for inst in &r.instances {
                 if !inst.creation_code.trim().is_empty() {
                     out.push_str(&format!("--- instance {} (object {})\n{}\n", inst.id, inst.object, inst.creation_code));
