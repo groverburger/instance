@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/gm-format", "crates/gml", "crates/gm-runner", "crates/gm-ide"]
+members = ["crates/gm-format", "crates/gml", "crates/gm-runner", "crates/gm-ide", "crates/gm-net"]
 
 [workspace.package]
 edition = "2021"
