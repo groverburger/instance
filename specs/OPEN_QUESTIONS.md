@@ -1,0 +1,170 @@
+# Open questions
+
+Append-only. Each agent adds its own section.
+
+## IDE (specs/ide.md)
+
+Items the manual does not settle; resolve by black-box observation of the IDE and
+of the files it writes.
+
+- IDE-1: Keyboard shortcuts for every menu command (Create Sprite/Sound/... , Run,
+  Debug, Save, etc.). Manual only says each create command has one and that 8.0 moved
+  Ctrl+Alt combos to Shift+Ctrl.
+- IDE-2: Default resource name numbering (`sprite<N>`): is N the new id, or the first
+  unused number?
+- IDE-3: Placement of a new resource created via Resources menu / toolbar (end of
+  kind root, or inside the currently selected group?) and of Duplicate (after the
+  source? at end?). Placement of Add Group when a group is selected.
+- IDE-4: Sprite form "Precise collision checking" checkbox vs mask shape: does
+  unchecking set shape=Rectangle, and how do the two interact in the saved file?
+- IDE-5: Which pixel defines the background colour for "Remove Background" when
+  loading sprites/backgrounds (manual only states bottom-left for the loading image).
+- IDE-6: Path precision valid range (screenshot shows 4) and whether the path's
+  backdrop room and snap values are stored in the project.
+- IDE-7: Font "Letters" button exact range; whether Digits is 48-57.
+- IDE-8: Event list display order and exact labels for each event (keyboard key
+  names, mouse/joystick/view events), and keyboard key submenu grouping in the event
+  selector.
+- IDE-9: Action list: exact right-click menu items; whether Cancel on the argument
+  dialog of a freshly dropped action removes it; how applies-to/relative/NOT are shown
+  in the one-line description.
+- IDE-10: How the Move Fixed direction-grid (and Move Free/other special widgets)
+  map to stored argument strings — belongs to the action-library spec.
+- IDE-11: Room editor "Show" dropdown items; status-bar content; exact right-click
+  instance/tile menu items in 8.1.
+- IDE-12: Global Game Settings: which options are hidden in simple mode; Resolution
+  tab option lists (resolutions, frequencies, colour depths) and whether vsync is
+  independent of "Set the resolution"; Errors tab — is there an 8.1-only extra option
+  (e.g. about uninitialized arguments)?
+- IDE-13: Run normally: are open forms with uncommitted changes included/committed
+  before running? Working directory when the project was never saved? Is the IDE
+  blocked while the game runs with "hide designer" off?
+- IDE-14: Debug window: complete Run/Watch/Tools menu item list and watch-file format.
+- IDE-15: Backup rotation order for `.gb0`..`.gb9`.
+- IDE-16: `.gml` script library format (assumed `#define name` separators),
+  `.gmres`, `.gmspr`, `.gmbck`, `.gmtrg` file formats (not documented in the manual).
+- IDE-17: Is Save Sound hidden in simple mode? (Simple-mode sound form shows Load,
+  Play and Save per the 1xx chapter — confirm.)
+- IDE-18: Show Object Information / Show Information text format (cosmetic; we may
+  define our own).
+- IDE-19: Behaviour when a referenced resource (sprite of an object, object of an
+  instance, trigger of an event) is deleted: how is it displayed and saved (-1)?
+
+## runtime.md (runner behaviour) — needs black-box verification
+
+- RT-01: Exact intra-step position of: xprevious/yprevious capture, timeline
+  advance, particle auto-update, view-follow update, image_index advance +
+  Animation End (before or after Draw?), background scrolling. (runtime.md §4.2)
+- RT-02: After room_goto/game_end/etc. inside an action, do the *remaining actions
+  of the same event* still run? Are remaining instances' events of the same phase
+  skipped? (§3.1)
+- RT-03: Is the room creation code re-run when re-entering a visited persistent
+  room? Do restored instances get Room Start? (§3.2)
+- RT-04: Does game_end() run Room End before Game End? What exactly does
+  game_restart() run (Game End? Room End?) and reset (score/lives/health, globals,
+  instance id counter)? (§3.3)
+- RT-05: Outside Room / Intersect Boundary (and view variants): fired every step
+  while the condition holds, or only on the transition? Behaviour for instances
+  without sprite/mask; does Intersect Boundary also fire when completely outside?
+  (§5.5)
+- RT-06: Solid collision handling: is the put-back triggered by other.solid only,
+  or by either instance being solid, and are both instances moved back/forward?
+  Exact "move to new position" rule; order of pair iteration. (§8.6)
+- RT-07: Collision-event selection with parents when an object has collision
+  events with both T and T's ancestor, or inherits one from its parent. (§6.3)
+- RT-08: Alarm semantics: value after firing (-1 or 0), fractional alarms,
+  whether an alarm ticks if only a parent defines the event, order within an
+  instance. (§5.3)
+- RT-09: Are instances created during an event phase visited in the same phase?
+  (§4.3)
+- RT-10: Speed/direction coupling edge cases: negative speed, direction
+  normalisation, direction preserved at zero speed; friction/gravity order. (§7.1, §7.4)
+- RT-11: bbox_* integer rounding rules with scaling/rotation; alpha tolerance
+  comparison (> vs >=). (§8.1, §8.2)
+- RT-12: No More Lives / No More Health: checked at assignment or once per step?
+  Health edge rule. Default values of lives, health, show_score/show_lives/
+  show_health and the caption format. (§1.1, §5.4, §12.1)
+- RT-13: Keyboard event dispatch nesting (key-major vs instance-major) and order of
+  held / press / release events relative to each other. (§11.3)
+- RT-14: mouse_x/mouse_y with overlapping or no views under the cursor; whether
+  mouse-over tests for instance mouse events are precise. (§11.5, §12.3)
+- RT-15: View follow algorithm details (uses instance x/y or bbox? clamped to room?
+  update time). (§12.2)
+- RT-16: Draw tie order at equal depth between tiles, instances and particle
+  systems; where cursor_sprite is drawn. (§13.1, §13.2)
+- RT-17: Path orientation/scale pivot; endaction 1/2 overshoot handling; timeline
+  looping/end semantics and negative speed. (§10)
+- RT-18: Numeric values of ev_* / ev_other / ev_mouse constants, self/other/all/
+  noone/global and mb_* constants (need the constants spec or file-format
+  observation to confirm). (§1.4, §5.1, §11.2)
+- RT-19: Persistent object placed in a room that is (re)entered while an instance
+  of it already exists: duplicated? (§3.2 step 6)
+- RT-20: Which runtime errors are fatal vs ignorable; behaviour of Ignore
+  (skip action vs skip event). Default F5/F6 save-file name. (§19, §3.5)
+- RT-21: instance_change: which properties come from the new object (sprite,
+  mask, depth, solid, visible, persistent)? (§5.7)
+
+## [GML] Language (from specs/gml-language.md, 2026-10-07)
+Each item already has a recommended choice in the spec. They need black-box confirmation.
+1. Truthiness at exactly 0.5. The manual gives both ">= 0.5 is true" and "rounded value <= 0 is false". The spec uses `v >= 0.5`. How do strings behave in conditions? The spec treats them as false.
+2. Mixed real/string comparison (`"a" == 1`, `"a" < 1`): is it a runtime error, or false? The spec makes it false with no error.
+3. Real equality: is it exact, or is there an epsilon? The spec uses exact comparison.
+4. Rounding mode of the integer conversion (`to_int`) used for repeat counts, array indices, bitwise operands and the left side of `.`: is it half-to-even, half-away, or truncation? Which integer width do bitwise ops use (32 or 64 bit)?
+5. `string(x)` formatting for non-integers, negative zero and large magnitudes. Is it always 2 decimals?
+6. Division by zero for `/`, `div` and `mod`: is it an error, and what is the result if the error is ignored?
+7. Array storage model: is `a` the same as `a[0]` and `a[0,0]`? Is `a[i]` the same as `a[0,i]`? Do unwritten in-range elements read as 0, or as an uninitialised-variable error?
+8. Do object references in `.` and `with` include instances of child objects?
+9. `with`: is the iteration a snapshot? How are instances created or destroyed during the loop handled?
+10. What is `other` in non-collision events, especially the Create event run by `instance_create`, and `event_perform`?
+11. Unpassed script arguments (`argumentN` with N >= argument_count): do they read as 0, or raise an error? Is `argument_count` writable?
+12. Is `var` scoping lexical (compile time) or does it start when the `var` statement executes? Does `var` shadow built-in variables?
+13. What do the `local` constant (assumed -7) and `local.x` mean?
+14. Are `%`, `:=` (inside expressions), a leading-dot number (`.5`), and `12.` (trailing dot) accepted?
+15. Is `continue` outside a loop a compile error, or does it act like `exit`? Is a bare `return;` legal?
+16. What happens when the wrong type is assigned to a built-in variable (e.g. `x = "a"`)? Does reading an instance-less `obj.var` raise an error?
+17. Error recovery: after a non-fatal error is ignored, does the rest of the code action continue, or is it abandoned?
+18. Exact runtime and compile error message texts.
+19. The values in builtins.json with `value_source: "inferred"` all need confirming, e.g. by printing each one with `show_message(string(c))` in GM 8.1. Values are unknown (null) for: os_*, device_ios_*, text_type, button_type, input_type.
+20. Resolution priority when a script name clashes with a built-in function, or a user constant with a resource name.
+
+## [FF] File formats (specs/file-formats.md, specs/actions.json, 2026-10-07)
+
+Samples were one v800 .gmk, two v701 .gmk, one .gmspr, 7 .lib, 3 .ged/.dat. Everything
+below was **not** present in any sample (counts were 0, or no .gm81 existed). The fix in
+every case is to make small sample projects in the IDE (black-box) and diff/parse them.
+
+- FF-1: No .gm81 (v810) sample. Confirm header/settings version 810 and every per-record
+  version; check whether settings v810 adds fields (a vsync/flags word, 8.1-only options)
+  or whether any resource body changes (fonts, rooms). (spec §7)
+- FF-2: Trigger record layout (v800) — trigger count was 0. (§3.1)
+- FF-3: Constant list entry layout (name/value strings) in v800 top level and in v702
+  settings — counts were 0; also confirm the constant count's position inside v702 settings. (§3.2, §8.3)
+- FF-4: Path record (v800 version 530?, v701) — no paths in any sample. (§5.4)
+- FF-5: Script record in v800 (only v701 seen) and font record in v800 (only v701 seen);
+  font `range_start` high bytes (charset / anti-alias) in v800/v810. (§5.5, §5.6)
+- FF-6: Time line record — none in samples. (§5.7)
+- FF-7: Tile record in rooms (10 fields assumed) — no tiles in any sample. Room
+  `editor_state` 14 ints: count verified, field order/meaning not (all zero). (§5.10)
+- FF-8: Included-file record (v800 zblock / v701 version 620) — none in samples. (§6.1)
+- FF-9: Extension-package list entries (assumed `str` names) — count 0 in samples. (§6.2)
+- FF-10: Custom loading bar images (loading_bar == 2) and custom load image encoding
+  inside settings — not present. (§2)
+- FF-11: Sprite with 0 frames (are the 8 mask fields omitted?), img800 with width or
+  height 0 (is the pixel blob omitted?), sound with has_data = 0 — not present. (§0.2, §5.1, §5.2)
+- FF-12: Enum meanings verified only for observed values: sound kind 2/3, sound effect
+  bit order, collision shapes 2/3, bbox_mode, scaling sign convention, colour depth /
+  resolution / frequency / priority indices. (§2, §5)
+- FF-13: v701 decoding: is the first encoded byte (low byte of game_id) stored raw, as in
+  the extension .dat format, or decoded like the rest? (§8.2)
+- FF-14: .ged call_convention values (11/12 on DLL vs GML files, 2 on one GML file):
+  confirm 12 = stdcall, 11 = cdecl; file_kind 3/4; argument_count -1 for varargs. (§11.1)
+- FF-15: Action library interface kinds 3 and 4 and argument kinds beyond 15 never occur
+  in the built-in libs; meaning unknown (only matters for user libraries). (§10.2)
+- FF-16: Action argument value encoding for kind 15 (font string) — only
+  "Arial,10,0,1,0,0,0" seen; meaning of the trailing fields. (§5.9)
+- FF-17: Event sub-numbers for mouse/other/step beyond the values observed (left
+  pressed = 6:4, outside room = 7:0, game start = 7:2, no more lives = 7:6, end step
+  3:2 presumed) — should be settled in the events/runtime spec (relates to RT-18).
+- Partially answers IDE-10: Move Fixed arg0 is a 9-char 0/1 mask over the 3×3 grid in
+  numeric-keypad order (index 0 = down-left, 4 = stop, 7 = up; verified in samples). IDE-16: `.gmspr` format
+  is now in §9; `.gmbck` etc. presumed analogous.

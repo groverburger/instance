@@ -1,0 +1,7708 @@
+{
+ "_comment": "Decoded from GameMaker 8.1 lib/*.lib by black-box analysis. Summaries are paraphrased; list/hint template text is intentionally omitted (only the placeholder tokens used are listed). See specs/file-formats.md section \"Action libraries\".",
+ "kind_names": {
+  "0": "normal",
+  "1": "begin_group",
+  "2": "end_group",
+  "3": "else",
+  "4": "exit",
+  "5": "repeat",
+  "6": "variable",
+  "7": "code",
+  "8": "placeholder",
+  "9": "separator",
+  "10": "label"
+ },
+ "interface_names": {
+  "0": "normal",
+  "1": "none",
+  "2": "arrows",
+  "5": "text"
+ },
+ "exe_type_names": {
+  "0": "none",
+  "1": "function",
+  "2": "code"
+ },
+ "arg_kind_names": {
+  "0": "expression",
+  "1": "string",
+  "2": "both",
+  "3": "boolean",
+  "4": "menu",
+  "5": "sprite",
+  "6": "sound",
+  "7": "background",
+  "8": "path",
+  "9": "script",
+  "10": "object",
+  "11": "room",
+  "12": "font",
+  "13": "color",
+  "14": "timeline",
+  "15": "font_string"
+ },
+ "libraries": [
+  {
+   "file": "01_move.lib",
+   "tab_caption": "move",
+   "lib_id": 1,
+   "lib_format_version": 520,
+   "lib_version": 600,
+   "advanced_only": false,
+   "has_init_code": false,
+   "palette": [
+    {
+     "pos": 0,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Move",
+     "advanced_only": false
+    },
+    {
+     "pos": 1,
+     "action_id": 101
+    },
+    {
+     "pos": 2,
+     "action_id": 102
+    },
+    {
+     "pos": 3,
+     "action_id": 105
+    },
+    {
+     "pos": 4,
+     "action_id": 103
+    },
+    {
+     "pos": 5,
+     "action_id": 104
+    },
+    {
+     "pos": 6,
+     "action_id": 107
+    },
+    {
+     "pos": 7,
+     "action_id": 113
+    },
+    {
+     "pos": 8,
+     "action_id": 114
+    },
+    {
+     "pos": 9,
+     "action_id": 108
+    },
+    {
+     "pos": 10,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 11,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Jump",
+     "advanced_only": false
+    },
+    {
+     "pos": 12,
+     "action_id": 109
+    },
+    {
+     "pos": 13,
+     "action_id": 110
+    },
+    {
+     "pos": 14,
+     "action_id": 111
+    },
+    {
+     "pos": 15,
+     "action_id": 117
+    },
+    {
+     "pos": 16,
+     "action_id": 112
+    },
+    {
+     "pos": 17,
+     "kind": 8,
+     "kind_name": "placeholder",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 18,
+     "action_id": 116
+    },
+    {
+     "pos": 19,
+     "action_id": 115
+    },
+    {
+     "pos": 20,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": true
+    },
+    {
+     "pos": 21,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Paths",
+     "advanced_only": true
+    },
+    {
+     "pos": 22,
+     "action_id": 119
+    },
+    {
+     "pos": 23,
+     "action_id": 124
+    },
+    {
+     "pos": 24,
+     "kind": 8,
+     "kind_name": "placeholder",
+     "label": "",
+     "advanced_only": true
+    },
+    {
+     "pos": 25,
+     "action_id": 122
+    },
+    {
+     "pos": 26,
+     "action_id": 123
+    },
+    {
+     "pos": 27,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": true
+    },
+    {
+     "pos": 28,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Steps",
+     "advanced_only": true
+    },
+    {
+     "pos": 29,
+     "action_id": 120
+    },
+    {
+     "pos": 30,
+     "action_id": 121
+    }
+   ],
+   "actions": [
+    {
+     "lib_id": 1,
+     "id": 101,
+     "name": "Move",
+     "palette_title": "Move Fixed",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 2,
+     "interface_name": "arrows",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_move",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "Argument 1:",
+       "kind": 1,
+       "kind_name": "string",
+       "default": "000000000"
+      },
+      {
+       "caption": "Argument 2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@r",
+      "@w"
+     ],
+     "summary": "Start moving in one of the selected directions (or stop) at the given speed; arg0 is a 9-char 0/1 mask in numeric-keypad order (0=down-left .. 4=stop .. 8=up-right), one set entry chosen at random."
+    },
+    {
+     "lib_id": 1,
+     "id": 102,
+     "name": "Set_Motion",
+     "palette_title": "Move Free",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_set_motion",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "direction:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "speed:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@r",
+      "@w"
+     ],
+     "summary": "Set motion to a given direction (degrees) and speed."
+    },
+    {
+     "lib_id": 1,
+     "id": 105,
+     "name": "Move_Point",
+     "palette_title": "Move Towards",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_move_point",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "speed:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@r",
+      "@w"
+     ],
+     "summary": "Start moving towards a point at a given speed."
+    },
+    {
+     "lib_id": 1,
+     "id": 103,
+     "name": "Set_Hspeed",
+     "palette_title": "Speed Horizontal",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_set_hspeed",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "hor. speed:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@r",
+      "@w"
+     ],
+     "summary": "Set horizontal speed."
+    },
+    {
+     "lib_id": 1,
+     "id": 104,
+     "name": "Set_Vspeed",
+     "palette_title": "Speed Vertical",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_set_vspeed",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "vert. speed:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@r",
+      "@w"
+     ],
+     "summary": "Set vertical speed."
+    },
+    {
+     "lib_id": 1,
+     "id": 107,
+     "name": "Set_Gravity",
+     "palette_title": "Set Gravity",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_set_gravity",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "direction:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "gravity:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@r",
+      "@w"
+     ],
+     "summary": "Set gravity strength and its direction."
+    },
+    {
+     "lib_id": 1,
+     "id": 113,
+     "name": "Reverse_Xdir",
+     "palette_title": "Reverse Horizontal",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_reverse_xdir",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@w"
+     ],
+     "summary": "Negate horizontal speed."
+    },
+    {
+     "lib_id": 1,
+     "id": 114,
+     "name": "Reverse_Ydir",
+     "palette_title": "Reverse Vertical",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_reverse_ydir",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@w"
+     ],
+     "summary": "Negate vertical speed."
+    },
+    {
+     "lib_id": 1,
+     "id": 108,
+     "name": "Set_Friction",
+     "palette_title": "Set Friction",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_set_friction",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "friction:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@r",
+      "@w"
+     ],
+     "summary": "Set friction."
+    },
+    {
+     "lib_id": 1,
+     "id": 109,
+     "name": "Move_To",
+     "palette_title": "Jump to Position",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_move_to",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@r",
+      "@w"
+     ],
+     "summary": "Teleport the instance to a position."
+    },
+    {
+     "lib_id": 1,
+     "id": 110,
+     "name": "Move_Start",
+     "palette_title": "Jump to Start",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_move_start",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@w"
+     ],
+     "summary": "Teleport the instance back to its starting position."
+    },
+    {
+     "lib_id": 1,
+     "id": 111,
+     "name": "Move_Random",
+     "palette_title": "Jump to Random",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_move_random",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "snap hor:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "snap vert:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@w"
+     ],
+     "summary": "Teleport to a random collision-free position, optionally snapped to a grid."
+    },
+    {
+     "lib_id": 1,
+     "id": 117,
+     "name": "Snap",
+     "palette_title": "Align to Grid",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_snap",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "snap hor:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "16"
+      },
+      {
+       "caption": "snap vert:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "16"
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@w"
+     ],
+     "summary": "Snap the position to a grid of the given cell size."
+    },
+    {
+     "lib_id": 1,
+     "id": 112,
+     "name": "Wrap",
+     "palette_title": "Wrap Screen",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_wrap",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "direction:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "horizontal",
+        "vertical",
+        "in both directions"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@w"
+     ],
+     "summary": "When outside the room, wrap position to the opposite side (horizontally, vertically or both)."
+    },
+    {
+     "lib_id": 1,
+     "id": 116,
+     "name": "Move_Contact",
+     "palette_title": "Move to Contact",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_move_contact",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "direction:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "maximum:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "-1"
+      },
+      {
+       "caption": "against:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "solid objects",
+        "all objects"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@w"
+     ],
+     "summary": "Move in a direction up to a maximum distance until touching solid (or any) instances."
+    },
+    {
+     "lib_id": 1,
+     "id": 115,
+     "name": "Bounce",
+     "palette_title": "Bounce",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_bounce",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "precise:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "not precisely",
+        "precisely"
+       ]
+      },
+      {
+       "caption": "against:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "solid objects",
+        "all objects"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@1"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@w"
+     ],
+     "summary": "Reverse motion against solid (or all) instances, optionally precisely."
+    },
+    {
+     "lib_id": 1,
+     "id": 119,
+     "name": "Path",
+     "palette_title": "Set Path",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_path",
+     "has_code": false,
+     "argc": 4,
+     "args": [
+      {
+       "caption": "path:",
+       "kind": 8,
+       "kind_name": "path",
+       "default": "-1"
+      },
+      {
+       "caption": "speed:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "at end:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "stop",
+        "continue from start",
+        "continue from here",
+        "reverse"
+       ]
+      },
+      {
+       "caption": "relative:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "relative",
+        "absolute"
+       ]
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@w"
+     ],
+     "summary": "Start following a path with speed, end behaviour and absolute/relative placement."
+    },
+    {
+     "lib_id": 1,
+     "id": 124,
+     "name": "Path_End",
+     "palette_title": "End Path",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_path_end",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@w"
+     ],
+     "summary": "Stop following the current path."
+    },
+    {
+     "lib_id": 1,
+     "id": 122,
+     "name": "Path_Position",
+     "palette_title": "Path Position",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_path_position",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "position (0-1):",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@r",
+      "@w"
+     ],
+     "summary": "Set the position (0..1) along the current path."
+    },
+    {
+     "lib_id": 1,
+     "id": 123,
+     "name": "Path_Speed",
+     "palette_title": "Path Speed",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_path_speed",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "speed:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@r",
+      "@w"
+     ],
+     "summary": "Set the speed along the current path."
+    },
+    {
+     "lib_id": 1,
+     "id": 120,
+     "name": "Step_Linear",
+     "palette_title": "Step Towards",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_linear_step",
+     "has_code": false,
+     "argc": 4,
+     "args": [
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "speed:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "stop at:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "solid only",
+        "all instances"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@r",
+      "@w"
+     ],
+     "summary": "Take one straight-line step towards a point, optionally stopping at solid/any instances."
+    },
+    {
+     "lib_id": 1,
+     "id": 121,
+     "name": "Step_Potential",
+     "palette_title": "Step Avoiding",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_potential_step",
+     "has_code": false,
+     "argc": 4,
+     "args": [
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "speed:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "avoid:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "solid only",
+        "all instances"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@r",
+      "@w"
+     ],
+     "summary": "Take one step towards a point using simple potential-field obstacle avoidance."
+    }
+   ]
+  },
+  {
+   "file": "02_main1.lib",
+   "tab_caption": "main1",
+   "lib_id": 1,
+   "lib_format_version": 520,
+   "lib_version": 600,
+   "advanced_only": false,
+   "has_init_code": false,
+   "palette": [
+    {
+     "pos": 0,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Objects",
+     "advanced_only": false
+    },
+    {
+     "pos": 1,
+     "action_id": 201
+    },
+    {
+     "pos": 2,
+     "action_id": 206
+    },
+    {
+     "pos": 3,
+     "action_id": 207
+    },
+    {
+     "pos": 4,
+     "action_id": 202
+    },
+    {
+     "pos": 5,
+     "action_id": 203
+    },
+    {
+     "pos": 6,
+     "action_id": 204
+    },
+    {
+     "pos": 7,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 8,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Sprite",
+     "advanced_only": false
+    },
+    {
+     "pos": 9,
+     "action_id": 541
+    },
+    {
+     "pos": 10,
+     "action_id": 542
+    },
+    {
+     "pos": 11,
+     "action_id": 543
+    },
+    {
+     "pos": 12,
+     "action_id": 205
+    },
+    {
+     "pos": 13,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 14,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Sounds",
+     "advanced_only": false
+    },
+    {
+     "pos": 15,
+     "action_id": 211
+    },
+    {
+     "pos": 16,
+     "action_id": 212
+    },
+    {
+     "pos": 17,
+     "action_id": 213
+    },
+    {
+     "pos": 18,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 19,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Rooms",
+     "advanced_only": false
+    },
+    {
+     "pos": 20,
+     "action_id": 221
+    },
+    {
+     "pos": 21,
+     "action_id": 222
+    },
+    {
+     "pos": 22,
+     "action_id": 223
+    },
+    {
+     "pos": 23,
+     "action_id": 224
+    },
+    {
+     "pos": 24,
+     "action_id": 225
+    },
+    {
+     "pos": 25,
+     "action_id": 226
+    }
+   ],
+   "actions": [
+    {
+     "lib_id": 1,
+     "id": 201,
+     "name": "Create_Object",
+     "palette_title": "Create Instance",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_create_object",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "object:",
+       "kind": 10,
+       "kind_name": "object",
+       "default": "-100"
+      },
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@r",
+      "@w"
+     ],
+     "summary": "Create an instance of an object at a position."
+    },
+    {
+     "lib_id": 1,
+     "id": 206,
+     "name": "Create_Object_Motion",
+     "palette_title": "Create Moving",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_create_object_motion",
+     "has_code": false,
+     "argc": 5,
+     "args": [
+      {
+       "caption": "object:",
+       "kind": 10,
+       "kind_name": "object",
+       "default": "-100"
+      },
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "speed:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "direction:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@r",
+      "@w"
+     ],
+     "summary": "Create an instance of an object at a position and give it a speed and direction."
+    },
+    {
+     "lib_id": 1,
+     "id": 207,
+     "name": "Create_Object_Random",
+     "palette_title": "Create Random",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_create_object_random",
+     "has_code": false,
+     "argc": 6,
+     "args": [
+      {
+       "caption": "object 1:",
+       "kind": 10,
+       "kind_name": "object",
+       "default": "-100"
+      },
+      {
+       "caption": "object 2:",
+       "kind": 10,
+       "kind_name": "object",
+       "default": "-100"
+      },
+      {
+       "caption": "object 3:",
+       "kind": 10,
+       "kind_name": "object",
+       "default": "-100"
+      },
+      {
+       "caption": "object 4:",
+       "kind": 10,
+       "kind_name": "object",
+       "default": "-100"
+      },
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@5",
+      "@r",
+      "@w"
+     ],
+     "summary": "Create an instance of one of up to four objects chosen at random at a position."
+    },
+    {
+     "lib_id": 1,
+     "id": 202,
+     "name": "Change_Object",
+     "palette_title": "Change Instance",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_change_object",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "change into:",
+       "kind": 10,
+       "kind_name": "object",
+       "default": "-100"
+      },
+      {
+       "caption": "perform events:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "not",
+        "yes"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@w"
+     ],
+     "summary": "Turn the instance into another object, optionally running destroy/create events."
+    },
+    {
+     "lib_id": 1,
+     "id": 203,
+     "name": "Kill_Object",
+     "palette_title": "Destroy Instance",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_kill_object",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@w"
+     ],
+     "summary": "Destroy the instance."
+    },
+    {
+     "lib_id": 1,
+     "id": 204,
+     "name": "Kill_Position",
+     "palette_title": "Destroy at Position",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_kill_position",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@r"
+     ],
+     "summary": "Destroy all instances whose bounding box contains a position."
+    },
+    {
+     "lib_id": 1,
+     "id": 541,
+     "name": "Set_Sprite",
+     "palette_title": "Change Sprite",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_sprite_set",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "sprite:",
+       "kind": 5,
+       "kind_name": "sprite",
+       "default": "-1"
+      },
+      {
+       "caption": "subimage:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "speed:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@w"
+     ],
+     "summary": "Set sprite, sub-image (-1 keeps current) and image speed."
+    },
+    {
+     "lib_id": 1,
+     "id": 542,
+     "name": "Transform_Sprite",
+     "palette_title": "Transform Sprite",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_sprite_transform",
+     "has_code": false,
+     "argc": 4,
+     "args": [
+      {
+       "caption": "xscale:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      },
+      {
+       "caption": "yscale:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      },
+      {
+       "caption": "angle:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "mirror:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "no mirroring",
+        "mirror horizontally",
+        "flip vertically",
+        "mirror and flip"
+       ]
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@w"
+     ],
+     "summary": "Set sprite x/y scale, rotation angle and mirroring/flipping."
+    },
+    {
+     "lib_id": 1,
+     "id": 543,
+     "name": "Color_Sprite",
+     "palette_title": "Color Sprite",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_sprite_color",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "color:",
+       "kind": 13,
+       "kind_name": "color",
+       "default": "16777215"
+      },
+      {
+       "caption": "alpha:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@w"
+     ],
+     "summary": "Set sprite blend colour and alpha."
+    },
+    {
+     "lib_id": 1,
+     "id": 205,
+     "name": "Set_Sprite_Old",
+     "palette_title": "Change Sprite OLD",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": true,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_set_sprite",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "sprite:",
+       "kind": 5,
+       "kind_name": "sprite",
+       "default": "-1"
+      },
+      {
+       "caption": "scale factor:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@w"
+     ],
+     "summary": "Legacy: set sprite with a scale factor (hidden in the palette)."
+    },
+    {
+     "lib_id": 1,
+     "id": 211,
+     "name": "Begin_Sound",
+     "palette_title": "Play Sound",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_sound",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "sound:",
+       "kind": 6,
+       "kind_name": "sound",
+       "default": "-1"
+      },
+      {
+       "caption": "loop:",
+       "kind": 3,
+       "kind_name": "boolean",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1"
+     ],
+     "summary": "Play a sound, optionally looping."
+    },
+    {
+     "lib_id": 1,
+     "id": 212,
+     "name": "End_Sound",
+     "palette_title": "Stop Sound",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_end_sound",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "sound:",
+       "kind": 6,
+       "kind_name": "sound",
+       "default": "-1"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Stop a sound."
+    },
+    {
+     "lib_id": 1,
+     "id": 213,
+     "name": "If_Sound",
+     "palette_title": "Check Sound",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": true,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_if_sound",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "sound:",
+       "kind": 6,
+       "kind_name": "sound",
+       "default": "-1"
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@N"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@N"
+     ],
+     "summary": "Question: is the given sound playing?"
+    },
+    {
+     "lib_id": 1,
+     "id": 221,
+     "name": "Previous_Room",
+     "palette_title": "Previous Room",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_previous_room",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "transition:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "<no effect>",
+        "Create from left",
+        "Create from right",
+        "Create from top",
+        "Create from bottom",
+        "Create from center",
+        "Shift from left",
+        "Shift from right",
+        "Shift from top",
+        "Shift from bottom",
+        "Interlaced from left",
+        "Interlaced from right",
+        "Interlaced from top",
+        "Interlaced from bottom",
+        "Push from left",
+        "Push from right",
+        "Push from top",
+        "Push from bottom",
+        "Rotate left",
+        "Rotate right",
+        "Blend",
+        "Fade out and in"
+       ]
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Go to the previous room in room order, with a transition."
+    },
+    {
+     "lib_id": 1,
+     "id": 222,
+     "name": "Next_Room",
+     "palette_title": "Next Room",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_next_room",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "transition:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "<no effect>",
+        "Create from left",
+        "Create from right",
+        "Create from top",
+        "Create from bottom",
+        "Create from center",
+        "Shift from left",
+        "Shift from right",
+        "Shift from top",
+        "Shift from bottom",
+        "Interlaced from left",
+        "Interlaced from right",
+        "Interlaced from top",
+        "Interlaced from bottom",
+        "Push from left",
+        "Push from right",
+        "Push from top",
+        "Push from bottom",
+        "Rotate left",
+        "Rotate right",
+        "Blend",
+        "Fade out and in"
+       ]
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Go to the next room in room order, with a transition."
+    },
+    {
+     "lib_id": 1,
+     "id": 223,
+     "name": "Current_Room",
+     "palette_title": "Restart Room",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_current_room",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "transition:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "<no effect>",
+        "Create from left",
+        "Create from right",
+        "Create from top",
+        "Create from bottom",
+        "Create from center",
+        "Shift from left",
+        "Shift from right",
+        "Shift from top",
+        "Shift from bottom",
+        "Interlaced from left",
+        "Interlaced from right",
+        "Interlaced from top",
+        "Interlaced from bottom",
+        "Push from left",
+        "Push from right",
+        "Push from top",
+        "Push from bottom",
+        "Rotate left",
+        "Rotate right",
+        "Blend",
+        "Fade out and in"
+       ]
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Restart the current room, with a transition."
+    },
+    {
+     "lib_id": 1,
+     "id": 224,
+     "name": "Another_Room",
+     "palette_title": "Different Room",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_another_room",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "new room:",
+       "kind": 11,
+       "kind_name": "room",
+       "default": "-1"
+      },
+      {
+       "caption": "transition:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "<no effect>",
+        "Create from left",
+        "Create from right",
+        "Create from top",
+        "Create from bottom",
+        "Create from center",
+        "Shift from left",
+        "Shift from right",
+        "Shift from top",
+        "Shift from bottom",
+        "Interlaced from left",
+        "Interlaced from right",
+        "Interlaced from top",
+        "Interlaced from bottom",
+        "Push from left",
+        "Push from right",
+        "Push from top",
+        "Push from bottom",
+        "Rotate left",
+        "Rotate right",
+        "Blend",
+        "Fade out and in"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1"
+     ],
+     "summary": "Go to a specific room, with a transition."
+    },
+    {
+     "lib_id": 1,
+     "id": 225,
+     "name": "If_Previous_Room",
+     "palette_title": "Check Previous",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": true,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_if_previous_room",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "Question: does a previous room exist?"
+    },
+    {
+     "lib_id": 1,
+     "id": 226,
+     "name": "If_Next_Room",
+     "palette_title": "Check Next",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": true,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_if_next_room",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "Question: does a next room exist?"
+    }
+   ]
+  },
+  {
+   "file": "03_main2.lib",
+   "tab_caption": "main2",
+   "lib_id": 1,
+   "lib_format_version": 520,
+   "lib_version": 710,
+   "advanced_only": false,
+   "has_init_code": false,
+   "palette": [
+    {
+     "pos": 0,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Timing",
+     "advanced_only": false
+    },
+    {
+     "pos": 1,
+     "action_id": 301
+    },
+    {
+     "pos": 2,
+     "action_id": 302
+    },
+    {
+     "pos": 3,
+     "kind": 8,
+     "kind_name": "placeholder",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 4,
+     "action_id": 303
+    },
+    {
+     "pos": 5,
+     "action_id": 305
+    },
+    {
+     "pos": 6,
+     "action_id": 304
+    },
+    {
+     "pos": 7,
+     "action_id": 309
+    },
+    {
+     "pos": 8,
+     "action_id": 306
+    },
+    {
+     "pos": 9,
+     "action_id": 307
+    },
+    {
+     "pos": 10,
+     "action_id": 308
+    },
+    {
+     "pos": 11,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 12,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Info",
+     "advanced_only": false
+    },
+    {
+     "pos": 13,
+     "action_id": 321
+    },
+    {
+     "pos": 14,
+     "action_id": 322
+    },
+    {
+     "pos": 15,
+     "action_id": 323
+    },
+    {
+     "pos": 16,
+     "kind": 8,
+     "kind_name": "placeholder",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 17,
+     "action_id": 324
+    },
+    {
+     "pos": 18,
+     "action_id": 325
+    },
+    {
+     "pos": 19,
+     "action_id": 326
+    },
+    {
+     "pos": 20,
+     "action_id": 327
+    },
+    {
+     "pos": 21,
+     "action_id": 328
+    },
+    {
+     "pos": 22,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 23,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Game",
+     "advanced_only": false
+    },
+    {
+     "pos": 24,
+     "action_id": 331
+    },
+    {
+     "pos": 25,
+     "action_id": 332
+    },
+    {
+     "pos": 26,
+     "kind": 8,
+     "kind_name": "placeholder",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 27,
+     "action_id": 333
+    },
+    {
+     "pos": 28,
+     "action_id": 334
+    },
+    {
+     "pos": 29,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": true
+    },
+    {
+     "pos": 30,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Resources",
+     "advanced_only": true
+    },
+    {
+     "pos": 31,
+     "action_id": 803
+    },
+    {
+     "pos": 32,
+     "action_id": 804
+    },
+    {
+     "pos": 33,
+     "action_id": 805
+    }
+   ],
+   "actions": [
+    {
+     "lib_id": 1,
+     "id": 301,
+     "name": "Set_Alarm",
+     "palette_title": "Set Alarm",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_set_alarm",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "number of steps:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "in alarm no:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "Alarm 0",
+        "Alarm 1",
+        "Alarm 2",
+        "Alarm 3",
+        "Alarm 4",
+        "Alarm 5",
+        "Alarm 6",
+        "Alarm 7",
+        "Alarm 8",
+        "Alarm 9",
+        "Alarm 10",
+        "Alarm 11"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1",
+      "@r"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@r",
+      "@w"
+     ],
+     "summary": "Set one of the 12 alarm clocks to a number of steps."
+    },
+    {
+     "lib_id": 1,
+     "id": 302,
+     "name": "Sleep",
+     "palette_title": "Sleep",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_sleep",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "milliseconds:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1000"
+      },
+      {
+       "caption": "redraw:",
+       "kind": 3,
+       "kind_name": "boolean",
+       "default": "1"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1"
+     ],
+     "summary": "Pause the game for some milliseconds, optionally redrawing first."
+    },
+    {
+     "lib_id": 1,
+     "id": 303,
+     "name": "Set TimeLine (OLD)",
+     "palette_title": "Set Time Line (OLD)",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": true,
+     "advanced_only": true,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_set_timeline",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "Time Line:",
+       "kind": 14,
+       "kind_name": "timeline",
+       "default": "-1"
+      },
+      {
+       "caption": "Position:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@w"
+     ],
+     "summary": "Legacy: assign a time line and position (hidden)."
+    },
+    {
+     "lib_id": 1,
+     "id": 305,
+     "name": "Set TimeLine",
+     "palette_title": "Set Time Line",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_timeline_set",
+     "has_code": false,
+     "argc": 4,
+     "args": [
+      {
+       "caption": "time line:",
+       "kind": 14,
+       "kind_name": "timeline",
+       "default": "-1"
+      },
+      {
+       "caption": "position:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "start:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "Start Immediately",
+        "Don't Start"
+       ]
+      },
+      {
+       "caption": "loop:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "Don't Loop",
+        "Loop"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@w"
+     ],
+     "summary": "Assign a time line, its start position, whether to start now and whether to loop."
+    },
+    {
+     "lib_id": 1,
+     "id": 304,
+     "name": "Position TimeLine",
+     "palette_title": "Time Line Position",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_set_timeline_position",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "position:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@r",
+      "@w"
+     ],
+     "summary": "Set the current time line position."
+    },
+    {
+     "lib_id": 1,
+     "id": 309,
+     "name": "Speed TimeLine",
+     "palette_title": "Time Line Speed",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_set_timeline_speed",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "speed:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@r",
+      "@w"
+     ],
+     "summary": "Set the current time line speed."
+    },
+    {
+     "lib_id": 1,
+     "id": 306,
+     "name": "Start TimeLine",
+     "palette_title": "Start Time Line",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_timeline_start",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@w"
+     ],
+     "summary": "Start or resume the assigned time line."
+    },
+    {
+     "lib_id": 1,
+     "id": 307,
+     "name": "Pause TimeLine",
+     "palette_title": "Pause Time Line",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_timeline_pause",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@w"
+     ],
+     "summary": "Pause the assigned time line."
+    },
+    {
+     "lib_id": 1,
+     "id": 308,
+     "name": "Stop TimeLine",
+     "palette_title": "Stop Time Line",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_timeline_stop",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@w"
+     ],
+     "summary": "Stop the time line and reset its position."
+    },
+    {
+     "lib_id": 1,
+     "id": 321,
+     "name": "Message",
+     "palette_title": "Display Message",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_message",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "message:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": ""
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Show a modal message box."
+    },
+    {
+     "lib_id": 1,
+     "id": 322,
+     "name": "Show_Info",
+     "palette_title": "Show Info",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_show_info",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "Show the game information window."
+    },
+    {
+     "lib_id": 1,
+     "id": 323,
+     "name": "Show_Video",
+     "palette_title": "Show Video",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": true,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_show_video",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "file name:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": "video.avi"
+      },
+      {
+       "caption": "full screen:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "Windowed",
+        "Full Screen"
+       ]
+      },
+      {
+       "caption": "loop:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "Don't Loop",
+        "Loop"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2"
+     ],
+     "summary": "Legacy: play a video file (hidden)."
+    },
+    {
+     "lib_id": 1,
+     "id": 324,
+     "name": "Splash_Text",
+     "palette_title": "Splash Text",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_splash_text",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "file name:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": "text.txt"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Splash a text file."
+    },
+    {
+     "lib_id": 1,
+     "id": 325,
+     "name": "Splash_Image",
+     "palette_title": "Splash Image",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_splash_image",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "file name:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": "image.jpg"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Splash an image file."
+    },
+    {
+     "lib_id": 1,
+     "id": 326,
+     "name": "Splash_Web",
+     "palette_title": "Splash Webpage",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_splash_web",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "webpage:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": "http://"
+      },
+      {
+       "caption": "open in:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "Game Window",
+        "Browser"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1"
+     ],
+     "summary": "Splash a web page in the game window or the browser."
+    },
+    {
+     "lib_id": 1,
+     "id": 327,
+     "name": "Splash_Video",
+     "palette_title": "Splash Video",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_splash_video",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "file name:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": "video.mpg"
+      },
+      {
+       "caption": "loop:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "Don't Loop",
+        "Loop"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@2"
+     ],
+     "summary": "Splash a video file, optionally looping."
+    },
+    {
+     "lib_id": 1,
+     "id": 328,
+     "name": "Splash_Settings",
+     "palette_title": "Splash Settings",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_splash_settings",
+     "has_code": false,
+     "argc": 5,
+     "args": [
+      {
+       "caption": "caption:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": ""
+      },
+      {
+       "caption": "open in:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "Game Window",
+        "Normal Window",
+        "Full Screen"
+       ]
+      },
+      {
+       "caption": "close button:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "Show",
+        "Don't Show"
+       ]
+      },
+      {
+       "caption": "on escape:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "Close",
+        "Don't Close"
+       ]
+      },
+      {
+       "caption": "on mouse:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "Close",
+        "Don't Close"
+       ]
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4"
+     ],
+     "summary": "Configure splash window caption, placement, close button and close-on-escape/mouse."
+    },
+    {
+     "lib_id": 1,
+     "id": 331,
+     "name": "Restart_Game",
+     "palette_title": "Restart Game",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_restart_game",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "Restart the game."
+    },
+    {
+     "lib_id": 1,
+     "id": 332,
+     "name": "End_Game",
+     "palette_title": "End Game",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_end_game",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "End the game."
+    },
+    {
+     "lib_id": 1,
+     "id": 333,
+     "name": "Save_Game",
+     "palette_title": "Save Game",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_save_game",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "file name:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": "savegame"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Save the game state to a file."
+    },
+    {
+     "lib_id": 1,
+     "id": 334,
+     "name": "Load_Game",
+     "palette_title": "Load Game",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_load_game",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "file name:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": "savegame"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Load the game state from a file."
+    },
+    {
+     "lib_id": 1,
+     "id": 803,
+     "name": "Replace_Sprite",
+     "palette_title": "Replace Sprite",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_replace_sprite",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "sprite:",
+       "kind": 5,
+       "kind_name": "sprite",
+       "default": "-1"
+      },
+      {
+       "caption": "filename:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": "sprite.png"
+      },
+      {
+       "caption": "images:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2"
+     ],
+     "summary": "Replace a sprite's images from a file (with given number of sub-images)."
+    },
+    {
+     "lib_id": 1,
+     "id": 804,
+     "name": "Replace_Sound",
+     "palette_title": "Replace Sound",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_replace_sound",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "sound:",
+       "kind": 6,
+       "kind_name": "sound",
+       "default": "-1"
+      },
+      {
+       "caption": "filename:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": "sound.mid"
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1"
+     ],
+     "summary": "Replace a sound's data from a file."
+    },
+    {
+     "lib_id": 1,
+     "id": 805,
+     "name": "Replace_Background",
+     "palette_title": "Replace Background",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_replace_background",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "background:",
+       "kind": 7,
+       "kind_name": "background",
+       "default": "-1"
+      },
+      {
+       "caption": "filename:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": "background.png"
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1"
+     ],
+     "summary": "Replace a background's image from a file."
+    }
+   ]
+  },
+  {
+   "file": "04_control.lib",
+   "tab_caption": "control",
+   "lib_id": 1,
+   "lib_format_version": 520,
+   "lib_version": 600,
+   "advanced_only": false,
+   "has_init_code": false,
+   "palette": [
+    {
+     "pos": 0,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Questions",
+     "advanced_only": false
+    },
+    {
+     "pos": 1,
+     "action_id": 401
+    },
+    {
+     "pos": 2,
+     "action_id": 402
+    },
+    {
+     "pos": 3,
+     "action_id": 403
+    },
+    {
+     "pos": 4,
+     "action_id": 404
+    },
+    {
+     "pos": 5,
+     "action_id": 405
+    },
+    {
+     "pos": 6,
+     "action_id": 407
+    },
+    {
+     "pos": 7,
+     "action_id": 408
+    },
+    {
+     "pos": 8,
+     "action_id": 409
+    },
+    {
+     "pos": 9,
+     "action_id": 410
+    },
+    {
+     "pos": 10,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 11,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Other",
+     "advanced_only": false
+    },
+    {
+     "pos": 12,
+     "action_id": 422
+    },
+    {
+     "pos": 13,
+     "action_id": 421
+    },
+    {
+     "pos": 14,
+     "action_id": 425
+    },
+    {
+     "pos": 15,
+     "action_id": 424
+    },
+    {
+     "pos": 16,
+     "action_id": 423
+    },
+    {
+     "pos": 17,
+     "action_id": 604
+    },
+    {
+     "pos": 18,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 19,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Code",
+     "advanced_only": false
+    },
+    {
+     "pos": 20,
+     "action_id": 603
+    },
+    {
+     "pos": 21,
+     "action_id": 601
+    },
+    {
+     "pos": 22,
+     "action_id": 605
+    },
+    {
+     "pos": 23,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 24,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Variables",
+     "advanced_only": false
+    },
+    {
+     "pos": 25,
+     "action_id": 611
+    },
+    {
+     "pos": 26,
+     "action_id": 612
+    },
+    {
+     "pos": 27,
+     "action_id": 613
+    }
+   ],
+   "actions": [
+    {
+     "lib_id": 1,
+     "id": 401,
+     "name": "If_Empty",
+     "palette_title": "Check Empty",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": true,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_if_empty",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "objects:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "Only solid",
+        "All"
+       ]
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@N",
+      "@r",
+      "@w"
+     ],
+     "summary": "Question: is a position free of solid (or all) instances?"
+    },
+    {
+     "lib_id": 1,
+     "id": 402,
+     "name": "If Collision",
+     "palette_title": "Check Collision",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": true,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_if_collision",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "objects:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "Only solid",
+        "All"
+       ]
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@N",
+      "@r",
+      "@w"
+     ],
+     "summary": "Question: is there a collision with solid (or all) instances at a position?"
+    },
+    {
+     "lib_id": 1,
+     "id": 403,
+     "name": "If_Object",
+     "palette_title": "Check Object",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": true,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_if_object",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "object:",
+       "kind": 10,
+       "kind_name": "object",
+       "default": "-100"
+      },
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@N",
+      "@r",
+      "@w"
+     ],
+     "summary": "Question: is there an instance of an object at a position?"
+    },
+    {
+     "lib_id": 1,
+     "id": 404,
+     "name": "If_Number",
+     "palette_title": "Test Instance Count",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": true,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_if_number",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "object:",
+       "kind": 10,
+       "kind_name": "object",
+       "default": "-100"
+      },
+      {
+       "caption": "number:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "operation:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "Equal to",
+        "Smaller than",
+        "Larger than"
+       ]
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@N"
+     ],
+     "summary": "Question: compare the instance count of an object with a number."
+    },
+    {
+     "lib_id": 1,
+     "id": 405,
+     "name": "If_Dice",
+     "palette_title": "Test Chance",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": true,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_if_dice",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "sides:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "2"
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@N"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@N"
+     ],
+     "summary": "Question: true with probability 1/sides."
+    },
+    {
+     "lib_id": 1,
+     "id": 407,
+     "name": "If_Question",
+     "palette_title": "Check Question",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": true,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_if_question",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "question:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": ""
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@N"
+     ],
+     "summary": "Question: ask the player a yes/no question."
+    },
+    {
+     "lib_id": 1,
+     "id": 408,
+     "name": "If",
+     "palette_title": "Test Expression",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": true,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_if",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "expression:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": ""
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@N",
+      "@w"
+     ],
+     "summary": "Question: evaluate an expression as a condition."
+    },
+    {
+     "lib_id": 1,
+     "id": 409,
+     "name": "If_Mouse",
+     "palette_title": "Check Mouse",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": true,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_if_mouse",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "button:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "1",
+       "menu": [
+        "no",
+        "left",
+        "right",
+        "middle"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@N"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@N"
+     ],
+     "summary": "Question: is a mouse button (or no button) currently pressed?"
+    },
+    {
+     "lib_id": 1,
+     "id": 410,
+     "name": "If_Aligned",
+     "palette_title": "Check Grid",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": true,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_if_aligned",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "snap hor:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "16"
+      },
+      {
+       "caption": "snap vert:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "16"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@N",
+      "@w"
+     ],
+     "summary": "Question: is the instance position aligned to a grid?"
+    },
+    {
+     "lib_id": 1,
+     "id": 422,
+     "name": "Start_Block",
+     "palette_title": "Start Block",
+     "kind": 1,
+     "kind_name": "begin_group",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 0,
+     "exe_type_name": "none",
+     "function": "",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "Begin a block of actions."
+    },
+    {
+     "lib_id": 1,
+     "id": 421,
+     "name": "Else",
+     "palette_title": "Else",
+     "kind": 3,
+     "kind_name": "else",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 0,
+     "exe_type_name": "none",
+     "function": "",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "Else branch for the preceding question."
+    },
+    {
+     "lib_id": 1,
+     "id": 425,
+     "name": "Exit",
+     "palette_title": "Exit Event",
+     "kind": 4,
+     "kind_name": "exit",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 0,
+     "exe_type_name": "none",
+     "function": "",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "Exit the current event."
+    },
+    {
+     "lib_id": 1,
+     "id": 424,
+     "name": "End_Block",
+     "palette_title": "End Block",
+     "kind": 2,
+     "kind_name": "end_group",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 0,
+     "exe_type_name": "none",
+     "function": "",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "End a block of actions."
+    },
+    {
+     "lib_id": 1,
+     "id": 423,
+     "name": "Repeat",
+     "palette_title": "Repeat",
+     "kind": 5,
+     "kind_name": "repeat",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 0,
+     "exe_type_name": "none",
+     "function": "",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "times:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Repeat the next action or block a number of times."
+    },
+    {
+     "lib_id": 1,
+     "id": 604,
+     "name": "Inherited",
+     "palette_title": "Call Parent Event",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_inherited",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "Run the same event of the parent object."
+    },
+    {
+     "lib_id": 1,
+     "id": 603,
+     "name": "Code",
+     "palette_title": "Execute Code",
+     "kind": 7,
+     "kind_name": "code",
+     "interface": 5,
+     "interface_name": "text",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 2,
+     "exe_type_name": "code",
+     "function": "",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "Argument 1:",
+       "kind": 1,
+       "kind_name": "string",
+       "default": ""
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "#",
+      "@0",
+      "@w"
+     ],
+     "summary": "Execute a GML code fragment (argument 0 holds the code)."
+    },
+    {
+     "lib_id": 1,
+     "id": 601,
+     "name": "Execute_Script",
+     "palette_title": "Execute Script",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_execute_script",
+     "has_code": false,
+     "argc": 6,
+     "args": [
+      {
+       "caption": "script:",
+       "kind": 9,
+       "kind_name": "script",
+       "default": "-1"
+      },
+      {
+       "caption": "argument0:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "argument1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "argument2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "argument3:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "argument4:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@5",
+      "@w"
+     ],
+     "summary": "Call a script with up to five arguments."
+    },
+    {
+     "lib_id": 1,
+     "id": 605,
+     "name": "Comment",
+     "palette_title": "Comment",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 0,
+     "exe_type_name": "none",
+     "function": "",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "comment:",
+       "kind": 1,
+       "kind_name": "string",
+       "default": ""
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@FI"
+     ],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Comment; does nothing at run time."
+    },
+    {
+     "lib_id": 1,
+     "id": 611,
+     "name": "Variable",
+     "palette_title": "Set Variable",
+     "kind": 6,
+     "kind_name": "variable",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 2,
+     "exe_type_name": "code",
+     "function": "",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "variable:",
+       "kind": 1,
+       "kind_name": "string",
+       "default": ""
+      },
+      {
+       "caption": "value:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@r",
+      "@w"
+     ],
+     "summary": "Assign (or add to, when relative) a variable."
+    },
+    {
+     "lib_id": 1,
+     "id": 612,
+     "name": "If_Variable",
+     "palette_title": "Test Variable",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": true,
+     "show_apply_to": true,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_if_variable",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "variable:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": ""
+      },
+      {
+       "caption": "value:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "operation:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "equal to",
+        "smaller than",
+        "larger than"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@N"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@N",
+      "@w"
+     ],
+     "summary": "Question: compare a variable with a value."
+    },
+    {
+     "lib_id": 1,
+     "id": 613,
+     "name": "Draw_Variable",
+     "palette_title": "Draw Variable",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_draw_variable",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "variable:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": ""
+      },
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@r",
+      "@w"
+     ],
+     "summary": "Draw the value of a variable at a position."
+    }
+   ]
+  },
+  {
+   "file": "05_score.lib",
+   "tab_caption": "score",
+   "lib_id": 1,
+   "lib_format_version": 520,
+   "lib_version": 600,
+   "advanced_only": false,
+   "has_init_code": false,
+   "palette": [
+    {
+     "pos": 0,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Score",
+     "advanced_only": false
+    },
+    {
+     "pos": 1,
+     "action_id": 701
+    },
+    {
+     "pos": 2,
+     "action_id": 702
+    },
+    {
+     "pos": 3,
+     "action_id": 703
+    },
+    {
+     "pos": 4,
+     "action_id": 709
+    },
+    {
+     "pos": 5,
+     "action_id": 707
+    },
+    {
+     "pos": 6,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 7,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Lives",
+     "advanced_only": false
+    },
+    {
+     "pos": 8,
+     "action_id": 711
+    },
+    {
+     "pos": 9,
+     "action_id": 712
+    },
+    {
+     "pos": 10,
+     "action_id": 713
+    },
+    {
+     "pos": 11,
+     "action_id": 714
+    },
+    {
+     "pos": 12,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 13,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Health",
+     "advanced_only": false
+    },
+    {
+     "pos": 14,
+     "action_id": 721
+    },
+    {
+     "pos": 15,
+     "action_id": 722
+    },
+    {
+     "pos": 16,
+     "action_id": 723
+    },
+    {
+     "pos": 17,
+     "action_id": 731
+    }
+   ],
+   "actions": [
+    {
+     "lib_id": 1,
+     "id": 701,
+     "name": "Set_Score",
+     "palette_title": "Set Score",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_set_score",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "new score:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@r"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@r"
+     ],
+     "summary": "Set (or add to) the score."
+    },
+    {
+     "lib_id": 1,
+     "id": 702,
+     "name": "If_Score",
+     "palette_title": "Test Score",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": true,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_if_score",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "value:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "operation:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "equal to",
+        "smaller than",
+        "larger than"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1",
+      "@N"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@N"
+     ],
+     "summary": "Question: compare the score with a value."
+    },
+    {
+     "lib_id": 1,
+     "id": 703,
+     "name": "Draw_Score",
+     "palette_title": "Draw Score",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_draw_score",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "caption:",
+       "kind": 1,
+       "kind_name": "string",
+       "default": "Score: "
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@r"
+     ],
+     "summary": "Draw the score with a caption at a position."
+    },
+    {
+     "lib_id": 1,
+     "id": 709,
+     "name": "Highscore_Show",
+     "palette_title": "Show Highscore",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_highscore_show",
+     "has_code": false,
+     "argc": 5,
+     "args": [
+      {
+       "caption": "background:",
+       "kind": 7,
+       "kind_name": "background",
+       "default": "-1"
+      },
+      {
+       "caption": "border:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "1",
+       "menu": [
+        "don't show",
+        "show"
+       ]
+      },
+      {
+       "caption": "new color:",
+       "kind": 13,
+       "kind_name": "color",
+       "default": "255"
+      },
+      {
+       "caption": "other color:",
+       "kind": 13,
+       "kind_name": "color",
+       "default": "0"
+      },
+      {
+       "caption": "font:",
+       "kind": 15,
+       "kind_name": "font_string",
+       "default": "\"Times New Roman\",10,0,0,0,0,0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "#",
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4"
+     ],
+     "summary": "Show the highscore table with background, border, colours and font."
+    },
+    {
+     "lib_id": 1,
+     "id": 707,
+     "name": "Highscore_Clear",
+     "palette_title": "Clear Highscore",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_highscore_clear",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "Clear the highscore table."
+    },
+    {
+     "lib_id": 1,
+     "id": 711,
+     "name": "Set_Life",
+     "palette_title": "Set Lives",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_set_life",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "new lives:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@r"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@r"
+     ],
+     "summary": "Set (or add to) the number of lives."
+    },
+    {
+     "lib_id": 1,
+     "id": 712,
+     "name": "If_Life",
+     "palette_title": "Test Lives",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": true,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_if_life",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "value:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "operation:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "equal to",
+        "smaller than",
+        "larger than"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1",
+      "@N"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@N"
+     ],
+     "summary": "Question: compare lives with a value."
+    },
+    {
+     "lib_id": 1,
+     "id": 713,
+     "name": "Draw_Life",
+     "palette_title": "Draw Lives",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_draw_life",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "caption:",
+       "kind": 1,
+       "kind_name": "string",
+       "default": "Lives: "
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@r"
+     ],
+     "summary": "Draw the number of lives with a caption."
+    },
+    {
+     "lib_id": 1,
+     "id": 714,
+     "name": "Draw_Life_Images",
+     "palette_title": "Draw Life Images",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_draw_life_images",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "image:",
+       "kind": 5,
+       "kind_name": "sprite",
+       "default": "-1"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@r"
+     ],
+     "summary": "Draw the lives as repeated images of a sprite."
+    },
+    {
+     "lib_id": 1,
+     "id": 721,
+     "name": "Set_Health",
+     "palette_title": "Set Health",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_set_health",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "value (0-100):",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@r"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@r"
+     ],
+     "summary": "Set (or add to) health (0-100)."
+    },
+    {
+     "lib_id": 1,
+     "id": 722,
+     "name": "If_Health",
+     "palette_title": "Test Health",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": true,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_if_health",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "value:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "operation:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "equal to",
+        "smaller than",
+        "larger than"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1",
+      "@N"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@N"
+     ],
+     "summary": "Question: compare health with a value."
+    },
+    {
+     "lib_id": 1,
+     "id": 723,
+     "name": "Draw_Health",
+     "palette_title": "Draw Health",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_draw_health",
+     "has_code": false,
+     "argc": 6,
+     "args": [
+      {
+       "caption": "x1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "x2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "back color:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "none",
+        "black",
+        "gray",
+        "silver",
+        "white",
+        "maroon",
+        "green",
+        "olive",
+        "navy",
+        "purple",
+        "teal",
+        "red",
+        "lime",
+        "yellow",
+        "blue",
+        "fuchsia",
+        "aqua"
+       ]
+      },
+      {
+       "caption": "bar color:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "green to red",
+        "white to black",
+        "black",
+        "gray",
+        "silver",
+        "white",
+        "maroon",
+        "green",
+        "olive",
+        "navy",
+        "purple",
+        "teal",
+        "red",
+        "lime",
+        "yellow",
+        "blue",
+        "fuchsia",
+        "aqua"
+       ]
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@5",
+      "@r"
+     ],
+     "summary": "Draw a health bar in a rectangle with back and bar colours."
+    },
+    {
+     "lib_id": 1,
+     "id": 731,
+     "name": "Set_Caption",
+     "palette_title": "Score Caption",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_set_caption",
+     "has_code": false,
+     "argc": 6,
+     "args": [
+      {
+       "caption": "show score:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "1",
+       "menu": [
+        "don't show",
+        "show"
+       ]
+      },
+      {
+       "caption": "score caption:",
+       "kind": 1,
+       "kind_name": "string",
+       "default": "score: "
+      },
+      {
+       "caption": "show lives:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "don't show",
+        "show"
+       ]
+      },
+      {
+       "caption": "lives caption:",
+       "kind": 1,
+       "kind_name": "string",
+       "default": "lives: "
+      },
+      {
+       "caption": "show health:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "don't show",
+        "show"
+       ]
+      },
+      {
+       "caption": "health caption:",
+       "kind": 1,
+       "kind_name": "string",
+       "default": "health: "
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "#",
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@5"
+     ],
+     "summary": "Choose which of score/lives/health are shown in the window caption and their captions."
+    }
+   ]
+  },
+  {
+   "file": "06_extra.lib",
+   "tab_caption": "extra",
+   "lib_id": 1,
+   "lib_format_version": 520,
+   "lib_version": 600,
+   "advanced_only": true,
+   "has_init_code": false,
+   "palette": [
+    {
+     "pos": 0,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Particles",
+     "advanced_only": false
+    },
+    {
+     "pos": 1,
+     "action_id": 820
+    },
+    {
+     "pos": 2,
+     "action_id": 821
+    },
+    {
+     "pos": 3,
+     "action_id": 822
+    },
+    {
+     "pos": 4,
+     "action_id": 825
+    },
+    {
+     "pos": 5,
+     "action_id": 823
+    },
+    {
+     "pos": 6,
+     "action_id": 824
+    },
+    {
+     "pos": 7,
+     "action_id": 826
+    },
+    {
+     "pos": 8,
+     "action_id": 827
+    },
+    {
+     "pos": 9,
+     "action_id": 828
+    },
+    {
+     "pos": 10,
+     "action_id": 829
+    },
+    {
+     "pos": 11,
+     "action_id": 831
+    },
+    {
+     "pos": 12,
+     "action_id": 832
+    },
+    {
+     "pos": 13,
+     "action_id": 833
+    },
+    {
+     "pos": 14,
+     "action_id": 834
+    },
+    {
+     "pos": 15,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": true
+    },
+    {
+     "pos": 16,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "CD",
+     "advanced_only": true
+    },
+    {
+     "pos": 17,
+     "action_id": 808
+    },
+    {
+     "pos": 18,
+     "action_id": 809
+    },
+    {
+     "pos": 19,
+     "action_id": 810
+    },
+    {
+     "pos": 20,
+     "action_id": 811
+    },
+    {
+     "pos": 21,
+     "action_id": 812
+    },
+    {
+     "pos": 22,
+     "action_id": 813
+    },
+    {
+     "pos": 23,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 24,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Other",
+     "advanced_only": false
+    },
+    {
+     "pos": 25,
+     "action_id": 801
+    },
+    {
+     "pos": 26,
+     "action_id": 807
+    }
+   ],
+   "actions": [
+    {
+     "lib_id": 1,
+     "id": 820,
+     "name": "Part_Syst_Create",
+     "palette_title": "Create Part System",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_partsyst_create",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "depth:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Create the particle system at a drawing depth."
+    },
+    {
+     "lib_id": 1,
+     "id": 821,
+     "name": "Part_Syst_Destroy",
+     "palette_title": "Destroy Part System",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_partsyst_destroy",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "Destroy the particle system."
+    },
+    {
+     "lib_id": 1,
+     "id": 822,
+     "name": "Part_Syst_Clear",
+     "palette_title": "Clear Part System",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_partsyst_clear",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "Remove all particles from the system."
+    },
+    {
+     "lib_id": 1,
+     "id": 825,
+     "name": "Part_Type_Create_Old",
+     "palette_title": "Create Particle OLD",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": true,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_parttype_create_old",
+     "has_code": false,
+     "argc": 6,
+     "args": [
+      {
+       "caption": "type id:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "type 0",
+        "type 1",
+        "type 2",
+        "type 3",
+        "type 4",
+        "type 5",
+        "type 6",
+        "type 7",
+        "type 8",
+        "type 9",
+        "type 10",
+        "type 11",
+        "type 12",
+        "type 13",
+        "type 14",
+        "type 15"
+       ]
+      },
+      {
+       "caption": "shape:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "pixel",
+        "disk",
+        "square",
+        "line",
+        "star",
+        "circle",
+        "ring",
+        "sphere",
+        "flare",
+        "spark",
+        "explosion",
+        "cloud",
+        "smoke"
+       ]
+      },
+      {
+       "caption": "min size:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      },
+      {
+       "caption": "max size:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      },
+      {
+       "caption": "start col:",
+       "kind": 13,
+       "kind_name": "color",
+       "default": "16777215"
+      },
+      {
+       "caption": "end col:",
+       "kind": 13,
+       "kind_name": "color",
+       "default": "16777215"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@5"
+     ],
+     "summary": "Legacy: define a particle type (hidden)."
+    },
+    {
+     "lib_id": 1,
+     "id": 823,
+     "name": "Part_Type_Create",
+     "palette_title": "Create Particle",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_parttype_create",
+     "has_code": false,
+     "argc": 6,
+     "args": [
+      {
+       "caption": "type id:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "type 0",
+        "type 1",
+        "type 2",
+        "type 3",
+        "type 4",
+        "type 5",
+        "type 6",
+        "type 7",
+        "type 8",
+        "type 9",
+        "type 10",
+        "type 11",
+        "type 12",
+        "type 13",
+        "type 14",
+        "type 15"
+       ]
+      },
+      {
+       "caption": "shape:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "pixel",
+        "disk",
+        "square",
+        "line",
+        "star",
+        "circle",
+        "ring",
+        "sphere",
+        "flare",
+        "spark",
+        "explosion",
+        "cloud",
+        "smoke",
+        "snow"
+       ]
+      },
+      {
+       "caption": "sprite:",
+       "kind": 5,
+       "kind_name": "sprite",
+       "default": "-1"
+      },
+      {
+       "caption": "min size:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      },
+      {
+       "caption": "max size:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      },
+      {
+       "caption": "size increment:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@5"
+     ],
+     "summary": "Define a particle type: shape or sprite and size range."
+    },
+    {
+     "lib_id": 1,
+     "id": 824,
+     "name": "Part_Type_Color",
+     "palette_title": "Particle Color",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_parttype_color",
+     "has_code": false,
+     "argc": 6,
+     "args": [
+      {
+       "caption": "type id:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "type 0",
+        "type 1",
+        "type 2",
+        "type 3",
+        "type 4",
+        "type 5",
+        "type 6",
+        "type 7",
+        "type 8",
+        "type 9",
+        "type 10",
+        "type 11",
+        "type 12",
+        "type 13",
+        "type 14",
+        "type 15"
+       ]
+      },
+      {
+       "caption": "shape:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "mixed",
+        "changing"
+       ]
+      },
+      {
+       "caption": "color1:",
+       "kind": 13,
+       "kind_name": "color",
+       "default": "16777215"
+      },
+      {
+       "caption": "color2:",
+       "kind": 13,
+       "kind_name": "color",
+       "default": "16777215"
+      },
+      {
+       "caption": "start alpha:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      },
+      {
+       "caption": "end alpha:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@5"
+     ],
+     "summary": "Set particle type colour (mixed or changing) and start/end alpha."
+    },
+    {
+     "lib_id": 1,
+     "id": 826,
+     "name": "Part_Type_Life",
+     "palette_title": "Particle Life",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_parttype_life",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "type id:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "type 0",
+        "type 1",
+        "type 2",
+        "type 3",
+        "type 4",
+        "type 5",
+        "type 6",
+        "type 7",
+        "type 8",
+        "type 9",
+        "type 10",
+        "type 11",
+        "type 12",
+        "type 13",
+        "type 14",
+        "type 15"
+       ]
+      },
+      {
+       "caption": "min life:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "50"
+      },
+      {
+       "caption": "max life:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "50"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2"
+     ],
+     "summary": "Set particle type life range."
+    },
+    {
+     "lib_id": 1,
+     "id": 827,
+     "name": "Part_Type_Speed",
+     "palette_title": "Particle Speed",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_parttype_speed",
+     "has_code": false,
+     "argc": 6,
+     "args": [
+      {
+       "caption": "type Id:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "type 0",
+        "type 1",
+        "type 2",
+        "type 3",
+        "type 4",
+        "type 5",
+        "type 6",
+        "type 7",
+        "type 8",
+        "type 9",
+        "type 10",
+        "type 11",
+        "type 12",
+        "type 13",
+        "type 14",
+        "type 15"
+       ]
+      },
+      {
+       "caption": "min speed:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "max speed:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "min dir:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "max dir:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "friction:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@5"
+     ],
+     "summary": "Set particle type speed range, direction range and friction."
+    },
+    {
+     "lib_id": 1,
+     "id": 828,
+     "name": "Part_Type_Gravity",
+     "palette_title": "Particle Gravity",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_parttype_gravity",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "type id:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "type 0",
+        "type 1",
+        "type 2",
+        "type 3",
+        "type 4",
+        "type 5",
+        "type 6",
+        "type 7",
+        "type 8",
+        "type 9",
+        "type 10",
+        "type 11",
+        "type 12",
+        "type 13",
+        "type 14",
+        "type 15"
+       ]
+      },
+      {
+       "caption": "amount:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "direction:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "270"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2"
+     ],
+     "summary": "Set particle type gravity amount and direction."
+    },
+    {
+     "lib_id": 1,
+     "id": 829,
+     "name": "Part_Type_Secondary",
+     "palette_title": "Particle Secondary",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_parttype_secondary",
+     "has_code": false,
+     "argc": 5,
+     "args": [
+      {
+       "caption": "type id:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "type 0",
+        "type 1",
+        "type 2",
+        "type 3",
+        "type 4",
+        "type 5",
+        "type 6",
+        "type 7",
+        "type 8",
+        "type 9",
+        "type 10",
+        "type 11",
+        "type 12",
+        "type 13",
+        "type 14",
+        "type 15"
+       ]
+      },
+      {
+       "caption": "step type:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "type 0",
+        "type 1",
+        "type 2",
+        "type 3",
+        "type 4",
+        "type 5",
+        "type 6",
+        "type 7",
+        "type 8",
+        "type 9",
+        "type 10",
+        "type 11",
+        "type 12",
+        "type 13",
+        "type 14",
+        "type 15"
+       ]
+      },
+      {
+       "caption": "step count:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "death type:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "type 0",
+        "type 1",
+        "type 2",
+        "type 3",
+        "type 4",
+        "type 5",
+        "type 6",
+        "type 7",
+        "type 8",
+        "type 9",
+        "type 10",
+        "type 11",
+        "type 12",
+        "type 13",
+        "type 14",
+        "type 15"
+       ]
+      },
+      {
+       "caption": "death count:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4"
+     ],
+     "summary": "Set secondary particles spawned each step and on death."
+    },
+    {
+     "lib_id": 1,
+     "id": 831,
+     "name": "Part_Emit_Create",
+     "palette_title": "Create Emitter",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_partemit_create",
+     "has_code": false,
+     "argc": 6,
+     "args": [
+      {
+       "caption": "emitter id:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "emitter 0",
+        "emitter 1",
+        "emitter 2",
+        "emitter 3",
+        "emitter 4",
+        "emitter 5",
+        "emitter 6",
+        "emitter 7"
+       ]
+      },
+      {
+       "caption": "shape:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "rectangle",
+        "ellipse",
+        "diamond",
+        "line"
+       ]
+      },
+      {
+       "caption": "xmin:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "xmax:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "ymin:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "ymax:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@5"
+     ],
+     "summary": "Create an emitter with a shape and region."
+    },
+    {
+     "lib_id": 1,
+     "id": 832,
+     "name": "Part_Emit_Destroy",
+     "palette_title": "Destroy Emitter",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_partemit_destroy",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "emitter id:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "emitter 0",
+        "emitter 1",
+        "emitter 2",
+        "emitter 3",
+        "emitter 4",
+        "emitter 5",
+        "emitter 6",
+        "emitter 7"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Destroy an emitter."
+    },
+    {
+     "lib_id": 1,
+     "id": 833,
+     "name": "Part_Emit_Burst",
+     "palette_title": "Burst from Emitter",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_partemit_burst",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "emitter id:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "emitter 0",
+        "emitter 1",
+        "emitter 2",
+        "emitter 3",
+        "emitter 4",
+        "emitter 5",
+        "emitter 6",
+        "emitter 7"
+       ]
+      },
+      {
+       "caption": "particle type:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "type 0",
+        "type 1",
+        "type 2",
+        "type 3",
+        "type 4",
+        "type 5",
+        "type 6",
+        "type 7",
+        "type 8",
+        "type 9",
+        "type 10",
+        "type 11",
+        "type 12",
+        "type 13",
+        "type 14",
+        "type 15"
+       ]
+      },
+      {
+       "caption": "number:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2"
+     ],
+     "summary": "Burst a number of particles of a type from an emitter."
+    },
+    {
+     "lib_id": 1,
+     "id": 834,
+     "name": "Part_Emit_Stream",
+     "palette_title": "Stream from Emitter",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_partemit_stream",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "emitter id:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "emitter 0",
+        "emitter 1",
+        "emitter 2",
+        "emitter 3",
+        "emitter 4",
+        "emitter 5",
+        "emitter 6",
+        "emitter 7"
+       ]
+      },
+      {
+       "caption": "particle type:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "type 0",
+        "type 1",
+        "type 2",
+        "type 3",
+        "type 4",
+        "type 5",
+        "type 6",
+        "type 7",
+        "type 8",
+        "type 9",
+        "type 10",
+        "type 11",
+        "type 12",
+        "type 13",
+        "type 14",
+        "type 15"
+       ]
+      },
+      {
+       "caption": "number:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2"
+     ],
+     "summary": "Continuously stream particles of a type from an emitter."
+    },
+    {
+     "lib_id": 1,
+     "id": 808,
+     "name": "CD_Play",
+     "palette_title": "Play CD",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_cd_play",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "start track:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      },
+      {
+       "caption": "final track:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1000"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Play CD audio tracks."
+    },
+    {
+     "lib_id": 1,
+     "id": 809,
+     "name": "CD_Stop",
+     "palette_title": "Stop CD",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_cd_stop",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "Stop CD audio."
+    },
+    {
+     "lib_id": 1,
+     "id": 810,
+     "name": "CD_Pause",
+     "palette_title": "Pause CD",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_cd_pause",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "Pause CD audio."
+    },
+    {
+     "lib_id": 1,
+     "id": 811,
+     "name": "CD_Resume",
+     "palette_title": "Resume CD",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_cd_resume",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "Resume CD audio."
+    },
+    {
+     "lib_id": 1,
+     "id": 812,
+     "name": "CD_If_Exists",
+     "palette_title": "Check CD",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": true,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_cd_present",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "Question: is there a CD in the drive?"
+    },
+    {
+     "lib_id": 1,
+     "id": 813,
+     "name": "CD_If_Playing",
+     "palette_title": "Check CD Playing",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 1,
+     "interface_name": "none",
+     "is_question": true,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_cd_playing",
+     "has_code": false,
+     "argc": 0,
+     "args": [],
+     "list_tokens": [],
+     "hint_tokens": [],
+     "summary": "Question: is the CD playing?"
+    },
+    {
+     "lib_id": 1,
+     "id": 801,
+     "name": "Set_Mouse",
+     "palette_title": "Set Cursor",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_set_cursor",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "sprite:",
+       "kind": 5,
+       "kind_name": "sprite",
+       "default": "-1"
+      },
+      {
+       "caption": "cursor:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "don't show",
+        "show"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1"
+     ],
+     "summary": "Replace the mouse cursor with a sprite and/or hide the system cursor."
+    },
+    {
+     "lib_id": 1,
+     "id": 807,
+     "name": "Open_Webpage",
+     "palette_title": "Open Webpage",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": true,
+     "advanced_only": true,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_webpage",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "webpage:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": "http://"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Open a web page in the default browser (hidden)."
+    }
+   ]
+  },
+  {
+   "file": "07_draw.lib",
+   "tab_caption": "draw",
+   "lib_id": 1,
+   "lib_format_version": 520,
+   "lib_version": 600,
+   "advanced_only": false,
+   "has_init_code": false,
+   "palette": [
+    {
+     "pos": 0,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 1,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Drawing",
+     "advanced_only": false
+    },
+    {
+     "pos": 2,
+     "action_id": 501
+    },
+    {
+     "pos": 3,
+     "action_id": 502
+    },
+    {
+     "pos": 4,
+     "kind": 8,
+     "kind_name": "placeholder",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 5,
+     "action_id": 514
+    },
+    {
+     "pos": 6,
+     "action_id": 519
+    },
+    {
+     "pos": 7,
+     "kind": 8,
+     "kind_name": "placeholder",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 8,
+     "action_id": 511
+    },
+    {
+     "pos": 9,
+     "action_id": 516
+    },
+    {
+     "pos": 10,
+     "action_id": 517
+    },
+    {
+     "pos": 11,
+     "action_id": 512
+    },
+    {
+     "pos": 12,
+     "action_id": 518
+    },
+    {
+     "pos": 13,
+     "kind": 8,
+     "kind_name": "placeholder",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 14,
+     "action_id": 513
+    },
+    {
+     "pos": 15,
+     "action_id": 515
+    },
+    {
+     "pos": 16,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 17,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Settings",
+     "advanced_only": false
+    },
+    {
+     "pos": 18,
+     "action_id": 524
+    },
+    {
+     "pos": 19,
+     "action_id": 526
+    },
+    {
+     "pos": 20,
+     "action_id": 531
+    },
+    {
+     "pos": 21,
+     "kind": 9,
+     "kind_name": "separator",
+     "label": "",
+     "advanced_only": false
+    },
+    {
+     "pos": 22,
+     "kind": 10,
+     "kind_name": "label",
+     "label": "Other",
+     "advanced_only": false
+    },
+    {
+     "pos": 23,
+     "action_id": 802
+    },
+    {
+     "pos": 24,
+     "action_id": 532
+    }
+   ],
+   "actions": [
+    {
+     "lib_id": 1,
+     "id": 501,
+     "name": "Draw_Sprite",
+     "palette_title": "Draw Sprite",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_draw_sprite",
+     "has_code": false,
+     "argc": 4,
+     "args": [
+      {
+       "caption": "sprite:",
+       "kind": 5,
+       "kind_name": "sprite",
+       "default": "-1"
+      },
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "subimage:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "-1"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@r",
+      "@w"
+     ],
+     "summary": "Draw a sprite sub-image at a position (-1 = current image)."
+    },
+    {
+     "lib_id": 1,
+     "id": 502,
+     "name": "Draw_Background",
+     "palette_title": "Draw Background",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_draw_background",
+     "has_code": false,
+     "argc": 4,
+     "args": [
+      {
+       "caption": "background:",
+       "kind": 7,
+       "kind_name": "background",
+       "default": "-1"
+      },
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "tiled:",
+       "kind": 3,
+       "kind_name": "boolean",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@r"
+     ],
+     "summary": "Draw a background at a position, optionally tiled."
+    },
+    {
+     "lib_id": 1,
+     "id": 514,
+     "name": "Draw_Text",
+     "palette_title": "Draw Text",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_draw_text",
+     "has_code": false,
+     "argc": 3,
+     "args": [
+      {
+       "caption": "text:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": ""
+      },
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@r",
+      "@w"
+     ],
+     "summary": "Draw text at a position."
+    },
+    {
+     "lib_id": 1,
+     "id": 519,
+     "name": "Draw_Text_Scaled",
+     "palette_title": "Draw Scaled Text",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_draw_text_transformed",
+     "has_code": false,
+     "argc": 6,
+     "args": [
+      {
+       "caption": "text:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": ""
+      },
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "xscale:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      },
+      {
+       "caption": "yscale:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "1"
+      },
+      {
+       "caption": "angle:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@5",
+      "@r",
+      "@w"
+     ],
+     "summary": "Draw text with scaling and rotation."
+    },
+    {
+     "lib_id": 1,
+     "id": 511,
+     "name": "Draw_Rectangle",
+     "palette_title": "Draw Rectangle",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_draw_rectangle",
+     "has_code": false,
+     "argc": 5,
+     "args": [
+      {
+       "caption": "x1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "x2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "filled:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "filled",
+        "outline"
+       ]
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@r",
+      "@w"
+     ],
+     "summary": "Draw a filled or outlined rectangle."
+    },
+    {
+     "lib_id": 1,
+     "id": 516,
+     "name": "Draw_Gradient_Hor",
+     "palette_title": "Horizontal Gradient",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_draw_gradient_hor",
+     "has_code": false,
+     "argc": 6,
+     "args": [
+      {
+       "caption": "x1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "x2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "color1:",
+       "kind": 13,
+       "kind_name": "color",
+       "default": "255"
+      },
+      {
+       "caption": "color2:",
+       "kind": 13,
+       "kind_name": "color",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@5",
+      "@r",
+      "@w"
+     ],
+     "summary": "Draw a rectangle filled with a horizontal colour gradient."
+    },
+    {
+     "lib_id": 1,
+     "id": 517,
+     "name": "Draw_Gradient_Vert",
+     "palette_title": "Vertical Gradient",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_draw_gradient_vert",
+     "has_code": false,
+     "argc": 6,
+     "args": [
+      {
+       "caption": "x1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "x2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "color1:",
+       "kind": 13,
+       "kind_name": "color",
+       "default": "255"
+      },
+      {
+       "caption": "color2:",
+       "kind": 13,
+       "kind_name": "color",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@5",
+      "@r",
+      "@w"
+     ],
+     "summary": "Draw a rectangle filled with a vertical colour gradient."
+    },
+    {
+     "lib_id": 1,
+     "id": 512,
+     "name": "Draw_Ellipse",
+     "palette_title": "Draw Ellipse",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_draw_ellipse",
+     "has_code": false,
+     "argc": 5,
+     "args": [
+      {
+       "caption": "x1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "x2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "filled:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "filled",
+        "outline"
+       ]
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@r",
+      "@w"
+     ],
+     "summary": "Draw a filled or outlined ellipse."
+    },
+    {
+     "lib_id": 1,
+     "id": 518,
+     "name": "Draw_Ellipse_Gradient",
+     "palette_title": "Gradient Ellipse",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_draw_ellipse_gradient",
+     "has_code": false,
+     "argc": 6,
+     "args": [
+      {
+       "caption": "x1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "x2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "color1:",
+       "kind": 13,
+       "kind_name": "color",
+       "default": "255"
+      },
+      {
+       "caption": "color2:",
+       "kind": 13,
+       "kind_name": "color",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@5",
+      "@r",
+      "@w"
+     ],
+     "summary": "Draw an ellipse filled with a centre-to-edge colour gradient."
+    },
+    {
+     "lib_id": 1,
+     "id": 513,
+     "name": "Draw_Line",
+     "palette_title": "Draw Line",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_draw_line",
+     "has_code": false,
+     "argc": 4,
+     "args": [
+      {
+       "caption": "x1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "x2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@r",
+      "@w"
+     ],
+     "summary": "Draw a line."
+    },
+    {
+     "lib_id": 1,
+     "id": 515,
+     "name": "Draw_Arrow",
+     "palette_title": "Draw Arrow",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_draw_arrow",
+     "has_code": false,
+     "argc": 5,
+     "args": [
+      {
+       "caption": "x1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y1:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "x2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y2:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "tip size:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "12"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@r",
+      "@w"
+     ],
+     "summary": "Draw an arrow with a given tip size."
+    },
+    {
+     "lib_id": 1,
+     "id": 524,
+     "name": "Set_Color",
+     "palette_title": "Set Color",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_color",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "color:",
+       "kind": 13,
+       "kind_name": "color",
+       "default": "16777215"
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Set the drawing colour."
+    },
+    {
+     "lib_id": 1,
+     "id": 526,
+     "name": "Set_Font",
+     "palette_title": "Set Font",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": true,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_font",
+     "has_code": false,
+     "argc": 2,
+     "args": [
+      {
+       "caption": "Font:",
+       "kind": 12,
+       "kind_name": "font",
+       "default": "-1"
+      },
+      {
+       "caption": "align:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "left",
+        "center",
+        "right"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1"
+     ],
+     "summary": "Set the drawing font and horizontal alignment."
+    },
+    {
+     "lib_id": 1,
+     "id": 531,
+     "name": "Fullscreen",
+     "palette_title": "Set Full Screen",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": false,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_fullscreen",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "action:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "switch",
+        "window",
+        "fullscreen"
+       ]
+      }
+     ],
+     "list_tokens": [],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Switch, or set, windowed/full-screen mode."
+    },
+    {
+     "lib_id": 1,
+     "id": 802,
+     "name": "Take_Snapshot",
+     "palette_title": "Take Snapshot",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": false,
+     "show_relative": false,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_snapshot",
+     "has_code": false,
+     "argc": 1,
+     "args": [
+      {
+       "caption": "filename:",
+       "kind": 2,
+       "kind_name": "both",
+       "default": "snapshot.bmp"
+      }
+     ],
+     "list_tokens": [
+      "@0"
+     ],
+     "hint_tokens": [
+      "@0"
+     ],
+     "summary": "Save a screenshot to a file."
+    },
+    {
+     "lib_id": 1,
+     "id": 532,
+     "name": "Effect",
+     "palette_title": "Create Effect",
+     "kind": 0,
+     "kind_name": "normal",
+     "interface": 0,
+     "interface_name": "normal",
+     "is_question": false,
+     "show_apply_to": true,
+     "show_relative": true,
+     "hidden": false,
+     "advanced_only": false,
+     "pro_only": true,
+     "exe_type": 1,
+     "exe_type_name": "function",
+     "function": "action_effect",
+     "has_code": false,
+     "argc": 6,
+     "args": [
+      {
+       "caption": "type:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "explosion",
+        "ring",
+        "ellipse",
+        "firework",
+        "smoke",
+        "smoke up",
+        "star",
+        "spark",
+        "flare",
+        "cloud",
+        "rain",
+        "snow"
+       ]
+      },
+      {
+       "caption": "x:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "y:",
+       "kind": 0,
+       "kind_name": "expression",
+       "default": "0"
+      },
+      {
+       "caption": "size:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "1",
+       "menu": [
+        "small",
+        "medium",
+        "large"
+       ]
+      },
+      {
+       "caption": "color:",
+       "kind": 13,
+       "kind_name": "color",
+       "default": "16777215"
+      },
+      {
+       "caption": "where:",
+       "kind": 4,
+       "kind_name": "menu",
+       "default": "0",
+       "menu": [
+        "below objects",
+        "above objects"
+       ]
+      }
+     ],
+     "list_tokens": [
+      "@0",
+      "@1",
+      "@2"
+     ],
+     "hint_tokens": [
+      "@0",
+      "@1",
+      "@2",
+      "@3",
+      "@4",
+      "@5",
+      "@r",
+      "@w"
+     ],
+     "summary": "Create a built-in visual effect of a type, size and colour, below or above objects."
+    }
+   ]
+  }
+ ]
+}
