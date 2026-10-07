@@ -7,6 +7,8 @@
 //! later), `STEP:move:X:Y`, `STEP:click:X:Y`, `STEP:char:C`. `--random-input SEED`
 //! adds a deterministic pseudo-random key/mouse script; `--max-seconds S` aborts a
 //! headless run that takes longer (exit code 4).
+//! Joystick items: `STEP:joy1:button:N:down|up`, `STEP:joy1:axis:x|y|z|r|u|v:VALUE`,
+//! `STEP:joy1:pov:ANGLE` (−1 centred), `STEP:joy1:connect|disconnect` (also `joy2`).
 
 mod standalone;
 mod window;
@@ -91,6 +93,7 @@ fn parse_input(s: &str) -> Result<Vec<(u64, InputEvent)>, String> {
                 out.push((step + 1, InputEvent::MouseUp(1)));
             }
             "char" => out.push((step, InputEvent::Char(p.get(2).and_then(|c| c.chars().next()).ok_or_else(bad)?))),
+            k if k.starts_with("joy") => out.push((step, InputEvent::Joy(gm_runner::joystick::parse_scripted(&p[1..]).ok_or_else(bad)?))),
             _ => return Err(bad()),
         }
     }

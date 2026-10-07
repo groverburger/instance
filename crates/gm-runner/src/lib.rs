@@ -17,6 +17,7 @@ pub mod host;
 pub mod input;
 pub mod instance;
 pub mod net;
+pub mod joystick;
 pub mod particles;
 pub mod path;
 pub mod profile;

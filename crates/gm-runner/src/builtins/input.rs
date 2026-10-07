@@ -7,6 +7,9 @@ use crate::input::InputEvent;
 impl Game {
     /// Applies all input events available from the frontend (io_handle).
     pub fn pump_input(&mut self) -> bool {
+        if !self.headless {
+            self.input.joy.poll();
+        }
         let evs = match self.pump.as_mut() {
             Some(p) => p(),
             None => return false,
@@ -39,6 +42,27 @@ impl Game {
 }
 
 pub fn register(l: &mut Reg) {
+    // ---------------------------------------------------------------- joysticks
+    fn joy<'a>(g: &'a Game, a: &super::A) -> Result<Option<&'a crate::joystick::JoyState>, gml::Error> {
+        Ok(g.input.joy.get(a.i(0)?))
+    }
+    l.push(("joystick_exists", |g, _, _, a| bo(joy(g, a)?.is_some())));
+    l.push(("joystick_name", |g, _, _, a| super::st(joy(g, a)?.map(|j| j.name.as_str()).unwrap_or(""))));
+    l.push(("joystick_axes", |g, _, _, a| r(joy(g, a)?.map(|j| j.axes_count as f64).unwrap_or(0.0))));
+    l.push(("joystick_buttons", |g, _, _, a| r(joy(g, a)?.map(|j| j.buttons_count as f64).unwrap_or(0.0))));
+    l.push(("joystick_has_pov", |g, _, _, a| bo(joy(g, a)?.map(|j| j.has_pov).unwrap_or(false))));
+    l.push(("joystick_direction", |g, _, _, a| r(g.input.joy.direction(a.i(0)?) as f64)));
+    l.push(("joystick_check_button", |g, _, _, a| {
+        let n = a.i(1)?;
+        bo((1..=32).contains(&n) && joy(g, a)?.map(|j| j.buttons[n as usize - 1]).unwrap_or(false))
+    }));
+    l.push(("joystick_xpos", |g, _, _, a| r(joy(g, a)?.map(|j| j.axes[0]).unwrap_or(0.0))));
+    l.push(("joystick_ypos", |g, _, _, a| r(joy(g, a)?.map(|j| j.axes[1]).unwrap_or(0.0))));
+    l.push(("joystick_zpos", |g, _, _, a| r(joy(g, a)?.map(|j| j.axes[2]).unwrap_or(0.0))));
+    l.push(("joystick_rpos", |g, _, _, a| r(joy(g, a)?.map(|j| j.axes[3]).unwrap_or(0.0))));
+    l.push(("joystick_upos", |g, _, _, a| r(joy(g, a)?.map(|j| j.axes[4]).unwrap_or(0.0))));
+    l.push(("joystick_vpos", |g, _, _, a| r(joy(g, a)?.map(|j| j.axes[5]).unwrap_or(0.0))));
+    l.push(("joystick_pov", |g, _, _, a| r(joy(g, a)?.map(|j| j.pov).unwrap_or(-1.0))));
     l.push(("keyboard_set_map", |g, _, _, a| {
         let (k1, k2) = (a.i(0)?, a.i(1)?);
         if (0..256).contains(&k1) && (0..256).contains(&k2) {

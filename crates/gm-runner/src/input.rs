@@ -58,6 +58,8 @@ pub enum InputEvent {
     Wheel(i32),
     Close,
     Focus(bool),
+    /// Scripted joystick change (specs/input-joystick.md).
+    Joy(crate::joystick::JoyInput),
 }
 
 /// Input state.
@@ -86,6 +88,8 @@ pub struct Input {
     pub mouse_button: i32,
     pub mouse_lastbutton: i32,
     pub numlock: bool,
+    /// Joystick slots 1 and 2.
+    pub joy: crate::joystick::Joysticks,
 }
 
 impl Default for Input {
@@ -116,6 +120,7 @@ impl Default for Input {
             mouse_button: 0,
             mouse_lastbutton: 0,
             numlock: true,
+            joy: Default::default(),
         }
     }
 }
@@ -203,6 +208,7 @@ impl Input {
                     self.wheel_down = true;
                 }
             }
+            InputEvent::Joy(ref j) => self.joy.apply(j),
             InputEvent::Focus(false) => self.clear_all(),
             InputEvent::Focus(true) | InputEvent::Close => {}
         }
