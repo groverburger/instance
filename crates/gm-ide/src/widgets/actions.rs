@@ -600,7 +600,7 @@ pub fn arg_dialog(
                 a.args.push(String::new());
             }
             let mut code = std::mem::take(&mut a.args[0]);
-            ui.allocate_ui(Vec2::new(ui.available_width().max(620.0), 360.0), |ui| {
+            ui.allocate_ui(Vec2::new(620.0, 360.0), |ui| {
                 code_editor(
                     ui,
                     "code_action",

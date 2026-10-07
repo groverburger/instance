@@ -265,15 +265,15 @@ def sprite800(s):
     d = {'origin_x': s.i32(), 'origin_y': s.i32()}
     n = s.i32()
     d['frames'] = [img800(s) for _ in range(n)]
-    if n > 0:
-        d['collision_shape'] = s.i32()
-        d['alpha_tolerance'] = s.i32()
-        d['separate_collision_masks'] = s.bool()
-        d['bbox_mode'] = s.i32()
-        d['bbox_left'] = s.i32()
-        d['bbox_right'] = s.i32()
-        d['bbox_bottom'] = s.i32()
-        d['bbox_top'] = s.i32()
+    # Trailer is present even when n == 0 (verified on user data, see spec addendum).
+    d['collision_shape'] = s.i32()
+    d['alpha_tolerance'] = s.i32()
+    d['separate_collision_masks'] = s.bool()
+    d['bbox_mode'] = s.i32()
+    d['bbox_left'] = s.i32()
+    d['bbox_right'] = s.i32()
+    d['bbox_bottom'] = s.i32()
+    d['bbox_top'] = s.i32()
     return d
 
 
@@ -313,8 +313,13 @@ def settings800(s, v800=True):
     st['load_image_alpha'] = s.i32()
     st['scale_progress_bar'] = s.bool()
     st['icon'] = blob_repr(s.blob())
-    for n in ('display_errors', 'write_errors_to_log', 'abort_on_all_errors', 'treat_uninitialized_as_zero'):
+    for n in ('display_errors', 'write_errors_to_log', 'abort_on_all_errors'):
         st[n] = s.bool()
+    # i32 bit set, not a bool: bit 0 = treat uninitialized as 0; GM 8.1 also stores
+    # bit 1 (value 2, meaning unverified) — see spec addendum.
+    flags = s.i32()
+    st['treat_uninitialized_as_zero'] = bool(flags & 1)
+    st['uninitialized_extra_bits'] = flags & ~1
     st['author'] = s.str()
     st['version_text'] = s.str()
     st['info_last_changed'] = s.time()

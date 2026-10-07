@@ -151,6 +151,9 @@ every case is to make small sample projects in the IDE (black-box) and diff/pars
   inside settings — not present. (§2)
 - FF-11: Sprite with 0 frames (are the 8 mask fields omitted?), img800 with width or
   height 0 (is the pixel blob omitted?), sound with has_data = 0 — not present. (§0.2, §5.1, §5.2)
+  **Sprite part resolved (verified from user data):** the 8 trailer fields are present
+  also for 0 frames (file-formats.md addendum "0-frame sprites"). 0-size images and
+  has_data = 0 sounds remain open.
 - FF-12: Enum meanings verified only for observed values: sound kind 2/3, sound effect
   bit order, collision shapes 2/3, bbox_mode, scaling sign convention, colour depth /
   resolution / frequency / priority indices. (§2, §5)
@@ -162,6 +165,12 @@ every case is to make small sample projects in the IDE (black-box) and diff/pars
   in the built-in libs; meaning unknown (only matters for user libraries). (§10.2)
 - FF-16: Action argument value encoding for kind 15 (font string) — only
   "Arial,10,0,1,0,0,0" seen; meaning of the trailing fields. (§5.9)
+- FF-18: Settings "uninitialized" flags word (file-formats.md §2 +12 and the user-corpus
+  addendum): bit 0 = treat uninitialized variables as 0 [V]; bit 1 (value 2) is stored by
+  the 8.1 IDE in most user projects — meaning unverified (presumably the 8.1 Errors-tab
+  option about uninitialized arguments, cf. IDE-12). Any further bits unknown. gm-format
+  keeps bit 0 as `treat_uninitialized_as_zero` and preserves the rest verbatim in
+  `uninitialized_extra_bits`.
 - FF-17: Event sub-numbers for mouse/other/step beyond the values observed (left
   pressed = 6:4, outside room = 7:0, game start = 7:2, no more lives = 7:6, end step
   3:2 presumed) — should be settled in the events/runtime spec (relates to RT-18).
@@ -196,6 +205,7 @@ Observations made while implementing `crates/gm-format` against the sample files
   font (v800), timeline, tile and included-file records; loading-bar / custom load images
   (stored as opaque blobs; only written when loading_bar == 2 / show_custom_load_image);
   0-frame sprites (mask fields omitted) and 0-size images (no pixel blob).
+  *Correction (user corpus):* 0-frame sprites DO store the mask fields; see FF-11.
 - Model choices worth reviewing: v701 `smooth_edges`/`preload` flags and the v701 image
   width/height are not kept in the model (converted as above); font `range_start` is split
   into range_start (low 16 bits) / charset (bits 16-23) / antialias (bits 24-31) and
@@ -448,3 +458,87 @@ Sound / UI / files
 - D3D-IMPL-3: Shapes are generated with the front face on the side of the spec's
   normal (floor: +z, wall: (y2−y1, −(x2−x1), 0)); verify against GM.
 - D3D-IMPL-4: R-27 is superseded for 415: 3D mode is implemented (software and OpenGL).
+## [D3D] 3D graphics (specs/d3d.md, 2026-10-07)
+
+Resolve by black-box tests with GM 8.1 (screenshots of small test games).
+
+- D3D-1: Orientation of the default 3D projection after d3d_start(). Manual says y is
+  reversed (origin bottom-left) and also that the camera looks "along the negative z
+  axis" while greater depth looks smaller. Spec recommends: camera on the negative-depth
+  side at distance = view width, image vertically mirrored vs 2D. Verify, and verify
+  d3d_set_projection_perspective has the same orientation and _ortho is y-down.
+- D3D-2: Sign of d3d_transform_*rotation_x/_y/_z/_axis angles (spec: +angle about z turns
+  +x toward -y, like GM's direction). Verify x/y/axis by drawing a marked primitive.
+- D3D-3: Which screen winding is culled by d3d_set_culling(true) under each projection,
+  and the winding/normal sign of d3d_draw_wall and d3d_draw_floor (which side is visible).
+- D3D-4: Do d3d_draw_* shapes with hrepeat/vrepeat > 1 repeat without
+  texture_set_repeat(true)? Is non-repeat clamp or "not drawn"?
+- D3D-5: Texture orientation on shape side faces (spec: v=0 at z2) and the exact
+  tessellation of cylinder/cone/ellipsoid (rings, seam, cap mapping); floor slope axis.
+- D3D-6: Alpha test in 3D mode: do pixels with alpha 0 write depth (spec: yes)?
+- D3D-7: Do surfaces have their own depth buffer in 3D mode, and is it cleared?
+- D3D-8: Point light attenuation curve over `range` (spec: linear 1-d/range); flat
+  shading colour source; is the ambient term multiplied by vertex colour?
+- D3D-9: Colour of model vertices/shapes recorded without colour: creation-time or
+  draw-time draw colour?
+- D3D-10: d3d_model_save text format (spec gives the commonly observed "100 / count /
+  kind + 10 values" layout, number formatting unknown) — confirm by saving models.
+- D3D-11: Default fov/aspect for d3d_set_projection (non-ext) (spec: 45°, view aspect)
+  and the depth range of d3d_set_projection_ortho (spec: -32000..32000).
+- D3D-12: Transform stack capacity (spec: 32) and whether the world transform applies to
+  2D drawing outside 3D mode (spec: yes); does d3d_start/d3d_end reset culling/fog/etc.?
+- D3D-13: How room backgrounds/foregrounds and tiles are drawn in 3D mode (spec: backdrop
+  without depth test at z=0; tiles at layer depth).
+
+## [MP] Multiplayer (specs/multiplayer.md, 2026-10-07)
+
+- MP-1: gm81-clean uses its own protocol (Part B); interop with GM 8.1 DirectPlay
+  games is out of scope. Confirm this is acceptable.
+- MP-2: When the host leaves a non-migrating session, does mplay_session_status() on the
+  clients become 0 in GM? Do players still appear in mplay_player_find?
+- MP-3: Are messages to "all" (player 0) also delivered to the sender in GM? (spec: no)
+  Is name matching case-sensitive? (spec: yes)
+- MP-4: Is shared data cleared on session create/join/end, and does a joiner receive the
+  current table? (spec: yes)
+- MP-5: Blocking time of mplay_session_find in GM (spec: ~1 s LAN, 3 s addressed).
+
+## [JOY] Joystick (specs/input-joystick.md, 2026-10-07)
+
+- JOY-1: Threshold for joystick_direction and direction events (spec: 0.5) and whether
+  the POV hat contributes (spec: no).
+- JOY-2: Value of joystick_direction for a missing joystick (spec: vk_numpad5 = 101).
+- JOY-3: Are joystick events dispatched before or after the other mouse sub-events?
+- JOY-4: Axis mapping of an XInput pad as seen by GM 8.1 (z = triggers sign, r/u = right
+  stick) — verify with a real controller.
+
+## [SND] Sound (specs/sound.md, 2026-10-07)
+
+- SND-1: Curve mapping sound_volume/sound_global_volume 0..1 to loudness (spec: linear
+  amplitude; GM may map linearly onto DirectSound hundredths of dB). Measure.
+- SND-2: Pan curve (spec: linear attenuation of the opposite channel).
+- SND-3: Can two MIDI sounds play at once (kind 0 MIDI + kind 1 MIDI)? (spec: no, one
+  MIDI player). Does sound_volume affect MIDI in GM?
+- SND-4: 3D sound beyond maxdist: silent or constant? Rolloff curve.
+- SND-5: Do effect changes apply to already-playing voices? Do sound_effect_* parameter
+  calls for an unselected effect have any effect?
+- SND-6: Does sound_play on a non-existent sound raise an error in GM 8.1?
+- SND-7: Does an MP3 given kind 0..2 play at all in GM 8.1?
+
+## [EXT] Extensions and DLLs (specs/extensions.md, 2026-10-07)
+
+- EXT-1: Layout of the .gex package installer file and where GM 8.1 installs user
+  packages (IDE extensions folder vs per-user folder).
+- EXT-2: Standalone exe must embed used packages; proposed extension of exe-format.md
+  (package bundle after the project payload). Needs an owner decision.
+- EXT-3: Meaning of .ged calling-convention codes (12, 11, 2) and argument_count -1.
+  Implementer observation (2026-10-07, black-box): calling the shipped `Printing.dll`
+  export `pr_set_font_size` (code 12, one real) through a typed **stdcall** call
+  crashes the 32-bit helper, while a typed **cdecl** call works — so code 12 appears
+  to mean cdecl (and 11 presumably stdcall), the reverse of the [I] guess in
+  extensions.md §3.3. gm81-clean's x86 bridge now uses a convention-agnostic thunk
+  (restores ESP after the call), so either reading works.
+- EXT-4: Exact timing of extension init functions relative to Game Start/Create events
+  and of final functions relative to Game End; are finals called on game_restart?
+- EXT-5: Are extension constant values evaluated as GML expressions or literal?
+- EXT-6: external_call with wrong argument types: error or conversion? external_define
+  return id numbering and error message wording.

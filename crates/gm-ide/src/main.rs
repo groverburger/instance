@@ -7,11 +7,15 @@
 mod app;
 mod editors;
 mod events;
+mod exe;
+mod icons;
 mod imageio;
+mod mdi;
 mod prefs;
 mod project_ops;
 mod rtf;
 mod run;
+mod theme;
 mod tree;
 mod widgets;
 

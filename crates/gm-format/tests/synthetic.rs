@@ -871,3 +871,99 @@ fn sprite_export_round_trip() {
     s.last_changed = 0.0;
     assert_eq!(read_sprite_export(&bytes).unwrap(), s);
 }
+
+// ------------------------------------------------------------------ user-data regressions
+
+/// A sprite with 0 frames still stores the 8-field collision/bbox trailer (spec §5.2
+/// addendum). Minimal reproduction of the layout seen in user projects: a hand-built
+/// block is spliced into a written project and must read back; the writer must emit
+/// exactly that block.
+#[test]
+fn zero_frame_sprite_keeps_trailer() {
+    let mut p = Project::default();
+    p.sprites.push(Some(Sprite {
+        name: "sprite19".into(),
+        last_changed: 40000.25,
+        collision_shape: 0,
+        ..Sprite::default()
+    }));
+    let good = write_project(&p, FormatVersion::V810).unwrap();
+
+    let mut w = W::default();
+    w.i(1).s("sprite19").f(40000.25).i(800); // exists, name, last_changed, version
+    w.i(0).i(0).i(0); // origin_x, origin_y, frame_count = 0
+    w.n(8, 0); // collision_shape .. bbox_top, present although there are no frames
+    let block = zlib(&w.0);
+    let pos = good
+        .windows(block.len())
+        .position(|x| x == block.as_slice())
+        .expect("writer emits the trailer for a 0-frame sprite");
+
+    // Splice a variant with non-zero trailer values and read it.
+    let mut w = W::default();
+    w.i(1).s("sprite19").f(40000.25).i(800);
+    w.i(3).i(4).i(0);
+    w.i(2).i(17).i(1).i(2).i(5).i(6).i(7).i(8);
+    let new_block = zlib(&w.0);
+    let mut d = good[..pos - 4].to_vec();
+    d.extend_from_slice(&(new_block.len() as u32).to_le_bytes());
+    d.extend_from_slice(&new_block);
+    d.extend_from_slice(&good[pos + block.len()..]);
+    let q = read_project(&d).unwrap();
+    let s = q.sprites[0].as_ref().unwrap();
+    assert!(s.frames.is_empty());
+    assert_eq!((s.origin_x, s.origin_y), (3, 4));
+    assert_eq!(
+        (
+            s.collision_shape,
+            s.alpha_tolerance,
+            s.separate_collision_masks,
+            s.bbox_mode
+        ),
+        (2, 17, true, 2)
+    );
+    assert_eq!(
+        (s.bbox_left, s.bbox_right, s.bbox_bottom, s.bbox_top),
+        (5, 6, 7, 8)
+    );
+    let again = write_project(&q, FormatVersion::V810).unwrap();
+    assert_eq!(
+        canonical_bytes(&again).unwrap(),
+        canonical_bytes(&d).unwrap()
+    );
+
+    // The old (frame-count-conditional) layout without the trailer is rejected.
+    let mut w = W::default();
+    w.i(1).s("sprite19").f(40000.25).i(800).i(0).i(0).i(0);
+    let short = zlib(&w.0);
+    let mut d = good[..pos - 4].to_vec();
+    d.extend_from_slice(&(short.len() as u32).to_le_bytes());
+    d.extend_from_slice(&short);
+    d.extend_from_slice(&good[pos + block.len()..]);
+    assert!(read_project(&d).is_err());
+}
+
+/// The settings word after `abort_on_all_errors` is a bit set; GM 8.1 projects store 2
+/// there. Bit 0 alone means "treat uninitialized variables as 0"; other bits round-trip.
+#[test]
+fn uninitialized_flags_word_is_lossless() {
+    for (treat, extra, raw) in [(false, 2, 2i32), (true, 2, 3), (true, 0, 1), (false, 0, 0)] {
+        let mut p = Project::default();
+        p.settings.icon = b"ICONICON".to_vec();
+        p.settings.display_errors = true;
+        p.settings.treat_uninitialized_as_zero = treat;
+        p.settings.uninitialized_extra_bits = extra;
+        let out = write_project(&p, FormatVersion::V810).unwrap();
+        let mut want = W::default();
+        want.b(b"ICONICON").i(1).i(0).i(0).i(raw);
+        let canon = canonical_bytes(&out).unwrap();
+        assert!(
+            canon.windows(want.0.len()).any(|x| x == want.0.as_slice()),
+            "raw flags {raw} not written"
+        );
+        let q = read_project(&out).unwrap();
+        assert_eq!(q.settings.treat_uninitialized_as_zero, treat);
+        assert_eq!(q.settings.uninitialized_extra_bits, extra);
+        assert_eq!(q, p);
+    }
+}

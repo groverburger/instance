@@ -474,3 +474,76 @@ fn paths_and_timelines() {
     assert_eq!(g.instances[0].x, 150.0);
     assert_eq!(g.instances[0].path_index, -1);
 }
+
+/// The collision broad phase (spatial index, per-object lists) must give the same
+/// answers as a scan over all instances while instances move, scale, rotate, are
+/// created, destroyed, changed and deactivated.
+#[test]
+fn collision_queries_match_brute_force() {
+    use gm_runner::collision::Sel;
+    let mut b = B::new();
+    let s1 = b.sprite(square(16, 16));
+    let s2 = b.sprite(square(8, 24));
+    let mover = "x += floor(random(41)) - 20; y += floor(random(41)) - 20;
+        if (x < 0) x += 640; if (x > 640) x -= 640; if (y < 0) y += 480; if (y > 480) y -= 480;
+        r = random(1);
+        if (r < 0.02) instance_destroy()
+        else if (r < 0.04) instance_create(random(640), random(480), object_index)
+        else if (r < 0.06) image_xscale = choose(1, 2, -1)
+        else if (r < 0.08) image_angle = random(360)
+        else if (r < 0.09) instance_change(choose(0, 1), false)
+        else if (r < 0.10) sprite_index = choose(0, 1);";
+    let a = b.object("a", s1, vec![event(3, 0, mover)]);
+    let c = b.object("c", s2, vec![event(3, 0, mover)]);
+    let ctl = b.object(
+        "ctl",
+        -1,
+        vec![event(
+            3,
+            2,
+            "if (random(1) < 0.3) instance_deactivate_object(instance_find(a, 0)); if (random(1) < 0.3) instance_activate_all();",
+        )],
+    );
+    let mut insts = vec![(ctl, 0, 0)];
+    for k in 0..300 {
+        insts.push((if k % 3 == 0 { c } else { a }, (k * 37) % 640, (k * 53) % 480));
+    }
+    b.room(&insts);
+    let (mut g, mut vm) = b.start();
+    let brute_place = |g: &Game, id: i32, x: f64, y: f64, s: Sel| -> Option<i32> {
+        let me = g.inst(id)?;
+        let geo = g.geo_at(me, x, y)?;
+        g.instances
+            .iter()
+            .filter(|o| o.id != id && o.alive() && g.sel_match(s, o))
+            .find(|o| g.geo_at(o, o.x, o.y).map(|go| Game::geos_collide(&geo, &go)).unwrap_or(false))
+            .map(|o| o.id)
+    };
+    let brute_point = |g: &Game, x: f64, y: f64, s: Sel| -> Option<i32> {
+        g.instances
+            .iter()
+            .filter(|o| o.alive() && g.sel_match(s, o))
+            .find(|o| g.point_in_instance(o.id, x, y, true))
+            .map(|o| o.id)
+    };
+    let mut checks = 0;
+    for step in 0..60 {
+        run(&mut g, &mut vm, 1);
+        let ids: Vec<i32> = g.instances.iter().filter(|i| i.alive()).map(|i| i.id).collect();
+        for (k, &id) in ids.iter().enumerate().step_by(7) {
+            let i = g.inst(id).unwrap();
+            let (x, y) = (i.x + (k % 5) as f64 - 2.0, i.y);
+            for s in [Sel::All, Sel::Obj(a), Sel::Obj(c)] {
+                assert_eq!(g.place_meeting_sel(id, x, y, s), brute_place(&g, id, x, y, s), "step {} id {}", step, id);
+                checks += 1;
+            }
+            let (px, py) = ((k * 13 % 640) as f64 + 0.5, (k * 29 % 480) as f64 + 0.5);
+            assert_eq!(g.instance_at_point(px, py, Sel::All), brute_point(&g, px, py, Sel::All));
+            let mut sel = Vec::new();
+            g.select(a, &mut sel);
+            let brute: Vec<i32> = g.instances.iter().filter(|i| i.alive() && i.object_index == a).map(|i| i.id).collect();
+            assert_eq!(sel, brute);
+        }
+    }
+    assert!(checks > 1000);
+}

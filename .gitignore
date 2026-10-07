@@ -1,3 +1,6 @@
 /target
 *.gmk
 *.gm81
+/.claude/
+/*.txt
+game_errors.log

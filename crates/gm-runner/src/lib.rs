@@ -12,16 +12,21 @@ pub mod collision;
 pub mod d3d;
 pub mod draw;
 pub mod events;
+pub mod ext;
 pub mod game;
 pub mod host;
 pub mod input;
 pub mod instance;
+pub mod net;
+pub mod joystick;
 pub mod particles;
 pub mod path;
+pub mod profile;
 pub mod render;
 pub mod res;
 pub mod room;
 pub mod save;
+pub mod spatial;
 
 pub use game::{Game, HeadlessUi, Pending, UiHooks};
 pub use input::InputEvent;
@@ -31,6 +36,7 @@ pub const GAME_STACK_SIZE: usize = 256 * 1024 * 1024;
 
 /// Loads a project file and prepares a game (no room entered yet).
 pub fn load_game(path: &std::path::Path, vm: &mut gml::Vm, headless: bool) -> Result<Game, String> {
+    ext::bundle::set_project_dir(path.parent().map(|p| p.to_path_buf()));
     let (project, _) = gm_format::read_project_file(path).map_err(|e| format!("{}: {}", path.display(), e))?;
     vm.settings.max_call_depth = 4096;
     let mut g = Game::new(project, vm, headless)?;

@@ -147,7 +147,7 @@ Byte offsets are within the inflated block. Names follow the Global Game Setting
 | +0 | bool | display_errors | 1 | [V] |
 | +4 | bool | write_errors_to_log | 0 | [S] |
 | +8 | bool | abort_on_all_errors | 0 | [S] |
-| +12 | bool | treat_uninitialized_as_zero | 0 | [S] |
+| +12 | i32 | uninitialized flags: bit 0 = treat_uninitialized_as_zero; other bits preserved (8.1 stores 2) | 0 | [V] layout; see addendum "settings uninitialized flags" |
 | | str | author | "" | [V] |
 | | str | version (free text) | "100" | [V] |
 | | time | info_last_changed | | [V] |
@@ -220,7 +220,7 @@ Every block is self-delimiting; a reader can check exact consumption per resourc
 | i32 | origin_y |
 | i32 | frame_count |
 | img800 × frame_count | sub-images (0.2) |
-| *only if frame_count > 0* [I for the =0 case]: | |
+| *always present, also when frame_count = 0* [V — see addendum "0-frame sprites"]: | |
 | i32 | collision_shape: 0 precise, 1 rectangle, 2 disk, 3 diamond ([V] 0 and 1; order of 2,3 [I] from UI) |
 | i32 | alpha_tolerance (0..255) |
 | bool | separate_collision_masks |
@@ -798,3 +798,51 @@ path 530, timeline 500, font 800. Example font `range_start` raw value 0x0400002
 (range start 32 in the low 16 bits; the high byte is non-zero — its exact meaning,
 charset vs anti-alias level, stays an open question). Triggers, constants, tiles and
 included files remain unverified.
+
+## Addendum: user-project corpus (21 × .gm81 saved by GM 8.1) — verified from user data
+
+Source: the user's own projects under `Downloads/old_gamemaker_projects` (21 `.gm81`
+files, header 810) plus the 5 `Examples/` samples. All were decoded byte-by-byte with
+`specs/tools/gmk_dump.py` (exact consumption of every zlib block and of the file) and
+re-written by gm-format with identical inflated contents. No YoYo binary was examined.
+
+### 0-frame sprites [V] (corrects §5.2; answers the sprite part of FF-11)
+
+A sprite with `frame_count = 0` still stores the full 8-field trailer
+(collision_shape, alpha_tolerance, separate_collision_masks, bbox_mode, bbox_left,
+bbox_right, bbox_bottom, bbox_top). The earlier "[I] only if frame_count > 0" rule was
+wrong. Observed in two projects (sprite slots 19 and 23, both named `spriteNN`, i.e. a
+newly created sprite never given an image); the inflated block is 72 bytes:
+
+```
+01 00 00 00                     exists
+08 00 00 00 "sprite19"          name
+<f64>                           last_changed
+20 03 00 00                     resource_version 800
+00 00 00 00  00 00 00 00        origin_x 0, origin_y 0
+00 00 00 00                     frame_count 0
+00 00 00 00 × 8                 trailer: collision_shape 0 (precise), alpha 0,
+                                separate masks 0, bbox_mode 0, bbox 0,0,0,0
+```
+
+Readers must always read the trailer; writers must always write it. No sample has a
+0-frame sprite without the trailer.
+
+### Settings "uninitialized" flags word [V layout, I meaning]
+
+The settings field previously described as `bool treat_uninitialized_as_zero` (the 4th
+i32 after the icon blob, before `author`) holds the value **2** in 20 of the 21 user
+projects (0 in the remaining one and in all 5 samples). No other settings bool holds a
+value other than 0/1 anywhere in the corpus. It is therefore an `i32` bit set:
+
+- bit 0 (value 1): "Treat uninitialized variables as value 0" — unchecked when the value
+  is 2, so a reader that treats any non-zero value as `true` is wrong here.
+- bit 1 (value 2): set by the 8.1 IDE on these projects; meaning not verified. Presumed to
+  be the GM 8.1-only Errors-tab option about uninitialized script arguments (see IDE-12,
+  FF-18). Writers must preserve all bits other than bit 0 verbatim.
+
+### Other observations
+
+- All 21 user files use exactly the record versions listed in the 810 addendum above.
+- No further layout differences: every other section consumed exactly with the
+  existing layouts.

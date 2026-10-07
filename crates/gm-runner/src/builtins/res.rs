@@ -162,11 +162,20 @@ pub fn register(l: &mut Reg) {
     }));
     // ---------------------------------------------------------------- sounds
     l.push(("sound_exists", |g, _, _, a| bo(get(&g.sounds, a.i(0)?).is_some())));
-    l.push(("sound_get_name", |g, _, _, a| st(get(&g.sounds, a.i(0)?).map(|s| s.name.as_str()).unwrap_or("<undefined>"))));
+    l.push(("sound_get_name", |g, _, _, a| st(get(&g.sounds, a.i(0)?).map(|s| s.name.as_str()).unwrap_or(""))));
     l.push(("sound_get_kind", |g, _, _, a| r(get(&g.sounds, a.i(0)?).map(|s| s.kind as f64).unwrap_or(-1.0))));
     l.push(("sound_get_preload", |g, _, _, a| bo(get(&g.sounds, a.i(0)?).map(|s| s.preload).unwrap_or(false))));
-    l.push(("sound_discard", |_, _, _, _| zero()));
-    l.push(("sound_restore", |_, _, _, _| zero()));
+    l.push(("sound_discard", |g, _, _, a| {
+        g.audio.discard(a.i(0)?);
+        zero()
+    }));
+    l.push(("sound_restore", |g, _, _, a| {
+        let i = a.i(0)?;
+        if let Some(s) = g.sound_res(i) {
+            g.audio.restore(i, &s);
+        }
+        zero()
+    }));
     // ---------------------------------------------------------------- backgrounds
     l.push(("background_exists", |g, _, _, a| bo(g.background(a.i(0)?).is_some())));
     l.push(("background_get_name", |g, _, _, a| st(g.background(a.i(0)?).map(|s| s.name.as_str()).unwrap_or("<undefined>"))));
@@ -382,7 +391,7 @@ pub fn register(l: &mut Reg) {
         let ext = p.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
         Ok(Some(SoundRes {
             name: p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
-            kind: a.i(base + 1)?,
+            kind: Some(a.i(base + 1)?).filter(|k| (0..=3).contains(k)).unwrap_or(0),
             file_type: ext,
             file_name: p.to_string_lossy().into_owned(),
             data: Some(std::sync::Arc::from(data.as_slice())),
@@ -393,15 +402,27 @@ pub fn register(l: &mut Reg) {
         }))
     }
     l.push(("sound_add", |g, _, _, a| match sound_from_file(g, a, 0)? {
-        Some(s) => r(alloc(&mut g.sounds, s) as f64),
+        Some(s) => {
+            let i = alloc(&mut g.sounds, s);
+            g.audio.forget(i);
+            if let Some(Some(s)) = g.sounds.get_mut(i as usize) {
+                s.name = format!("__newsound{}", i);
+            }
+            if let Some(s) = g.sound_res(i) {
+                if s.preload {
+                    g.audio.restore(i, &s);
+                }
+            }
+            r(i as f64)
+        }
         None => r(-1.0),
     }));
     l.push(("sound_replace", |g, _, _, a| {
         let i = a.i(0)?;
         match sound_from_file(g, a, 1)? {
             Some(s) => {
-                g.audio.stop(i);
                 *get_mut(&mut g.sounds, i, "Sound")? = s;
+                g.audio.forget(i);
                 bo(true)
             }
             None => bo(false),
@@ -409,8 +430,8 @@ pub fn register(l: &mut Reg) {
     }));
     l.push(("sound_delete", |g, _, _, a| {
         let i = a.i(0)?;
-        g.audio.stop(i);
-        if let Some(s) = g.sounds.get_mut(i.max(0) as usize) {
+        g.audio.forget(i);
+        if let Some(s) = g.sounds.get_mut(i.max(0) as usize).filter(|_| i >= 0) {
             *s = None;
         }
         zero()

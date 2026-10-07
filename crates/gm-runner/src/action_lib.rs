@@ -364,9 +364,14 @@ fn build() -> HashMap<&'static str, ActionFn> {
     });
     act!("action_kill_position", |g, vm, c, a, rel| {
         let (x, y) = pos(g, c, rel, real(a, 0), real(a, 1));
-        let ids: Vec<i32> = g.instances.iter().filter(|i| i.alive()).map(|i| i.id).collect();
+        let (fx, fy) = (x.floor() as i32, y.floor() as i32);
+        let ids: Vec<i32> = g
+            .candidates([fx, fy, fx, fy])
+            .into_iter()
+            .map(|k| g.instances[k as usize].id)
+            .collect();
         for id in ids {
-            if g.point_in_instance(id, x, y, false) {
+            if g.inst(id).map(|i| i.alive()).unwrap_or(false) && g.point_in_instance(id, x, y, false) {
                 g.destroy_instance(vm, id, c.self_id)?;
             }
         }
@@ -557,8 +562,8 @@ fn build() -> HashMap<&'static str, ActionFn> {
     });
     act!("action_if_object", |g, _, c, a, rel| {
         let (x, y) = pos(g, c, rel, real(a, 1), real(a, 2));
-        let t = g.select_ctx(c, int(a, 0));
-        b(g.place_meeting_target(c.self_id, x, y, &t).is_some())
+        let s = g.sel(c, int(a, 0));
+        b(g.place_meeting_sel(c.self_id, x, y, s).is_some())
     });
     act!("action_if_number", |g, _, c, a, _| {
         let n = g.select_ctx(c, int(a, 0)).len() as f64;

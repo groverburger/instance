@@ -3,9 +3,12 @@
 
 pub mod background;
 pub mod constants;
+#[cfg(test)]
+mod editor_ui_tests;
 pub mod extensions;
 pub mod font;
 pub mod gameinfo;
+pub mod image_editor;
 pub mod included;
 pub mod object;
 pub mod path;
@@ -14,6 +17,7 @@ pub mod script;
 pub mod settings;
 pub mod sound;
 pub mod sprite;
+pub mod sprite_frames;
 pub mod timeline;
 pub mod triggers;
 

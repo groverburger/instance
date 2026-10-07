@@ -3,6 +3,7 @@
 use eframe::egui::{self, Color32, Sense, Stroke, Ui, Vec2};
 use gm_format::{Background, Project, ResourceKind};
 
+use super::image_editor::{EditorAction, ImageEditor};
 use super::{commit_slot, name_field, slot_dirty, Cx, Editor, Request, ResKey};
 use crate::imageio::{self, LoadOptions};
 use crate::widgets::{image_preview, owner_key};
@@ -13,6 +14,8 @@ pub struct BackgroundEditor {
     uid: u64,
     gen: u64,
     opts: LoadOptions,
+    /// The image editor (Edit Background), when open.
+    image_editor: Option<ImageEditor>,
 }
 
 impl BackgroundEditor {
@@ -23,6 +26,7 @@ impl BackgroundEditor {
             uid,
             gen: 1,
             opts: LoadOptions::BACKGROUND,
+            image_editor: None,
         }
     }
 }
@@ -38,6 +42,21 @@ impl Editor for BackgroundEditor {
         Vec2::new(680.0, 480.0)
     }
     fn ui(&mut self, ui: &mut Ui, cx: &mut Cx) {
+        if let Some(ed) = &mut self.image_editor {
+            match ed.show(&cx.ctx, egui::Id::new(("bg-image-editor", self.uid))) {
+                EditorAction::Close { save } => {
+                    if save && ed.image != self.work.image {
+                        self.work.image = std::mem::take(&mut ed.image);
+                        self.gen += 1;
+                    }
+                    self.image_editor = None;
+                }
+                EditorAction::None | EditorAction::Prev | EditorAction::Next => {}
+            }
+        }
+        if self.image_editor.is_some() {
+            ui.disable();
+        }
         ui.horizontal_top(|ui| {
             ui.vertical(|ui| {
                 ui.set_width(230.0);
@@ -57,6 +76,14 @@ impl Editor for BackgroundEditor {
                                 Err(e) => cx.requests.push(Request::Message(e)),
                             }
                         }
+                    }
+                    if ui.button("Edit Background…").clicked() {
+                        let img = if b.image.width == 0 || b.image.height == 0 {
+                            gm_format::RgbaImage::new(64, 64)
+                        } else {
+                            b.image.clone()
+                        };
+                        self.image_editor = Some(ImageEditor::new(img, b.name.clone()));
                     }
                     if ui.button("Save…").clicked() {
                         if let Some(f) = rfd::FileDialog::new()

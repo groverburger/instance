@@ -201,7 +201,11 @@ impl Game {
                 }
                 continue;
             }
-            let i = &mut self.instances[k - 1];
+            let i = &self.instances[k - 1];
+            if i.hspeed == 0.0 && i.vspeed == 0.0 && i.friction == 0.0 && i.gravity == 0.0 {
+                continue;
+            }
+            let i = self.inst_at_mut(k - 1);
             i.apply_friction_gravity();
             i.x += i.hspeed;
             i.y += i.vspeed;
