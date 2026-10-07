@@ -4,7 +4,9 @@
 //! Without `--headless` the game opens in a window (winit + softbuffer, software
 //! rendering). `--input` takes a comma-separated scripted input queue of
 //! `STEP:down:KEY`, `STEP:up:KEY`, `STEP:press:KEY` (down, then up two steps
-//! later), `STEP:move:X:Y`, `STEP:click:X:Y`, `STEP:char:C`.
+//! later), `STEP:move:X:Y`, `STEP:click:X:Y`, `STEP:char:C`. `--random-input SEED`
+//! adds a deterministic pseudo-random key/mouse script; `--max-seconds S` aborts a
+//! headless run that takes longer (exit code 4).
 
 mod standalone;
 mod window;
@@ -19,6 +21,44 @@ struct Opts {
     screenshot: Option<PathBuf>,
     every: Option<(u64, PathBuf)>,
     input: Vec<(u64, InputEvent)>,
+    max_seconds: Option<f64>,
+    random_input: Option<u64>,
+}
+
+/// A deterministic "monkey" input script for `frames` steps: held arrow/WASD/
+/// space/enter/Z/X keys, mouse moves and left/right clicks inside a 640x480 area.
+/// Escape and function keys are never pressed.
+fn random_input(seed: u64, frames: u64) -> Vec<(u64, InputEvent)> {
+    let mut state = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407) | 1;
+    let mut rnd = move |n: u64| -> u64 {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state % n.max(1)
+    };
+    const KEYS: [u8; 13] = [37, 38, 39, 40, 32, 13, b'W', b'A', b'S', b'D', b'Z', b'X', 16];
+    let mut out = Vec::new();
+    let mut f = 3;
+    while f < frames {
+        match rnd(10) {
+            0..=4 => {
+                let k = KEYS[rnd(KEYS.len() as u64) as usize];
+                let hold = 1 + rnd(20);
+                out.push((f, InputEvent::KeyDown(k)));
+                out.push((f + hold, InputEvent::KeyUp(k)));
+            }
+            5..=7 => {
+                let (x, y) = (rnd(640) as f64, rnd(480) as f64);
+                let b = if rnd(4) == 0 { 2 } else { 1 };
+                out.push((f, InputEvent::MouseMove(x, y)));
+                out.push((f, InputEvent::MouseDown(b)));
+                out.push((f + 1 + rnd(4), InputEvent::MouseUp(b)));
+            }
+            _ => out.push((f, InputEvent::MouseMove(rnd(640) as f64, rnd(480) as f64))),
+        }
+        f += 2 + rnd(8);
+    }
+    out
 }
 
 fn parse_input(s: &str) -> Result<Vec<(u64, InputEvent)>, String> {
@@ -66,6 +106,8 @@ fn parse_args() -> Result<Option<Opts>, String> {
         screenshot: None,
         every: None,
         input: Vec::new(),
+        max_seconds: None,
+        random_input: None,
     };
     let mut file = None;
     let mut i = 0;
@@ -84,6 +126,8 @@ fn parse_args() -> Result<Option<Opts>, String> {
                 o.every = Some((k.max(1), PathBuf::from(next()?)));
             }
             "--input" => o.input = parse_input(&next()?)?,
+            "--random-input" => o.random_input = Some(next()?.parse().map_err(|_| "bad --random-input")?),
+            "--max-seconds" => o.max_seconds = Some(next()?.parse().map_err(|_| "bad --max-seconds")?),
             "--coverage" => {
                 let (imp, stub, native, total) = gm_runner::builtins::coverage();
                 println!("builtin functions: {} total; {} native (gml crate), {} implemented by runner, {} stubbed, {} missing", total, native, imp, stub, total - native - imp - stub);
@@ -94,7 +138,7 @@ fn parse_args() -> Result<Option<Opts>, String> {
                 return Ok(None);
             }
             "--help" | "-h" => {
-                println!("usage: gm-runner FILE.gmk|FILE.gm81 [--headless] [--frames N] [--screenshot OUT.png] [--screenshot-every K DIR] [--input SCRIPT] [--coverage]");
+                println!("usage: gm-runner FILE.gmk|FILE.gm81 [--headless] [--frames N] [--screenshot OUT.png] [--screenshot-every K DIR] [--input SCRIPT] [--coverage] [--max-seconds S] [--random-input SEED]");
                 return Ok(None);
             }
             _ if a.starts_with("--") => return Err(format!("unknown option {}", a)),
@@ -109,6 +153,9 @@ fn parse_args() -> Result<Option<Opts>, String> {
     }
     // no file: a standalone executable carries its game (specs/exe-format.md)
     o.file = file.or_else(standalone::extract_own_game).ok_or("no game file given")?;
+    if let Some(seed) = o.random_input {
+        o.input.extend(random_input(seed, o.frames));
+    }
     Ok(Some(o))
 }
 
@@ -122,6 +169,14 @@ fn run_headless(o: Opts) -> i32 {
         }
     };
     g.scripted_input = o.input;
+    if let Some(limit) = o.max_seconds {
+        // watchdog: a game that hangs (endless loop in GML) must not block forever
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs_f64(limit));
+            eprintln!("TIMEOUT: gave up after {}s", limit);
+            std::process::exit(4);
+        });
+    }
     if let Err(e) = g.start(&mut vm) {
         eprintln!("gm-runner: error starting game: {}", e);
         return 1;
@@ -130,14 +185,20 @@ fn run_headless(o: Opts) -> i32 {
         let _ = std::fs::create_dir_all(d);
     }
     let t0 = std::time::Instant::now();
+    let mut slowest = (0.0f64, 0u64);
     for f in 0..o.frames {
         if g.ended {
             eprintln!("game ended at step {}", f);
             break;
         }
+        let ts = std::time::Instant::now();
         if let Err(e) = g.step(&mut vm) {
             eprintln!("FATAL: {}", e);
             break;
+        }
+        let el = ts.elapsed().as_secs_f64();
+        if el > slowest.0 {
+            slowest = (el, f);
         }
         if let Some((k, d)) = &o.every {
             if (f + 1) % k == 0 {
@@ -155,6 +216,31 @@ fn run_headless(o: Opts) -> i32 {
         g.instances.len(),
         g.caption()
     );
+    eprintln!("slowest step: {:.4}s (step {})", slowest.0, slowest.1);
+    if !g.unsupported_calls.is_empty() {
+        let list: Vec<String> = g.unsupported_calls.iter().map(|(n, c)| format!("{} x{}", n, c)).collect();
+        eprintln!("stubbed/unsupported functions called: {}", list.join(", "));
+    }
+    if std::env::var_os("GM_DUMP_INSTANCES").is_some() {
+        for i in &g.instances {
+            eprintln!(
+                "  {} {} ({:.1},{:.1}) spr {} img {:.2} vis {} depth {} active {} solid {}",
+                i.id,
+                g.object(i.object_index).map(|o| o.name.as_str()).unwrap_or("?"),
+                i.x,
+                i.y,
+                i.sprite_index,
+                i.image_index,
+                i.visible,
+                i.depth,
+                i.active,
+                i.solid
+            );
+        }
+        let v = &g.rs.views[0];
+        eprintln!("  view0 visible {} view ({},{} {}x{}) port ({},{} {}x{})", v.visible, v.xview, v.yview, v.wview, v.hview, v.xport, v.yport, v.wport, v.hport);
+    }
+    g.profile_report();
     if let Some(p) = o.screenshot {
         if let Err(e) = g.frame_image().save_png(&p, true) {
             eprintln!("cannot write screenshot: {}", e);

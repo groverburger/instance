@@ -94,6 +94,15 @@ pub fn compute_bbox(
     ]
 }
 
+/// A resolved object argument of a query function.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Sel {
+    Nothing,
+    All,
+    Id(i32),
+    Obj(i32),
+}
+
 /// A query shape for collision_* functions.
 #[derive(Clone, Copy, Debug)]
 pub enum Shape {
@@ -105,7 +114,7 @@ pub enum Shape {
 }
 
 impl Shape {
-    fn bbox(&self) -> [i32; 4] {
+    pub fn bbox(&self) -> [i32; 4] {
         let f = |a: f64| a.floor() as i32;
         match *self {
             Shape::Point(x, y) => [f(x), f(y), f(x), f(y)],
@@ -231,12 +240,23 @@ impl Game {
         Self::geos_collide(&ga, &gb)
     }
 
+    /// Positions (in `self.instances`, ascending) of the live instances with a
+    /// collision mask whose bounding box overlaps `bbox` (broad phase).
+    pub fn candidates(&self, bbox: [i32; 4]) -> Vec<u32> {
+        let mut out = Vec::new();
+        let mut sp = self.spatial.borrow_mut();
+        sp.flush(self);
+        sp.query(bbox, &mut out);
+        out
+    }
+
     /// First instance (in instance order) passing `filter` that collides with
     /// instance `id` moved to (x, y).
     pub fn place_check(&self, id: i32, x: f64, y: f64, filter: impl Fn(&Instance) -> bool) -> Option<i32> {
         let me = self.inst(id)?;
         let g = self.geo_at(me, x, y)?;
-        for o in &self.instances {
+        for k in self.candidates(g.bbox) {
+            let o = &self.instances[k as usize];
             if o.id == id || !o.alive() || !filter(o) {
                 continue;
             }
@@ -247,6 +267,82 @@ impl Game {
             }
         }
         None
+    }
+
+    /// Resolves an object argument (object, instance id, self, other, all).
+    pub fn sel(&self, ctx: &gml::Ctx, target: i32) -> Sel {
+        use gml::special::*;
+        match target {
+            SELF => Sel::Id(ctx.self_id),
+            OTHER => Sel::Id(ctx.other_id),
+            ALL => Sel::All,
+            t if t >= FIRST_INSTANCE_ID => Sel::Id(t),
+            t if t >= 0 => Sel::Obj(t),
+            _ => Sel::Nothing,
+        }
+    }
+
+    /// Whether instance `i` is designated by `s` (liveness not checked).
+    #[inline]
+    pub fn sel_match(&self, s: Sel, i: &Instance) -> bool {
+        match s {
+            Sel::Nothing => false,
+            Sel::All => true,
+            Sel::Id(id) => i.id == id,
+            Sel::Obj(o) => self.is_a(i.object_index, o),
+        }
+    }
+
+    /// `place_meeting` / `instance_place` against an object argument.
+    pub fn place_meeting_sel(&self, id: i32, x: f64, y: f64, s: Sel) -> Option<i32> {
+        if let Sel::Nothing = s {
+            return None;
+        }
+        self.place_check(id, x, y, |o| self.sel_match(s, o))
+    }
+
+    /// First instance designated by `s` (in instance order) whose mask contains
+    /// point (x, y).
+    pub fn instance_at_point(&self, x: f64, y: f64, s: Sel) -> Option<i32> {
+        let (fx, fy) = (x.floor() as i32, y.floor() as i32);
+        for k in self.candidates([fx, fy, fx, fy]) {
+            let o = &self.instances[k as usize];
+            if !o.alive() || !self.sel_match(s, o) {
+                continue;
+            }
+            if self.point_in_instance(o.id, x, y, true) {
+                return Some(o.id);
+            }
+        }
+        None
+    }
+
+    /// All live instances (in instance order) whose mask contains point (x, y).
+    pub fn instances_at_point(&self, x: f64, y: f64) -> Vec<i32> {
+        let (fx, fy) = (x.floor() as i32, y.floor() as i32);
+        let mut v = Vec::new();
+        for k in self.candidates([fx, fy, fx, fy]) {
+            let o = &self.instances[k as usize];
+            if o.alive() && self.point_in_instance(o.id, x, y, true) {
+                v.push(o.id);
+            }
+        }
+        v
+    }
+
+    /// collision_* query against an object argument.
+    pub fn shape_collision_sel(&self, shape: Shape, s: Sel, prec: bool, notme: Option<i32>) -> Option<i32> {
+        if let Sel::Nothing = s {
+            return None;
+        }
+        let ids: Vec<i32> = self
+            .candidates(shape.bbox())
+            .into_iter()
+            .map(|k| &self.instances[k as usize])
+            .filter(|o| o.alive() && self.sel_match(s, o))
+            .map(|o| o.id)
+            .collect();
+        self.shape_collision(shape, &ids, prec, notme)
     }
 
     /// `place_free`.
