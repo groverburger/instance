@@ -478,17 +478,22 @@ impl Parser {
                         kind: ExprKind::Call(name, args),
                         span,
                     };
-                    if matches!(self.peek(), Tok::Dot | Tok::LBracket) {
+                    if self.peek() == &Tok::LBracket {
                         return Err(CompileError::new(
-                            "A function result cannot be used with . or [ ]; put the call in parentheses.",
+                            "A function result cannot be indexed.",
                             self.span(),
                         ));
                     }
-                    return Ok(call);
-                }
-                Expr {
-                    kind: ExprKind::Ident(name),
-                    span,
+                    // `f(...).var` is accepted (spec §3 note 11, verified black-box)
+                    if self.peek() != &Tok::Dot {
+                        return Ok(call);
+                    }
+                    call
+                } else {
+                    Expr {
+                        kind: ExprKind::Ident(name),
+                        span,
+                    }
                 }
             }
             Tok::LParen => {
@@ -651,7 +656,6 @@ mod tests {
         perr("return;");
         perr("return }");
         perr("case 1: a = 1");
-        perr("instance_nearest(x, y, o).speed = 0");
         perr("f(x).y");
         perr("a = f(x)[0]");
         perr("a = 1e5");

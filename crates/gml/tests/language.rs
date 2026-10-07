@@ -434,6 +434,13 @@ fn dot_access() {
         run_in(&mut vm, &mut h, &format!("return ({}).x", b2)).unwrap(),
         Value::Real(5.0)
     );
+    // a call's result as the owner: read, write and chained (spec §3 note 11)
+    run_in(&mut vm, &mut h, &format!("real(\"{}\").u = 4", b2)).unwrap();
+    assert_eq!(h.var(&mut vm, b2, "u"), Some(Value::Real(4.0)));
+    assert_eq!(
+        run_in(&mut vm, &mut h, &format!("return real(\"{}\").u + 1", b2)).unwrap(),
+        Value::Real(5.0)
+    );
     // chains: a.b.c, array element owner, id
     run_in(
         &mut vm,

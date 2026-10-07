@@ -210,9 +210,11 @@ Notes:
 9. **Dangling else** binds to the nearest unmatched `if`.
 10. **`case` labels** may appear only at the top level of a switch body.
     `case`/`default` outside a switch is a syntax error.
-11. **Functions as dot-targets.** A call cannot be the left operand of `.` or the
-    target of an assignment (`instance_nearest(x,y,o).speed = 0` is an error; write
-    `(instance_nearest(x,y,o)).speed = 0`). See §4.1.
+11. **Functions as dot-targets.** A call MAY be the left operand of `.`: its result
+    is used as the owner, exactly like a parenthesised expression, for reads and for
+    assignments (`instance_nearest(x,y,o).speed = 0` is valid). VERIFIED black-box in
+    GM 8.1: `show_message(string(instance_nearest(x,y,all).x))` runs. A call result
+    still cannot be indexed with `[ ]`. See §4.1.
 
 ### 3.1 Lvalues
 ```
@@ -264,12 +266,12 @@ shift       = additive { ("<<"|">>") additive } ;
 additive    = mult    { ("+"|"-") mult } ;
 mult        = unary   { ("*"|"/"|"div"|"mod"|"%") unary } ;
 unary       = ("!"|"not"|"-"|"+"|"~") unary | postfix ;
-postfix     = call
+postfix     = call [ "." identifier [ index ] { "." identifier [ index ] } ]
             | primary { "." identifier | index } ;
 primary     = number | string | identifier | "(" expr ")" ;
 call        = identifier "(" [ expr { "," expr } ] ")" ;
 ```
-- A call is a complete operand: it may not be followed by `.` or `[` (§3 note 11).
+- A call may be followed by `.` (then the usual `.`/index chain), but not by `[` (§3 note 11).
 - `.` binds tighter than unary minus: `-a.x` = `-(a.x)`.
 - The right side of `.` must be an identifier naming a variable (built-in or user);
   it may be followed by an index.
