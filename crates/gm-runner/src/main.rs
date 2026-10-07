@@ -18,6 +18,7 @@ struct Opts {
     screenshot: Option<PathBuf>,
     every: Option<(u64, PathBuf)>,
     input: Vec<(u64, InputEvent)>,
+    max_seconds: Option<f64>,
 }
 
 fn parse_input(s: &str) -> Result<Vec<(u64, InputEvent)>, String> {
@@ -65,6 +66,7 @@ fn parse_args() -> Result<Option<Opts>, String> {
         screenshot: None,
         every: None,
         input: Vec::new(),
+        max_seconds: None,
     };
     let mut file = None;
     let mut i = 0;
@@ -83,6 +85,7 @@ fn parse_args() -> Result<Option<Opts>, String> {
                 o.every = Some((k.max(1), PathBuf::from(next()?)));
             }
             "--input" => o.input = parse_input(&next()?)?,
+            "--max-seconds" => o.max_seconds = Some(next()?.parse().map_err(|_| "bad --max-seconds")?),
             "--coverage" => {
                 let (imp, stub, native, total) = gm_runner::builtins::coverage();
                 println!("builtin functions: {} total; {} native (gml crate), {} implemented by runner, {} stubbed, {} missing", total, native, imp, stub, total - native - imp - stub);
@@ -93,7 +96,7 @@ fn parse_args() -> Result<Option<Opts>, String> {
                 return Ok(None);
             }
             "--help" | "-h" => {
-                println!("usage: gm-runner FILE.gmk|FILE.gm81 [--headless] [--frames N] [--screenshot OUT.png] [--screenshot-every K DIR] [--input SCRIPT] [--coverage]");
+                println!("usage: gm-runner FILE.gmk|FILE.gm81 [--headless] [--frames N] [--screenshot OUT.png] [--screenshot-every K DIR] [--input SCRIPT] [--coverage] [--max-seconds S]");
                 return Ok(None);
             }
             _ if a.starts_with("--") => return Err(format!("unknown option {}", a)),
@@ -120,6 +123,14 @@ fn run_headless(o: Opts) -> i32 {
         }
     };
     g.scripted_input = o.input;
+    if let Some(limit) = o.max_seconds {
+        // watchdog: a game that hangs (endless loop in GML) must not block forever
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs_f64(limit));
+            eprintln!("TIMEOUT: gave up after {}s", limit);
+            std::process::exit(4);
+        });
+    }
     if let Err(e) = g.start(&mut vm) {
         eprintln!("gm-runner: error starting game: {}", e);
         return 1;
@@ -128,14 +139,20 @@ fn run_headless(o: Opts) -> i32 {
         let _ = std::fs::create_dir_all(d);
     }
     let t0 = std::time::Instant::now();
+    let mut slowest = (0.0f64, 0u64);
     for f in 0..o.frames {
         if g.ended {
             eprintln!("game ended at step {}", f);
             break;
         }
+        let ts = std::time::Instant::now();
         if let Err(e) = g.step(&mut vm) {
             eprintln!("FATAL: {}", e);
             break;
+        }
+        let el = ts.elapsed().as_secs_f64();
+        if el > slowest.0 {
+            slowest = (el, f);
         }
         if let Some((k, d)) = &o.every {
             if (f + 1) % k == 0 {
@@ -153,6 +170,8 @@ fn run_headless(o: Opts) -> i32 {
         g.instances.len(),
         g.caption()
     );
+    eprintln!("slowest step: {:.4}s (step {})", slowest.0, slowest.1);
+    g.profile_report();
     if let Some(p) = o.screenshot {
         if let Err(e) = g.frame_image().save_png(&p, true) {
             eprintln!("cannot write screenshot: {}", e);

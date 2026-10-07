@@ -17,10 +17,12 @@ pub mod input;
 pub mod instance;
 pub mod particles;
 pub mod path;
+pub mod profile;
 pub mod render;
 pub mod res;
 pub mod room;
 pub mod save;
+pub mod spatial;
 
 pub use game::{Game, HeadlessUi, Pending, UiHooks};
 pub use input::InputEvent;

@@ -582,13 +582,7 @@ impl Host for Game {
     }
 
     fn first_instance(&mut self, target: i32) -> Option<i32> {
-        if target >= gml::special::FIRST_INSTANCE_ID {
-            return self.inst(target).filter(|i| i.alive()).map(|i| i.id);
-        }
-        self.instances
-            .iter()
-            .find(|i| i.alive() && (target == gml::special::ALL || self.is_a(i.object_index, target)))
-            .map(|i| i.id)
+        self.first_of(target)
     }
 
     fn get_builtin(&mut self, _ctx: &Ctx, inst: i32, var: VariableId, index: i32) -> Result<Value, Error> {
@@ -631,6 +625,12 @@ impl Host for Game {
             },
             _ => return Err(Error::new(format!("Unknown script index {}", script))),
         };
+        if self.prof.is_some() {
+            let t0 = std::time::Instant::now();
+            let r = vm.run(self, &prog, *ctx, args);
+            crate::profile::Profiler::add(&mut self.prof.as_mut().unwrap().scripts, script, t0);
+            return r;
+        }
         vm.run(self, &prog, *ctx, args)
     }
 

@@ -235,6 +235,12 @@ pub struct Game {
     pub parameters: Vec<String>,
     /// Non-blocking input source (frontend), used by io_handle / keyboard_wait.
     pub pump: Option<Box<dyn FnMut() -> Vec<InputEvent>>>,
+    /// Timing instrumentation (`GM_PROFILE`).
+    pub prof: Option<Box<crate::profile::Profiler>>,
+    /// Collision broad phase (see spatial.rs).
+    pub spatial: std::cell::RefCell<crate::spatial::SpatialIndex>,
+    /// Per-object instance lists (see spatial.rs).
+    pub objlists: std::cell::RefCell<crate::spatial::ObjLists>,
 }
 
 impl Game {
@@ -437,6 +443,9 @@ impl Game {
             included_files: p.included_files.clone(),
             parameters: std::env::args().collect(),
             pump: None,
+            prof: crate::profile::Profiler::from_env(),
+            spatial: Default::default(),
+            objlists: Default::default(),
         };
         // resource names → constants
         macro_rules! names {
@@ -713,12 +722,38 @@ impl Game {
         self.inst_index.get(&id).map(|&i| &self.instances[i])
     }
 
+    /// Mutable access to an instance. Marks it for re-binning in the collision
+    /// index, so every change of position/sprite/mask/scale/angle/activity must
+    /// go through here (or call `spatial_invalidate`).
     #[inline]
     pub fn inst_mut(&mut self, id: i32) -> Option<&mut Instance> {
         match self.inst_index.get(&id) {
-            Some(&i) => Some(&mut self.instances[i]),
+            Some(&i) => {
+                self.spatial.get_mut().mark(i);
+                Some(&mut self.instances[i])
+            }
             None => None,
         }
+    }
+
+    /// Mutable access to the instance at list position `k` (marks it, see `inst_mut`).
+    #[inline]
+    pub fn inst_at_mut(&mut self, k: usize) -> &mut Instance {
+        self.spatial.get_mut().mark(k);
+        &mut self.instances[k]
+    }
+
+    /// Forces a rebuild of the collision index (bulk changes, sprite edits).
+    pub fn spatial_invalidate(&mut self) {
+        self.spatial.get_mut().invalidate();
+    }
+
+    /// Appends an instance record to the list.
+    pub fn push_instance(&mut self, inst: Instance) {
+        let k = self.instances.len();
+        self.inst_index.insert(inst.id, k);
+        self.instances.push(inst);
+        self.objlists.borrow_mut().appended(self, k);
     }
 
     /// Instance or error.
@@ -739,12 +774,57 @@ impl Game {
                 }
             }
         } else if target >= 0 {
-            for i in &self.instances {
-                if i.alive() && self.is_a(i.object_index, target) {
+            self.objlists.borrow_mut().for_each(self, target, |k| {
+                let i = &self.instances[k];
+                if i.alive() {
                     out.push(i.id);
                 }
-            }
+                true
+            });
         }
+    }
+
+    /// The first live instance designated by `target` (object, id or all).
+    pub fn first_of(&self, target: i32) -> Option<i32> {
+        if target == gml::special::ALL {
+            return self.instances.iter().find(|i| i.alive()).map(|i| i.id);
+        }
+        if target >= gml::special::FIRST_INSTANCE_ID {
+            return self.inst(target).filter(|i| i.alive()).map(|i| i.id);
+        }
+        if target < 0 {
+            return None;
+        }
+        let mut r = None;
+        self.objlists.borrow_mut().for_each(self, target, |k| {
+            let i = &self.instances[k];
+            if i.alive() {
+                r = Some(i.id);
+                false
+            } else {
+                true
+            }
+        });
+        r
+    }
+
+    /// Number of live instances designated by `target` (object, id or all).
+    pub fn count_of(&self, target: i32) -> usize {
+        if target == gml::special::ALL {
+            return self.instances.iter().filter(|i| i.alive()).count();
+        }
+        if target >= gml::special::FIRST_INSTANCE_ID {
+            return self.inst(target).map(|i| i.alive() as usize).unwrap_or(0);
+        }
+        if target < 0 {
+            return 0;
+        }
+        let mut n = 0;
+        self.objlists.borrow_mut().for_each(self, target, |k| {
+            n += self.instances[k].alive() as usize;
+            true
+        });
+        n
     }
 
     /// Resolves an "object" argument that may also be self/other/all/an id.
@@ -783,8 +863,7 @@ impl Game {
             inst.persistent = o.persistent;
             inst.depth = o.depth as f64;
         }
-        self.inst_index.insert(id, self.instances.len());
-        self.instances.push(inst);
+        self.push_instance(inst);
         id
     }
 
@@ -825,6 +904,7 @@ impl Game {
             let o = self.object(obj).unwrap();
             (o.sprite, o.mask, o.solid, o.visible, o.persistent, o.depth)
         };
+        let old = self.inst(id).map(|i| i.object_index).unwrap_or(-1);
         if let Some(i) = self.inst_mut(id) {
             i.object_index = obj;
             i.sprite_index = spr;
@@ -833,6 +913,9 @@ impl Game {
             i.visible = vis;
             i.persistent = pers;
             i.depth = depth as f64;
+        }
+        if let Some(&k) = self.inst_index.get(&id) {
+            self.objlists.borrow_mut().changed(self, k, old);
         }
         if perf {
             self.run_event(vm, id, ev::CREATE, 0, id)?;
@@ -849,6 +932,8 @@ impl Game {
     }
 
     pub fn reindex(&mut self) {
+        self.spatial.get_mut().invalidate();
+        self.objlists.get_mut().invalidate();
         self.inst_index.clear();
         for (k, i) in self.instances.iter().enumerate() {
             self.inst_index.insert(i.id, k);
@@ -973,9 +1058,22 @@ impl Game {
     }
 
     fn step_inner(&mut self, vm: &mut Vm) -> Result<(), Error> {
+        macro_rules! phase {
+            ($g:expr, $name:expr, $e:expr) => {{
+                if $g.prof.is_some() {
+                    let t0 = std::time::Instant::now();
+                    let r = $e;
+                    let el = t0.elapsed().as_secs_f64();
+                    *$g.prof.as_mut().unwrap().phases.entry($name).or_insert(0.0) += el;
+                    r?
+                } else {
+                    $e?
+                }
+            }};
+        }
         'phases: {
             // 2. special keys and close button
-            self.special_keys(vm)?;
+            phase!(self, "special_keys", self.special_keys(vm));
             if self.pending.is_some() {
                 break 'phases;
             }
@@ -988,7 +1086,7 @@ impl Game {
                 }
             }
             // 4. timelines
-            self.advance_timelines(vm)?;
+            phase!(self, "timelines", self.advance_timelines(vm));
             if self.pending.is_some() {
                 break 'phases;
             }
@@ -997,22 +1095,22 @@ impl Game {
             if self.pending.is_some() {
                 break 'phases;
             }
-            self.broadcast(vm, ev::STEP, crate::events::step::BEGIN)?;
+            phase!(self, "begin step", self.broadcast(vm, ev::STEP, crate::events::step::BEGIN));
             if self.pending.is_some() {
                 break 'phases;
             }
             // 6. alarms
-            self.run_alarms(vm)?;
+            phase!(self, "alarms", self.run_alarms(vm));
             if self.pending.is_some() {
                 break 'phases;
             }
             // 7. keyboard
-            self.keyboard_events(vm)?;
+            phase!(self, "keyboard", self.keyboard_events(vm));
             if self.pending.is_some() {
                 break 'phases;
             }
             // 8. mouse
-            self.mouse_events(vm)?;
+            phase!(self, "mouse", self.mouse_events(vm));
             if self.pending.is_some() {
                 break 'phases;
             }
@@ -1021,22 +1119,22 @@ impl Game {
             if self.pending.is_some() {
                 break 'phases;
             }
-            self.broadcast(vm, ev::STEP, crate::events::step::NORMAL)?;
+            phase!(self, "step", self.broadcast(vm, ev::STEP, crate::events::step::NORMAL));
             if self.pending.is_some() {
                 break 'phases;
             }
             // 10. motion
-            self.motion_update(vm)?;
+            phase!(self, "motion", self.motion_update(vm));
             if self.pending.is_some() {
                 break 'phases;
             }
             // 11. boundary events
-            self.boundary_events(vm)?;
+            phase!(self, "boundary", self.boundary_events(vm));
             if self.pending.is_some() {
                 break 'phases;
             }
             // 12. collisions
-            self.collision_events(vm)?;
+            phase!(self, "collision events", self.collision_events(vm));
             if self.pending.is_some() {
                 break 'phases;
             }
@@ -1045,7 +1143,7 @@ impl Game {
             if self.pending.is_some() {
                 break 'phases;
             }
-            self.broadcast(vm, ev::STEP, crate::events::step::END)?;
+            phase!(self, "end step", self.broadcast(vm, ev::STEP, crate::events::step::END));
             if self.pending.is_some() {
                 break 'phases;
             }
@@ -1058,14 +1156,14 @@ impl Game {
             // 17. draw
             if self.automatic_draw {
                 let t0 = std::time::Instant::now();
-                self.draw_frame(vm)?;
+                phase!(self, "draw", self.draw_frame(vm));
                 self.draw_time += t0.elapsed().as_secs_f64();
             }
             if self.pending.is_some() {
                 break 'phases;
             }
             // 18. animation
-            self.advance_animation(vm)?;
+            phase!(self, "animation", self.advance_animation(vm));
             if self.pending.is_some() {
                 break 'phases;
             }
@@ -1099,7 +1197,7 @@ impl Game {
                         }
                     }
                     self.instances.clear();
-                    self.inst_index.clear();
+                    self.reindex();
                     self.snapshots.clear();
                     self.score = 0.0;
                     self.lives = -1.0;

@@ -1,3 +1,4 @@
 /target
 *.gmk
 *.gm81
+game_errors.log

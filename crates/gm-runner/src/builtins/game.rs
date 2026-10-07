@@ -1,36 +1,40 @@
 //! Chapter 403 (game play): instances, collisions, rooms, events, misc.
 
 use super::{bo, r, zero, Reg, A};
-use crate::collision::Shape;
+use crate::collision::{Sel, Shape};
 use crate::events::ev;
 use crate::game::{Game, Pending};
 use gml::{special, Ctx, Error, Value, Vm};
+
+/// Number of live instances designated by an object argument.
+fn count_ctx(g: &Game, c: &Ctx, obj: i32) -> usize {
+    match obj {
+        special::SELF | special::OTHER => g.select_ctx(c, obj).len(),
+        t => g.count_of(t),
+    }
+}
 
 pub fn register(l: &mut Reg) {
     l.push(("place_free", |g, _, c, a| bo(g.place_free(c.self_id, a.r(0)?, a.r(1)?))));
     l.push(("place_empty", |g, _, c, a| bo(g.place_empty(c.self_id, a.r(0)?, a.r(1)?))));
     l.push(("place_meeting", |g, _, c, a| {
-        let t = g.select_ctx(c, a.i(2)?);
-        bo(g.place_meeting_target(c.self_id, a.r(0)?, a.r(1)?, &t).is_some())
+        let s = g.sel(c, a.i(2)?);
+        bo(g.place_meeting_sel(c.self_id, a.r(0)?, a.r(1)?, s).is_some())
     }));
     l.push(("instance_place", |g, _, c, a| {
-        let t = g.select_ctx(c, a.i(2)?);
-        r(g.place_meeting_target(c.self_id, a.r(0)?, a.r(1)?, &t).unwrap_or(special::NOONE) as f64)
+        let s = g.sel(c, a.i(2)?);
+        r(g.place_meeting_sel(c.self_id, a.r(0)?, a.r(1)?, s).unwrap_or(special::NOONE) as f64)
     }));
     l.push(("position_empty", |g, _, _, a| {
-        let (x, y) = (a.r(0)?, a.r(1)?);
-        let ids: Vec<i32> = g.instances.iter().filter(|i| i.alive()).map(|i| i.id).collect();
-        bo(!ids.iter().any(|&id| g.point_in_instance(id, x, y, true)))
+        bo(g.instance_at_point(a.r(0)?, a.r(1)?, Sel::All).is_none())
     }));
     l.push(("position_meeting", |g, _, c, a| {
-        let (x, y) = (a.r(0)?, a.r(1)?);
-        let t = g.select_ctx(c, a.i(2)?);
-        bo(t.iter().any(|&id| g.point_in_instance(id, x, y, true)))
+        let s = g.sel(c, a.i(2)?);
+        bo(g.instance_at_point(a.r(0)?, a.r(1)?, s).is_some())
     }));
     l.push(("instance_position", |g, _, c, a| {
-        let (x, y) = (a.r(0)?, a.r(1)?);
-        let t = g.select_ctx(c, a.i(2)?);
-        r(t.into_iter().find(|&id| g.point_in_instance(id, x, y, true)).unwrap_or(special::NOONE) as f64)
+        let s = g.sel(c, a.i(2)?);
+        r(g.instance_at_point(a.r(0)?, a.r(1)?, s).unwrap_or(special::NOONE) as f64)
     }));
     l.push(("distance_to_point", |g, _, c, a| r(g.bbox_distance_point(c.self_id, a.r(0)?, a.r(1)?))));
     l.push(("distance_to_object", |g, _, c, a| {
@@ -44,9 +48,9 @@ pub fn register(l: &mut Reg) {
     }));
     // collision_* queries
     fn coll(g: &Game, c: &Ctx, shape: Shape, obj: i32, prec: bool, notme: bool) -> Result<Value, Error> {
-        let t = g.select_ctx(c, obj);
+        let s = g.sel(c, obj);
         let me = if notme { Some(c.self_id) } else { None };
-        r(g.shape_collision(shape, &t, prec, me).unwrap_or(special::NOONE) as f64)
+        r(g.shape_collision_sel(shape, s, prec, me).unwrap_or(special::NOONE) as f64)
     }
     l.push(("collision_point", |g, _, c, a| {
         coll(g, c, Shape::Point(a.r(0)?, a.r(1)?), a.i(2)?, a.b(3)?, a.b(4)?)
@@ -69,8 +73,8 @@ pub fn register(l: &mut Reg) {
         let n = a.i(1)?;
         r(if n >= 0 { t.get(n as usize).copied().unwrap_or(special::NOONE) } else { special::NOONE } as f64)
     }));
-    l.push(("instance_exists", |g, _, c, a| bo(!g.select_ctx(c, a.i(0)?).is_empty())));
-    l.push(("instance_number", |g, _, c, a| r(g.select_ctx(c, a.i(0)?).len() as f64)));
+    l.push(("instance_exists", |g, _, c, a| bo(count_ctx(g, c, a.i(0)?) > 0)));
+    l.push(("instance_number", |g, _, c, a| r(count_ctx(g, c, a.i(0)?) as f64)));
     fn nearest(g: &Game, c: &Ctx, a: &A, far: bool) -> Result<Value, Error> {
         let (x, y) = (a.r(0)?, a.r(1)?);
         let t = g.select_ctx(c, a.i(2)?);
@@ -116,8 +120,7 @@ pub fn register(l: &mut Reg) {
     }));
     l.push(("position_destroy", |g, vm, c, a| {
         let (x, y) = (a.r(0)?, a.r(1)?);
-        let ids: Vec<i32> = g.instances.iter().filter(|i| i.alive()).map(|i| i.id).collect();
-        for id in ids {
+        for id in g.instances_at_point(x, y) {
             if g.point_in_instance(id, x, y, true) {
                 g.destroy_instance(vm, id, c.self_id)?;
             }
@@ -126,8 +129,7 @@ pub fn register(l: &mut Reg) {
     }));
     l.push(("position_change", |g, vm, _, a| {
         let (x, y, obj, perf) = (a.r(0)?, a.r(1)?, a.i(2)?, a.b(3)?);
-        let ids: Vec<i32> = g.instances.iter().filter(|i| i.alive()).map(|i| i.id).collect();
-        for id in ids {
+        for id in g.instances_at_point(x, y) {
             if g.point_in_instance(id, x, y, true) {
                 g.change_instance(vm, id, obj, perf)?;
             }
@@ -137,6 +139,7 @@ pub fn register(l: &mut Reg) {
     // deactivation
     l.push(("instance_deactivate_all", |g, _, c, a| {
         let notme = a.b(0)?;
+        g.spatial_invalidate();
         for i in g.instances.iter_mut() {
             if !(notme && i.id == c.self_id) {
                 i.active = false;
@@ -167,6 +170,7 @@ pub fn register(l: &mut Reg) {
         zero()
     }));
     l.push(("instance_activate_all", |g, _, _, _| {
+        g.spatial_invalidate();
         for i in g.instances.iter_mut() {
             i.active = true;
         }

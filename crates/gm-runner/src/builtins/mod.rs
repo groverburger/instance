@@ -95,6 +95,8 @@ pub fn zero() -> Result<Value, Error> {
 struct Table {
     fns: Vec<Option<BuiltinFn>>,
     stubbed: Vec<bool>,
+    /// Functions that may change collision geometry of existing instances.
+    geometry: Vec<bool>,
 }
 
 fn table() -> &'static Table {
@@ -126,7 +128,16 @@ fn table() -> &'static Table {
                 stubbed[id.0 as usize] = true;
             }
         }
-        Table { fns, stubbed }
+        let geometry = (0..n)
+            .map(|i| {
+                let name = gml::builtins::FUNCTIONS[i].name;
+                name.starts_with("sprite_")
+                    && !name.starts_with("sprite_get")
+                    && !name.starts_with("sprite_exists")
+                    && !name.starts_with("sprite_save")
+            })
+            .collect();
+        Table { fns, stubbed, geometry }
     })
 }
 
@@ -135,6 +146,16 @@ pub fn dispatch(g: &mut Game, vm: &mut Vm, ctx: &Ctx, f: FunctionId, args: &[Val
     match table().fns[f.0 as usize] {
         Some(func) => {
             let a = A { v: args, f };
+            if table().geometry[f.0 as usize] {
+                // edits sprites (masks/origins): instance boxes may change
+                g.spatial_invalidate();
+            }
+            if g.prof.is_some() {
+                let t0 = std::time::Instant::now();
+                let r = func(g, vm, ctx, &a);
+                crate::profile::Profiler::add(&mut g.prof.as_mut().unwrap().funcs, f.0, t0);
+                return r;
+            }
             func(g, vm, ctx, &a)
         }
         None => Err(Error::new(format!("Function {} is not supported by this runner.", f.name()))),
