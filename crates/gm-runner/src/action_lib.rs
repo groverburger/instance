@@ -940,7 +940,7 @@ fn build() -> HashMap<&'static str, ActionFn> {
     });
     act!("action_snapshot", |g, _, _, a, _| {
         let p = g.resolve_path(&text_s(a, 0));
-        g.gfx.back.save_png(&p, true).map_err(|e| Error::new(e.to_string()))?;
+        g.gfx.read_back().save_png(&p, true).map_err(|e| Error::new(e.to_string()))?;
         ok()
     });
     act!("action_effect", |g, _, c, a, rel| {

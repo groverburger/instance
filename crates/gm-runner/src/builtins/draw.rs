@@ -2,11 +2,14 @@
 //! window and screen functions.
 
 use super::{bo, r, st, zero, Reg, A};
-use crate::draw::{rgba, rgba8, Blend, Canvas, Texture};
+use crate::draw::{rgba, rgba8, Blend, Target, Tex, Texture};
 use crate::game::Game;
 use crate::render::TexRef;
 use gml::{Ctx, Error, Value, Vm};
 use std::rc::Rc;
+
+/// Draws (sprite/background/surface) as a texture source with its origin.
+type Src = Option<(Tex, f64, f64)>;
 
 type R = Result<Value, Error>;
 
@@ -38,14 +41,22 @@ impl Game {
         self.background(b).map(|b| b.tex.clone())
     }
 
-    fn surf_tex(&self, s: i32) -> Option<Rc<Texture>> {
-        self.gfx.surfaces.get(s.max(0) as usize)?.as_ref().filter(|_| s >= 0).map(|c| Rc::new(c.clone()))
+    fn spr_src(&self, spr: i32, sub: f64) -> Src {
+        self.sprite_tex(spr, sub).map(|(t, ox, oy)| (Tex::Img(t), ox, oy))
+    }
+
+    fn bg_src(&self, b: i32) -> Src {
+        self.bg_tex(b).map(|t| (Tex::Img(t), 0.0, 0.0))
+    }
+
+    fn surf_src(&self, s: i32) -> Src {
+        self.gfx.surface_tex(s).map(|t| (t, 0.0, 0.0))
     }
 
     /// Tiles a texture over the visible area of the current pass.
     #[allow(clippy::too_many_arguments)]
-    fn draw_tiled(&mut self, tex: &Texture, ox: f64, oy: f64, x: f64, y: f64, xs: f64, ys: f64, col: i32, alpha: f64) {
-        let (tw, th) = (tex.w as f64 * xs, tex.h as f64 * ys);
+    fn draw_tiled(&mut self, tex: &Tex, ox: f64, oy: f64, x: f64, y: f64, xs: f64, ys: f64, col: i32, alpha: f64) {
+        let (tw, th) = (tex.w() as f64 * xs, tex.h() as f64 * ys);
         if tw.abs() < 0.5 || th.abs() < 0.5 {
             return;
         }
@@ -82,7 +93,7 @@ impl Game {
         while yy < y1 {
             let mut xx = startx;
             while xx < x1 {
-                self.gfx.draw_tex(tex, 0.0, 0.0, tex.w as f64, tex.h as f64, 0.0, 0.0, xx, yy, xs, ys, 0.0, [col; 4], alpha);
+                self.gfx.draw_tex(tex, 0.0, 0.0, tex.w() as f64, tex.h() as f64, 0.0, 0.0, xx, yy, xs, ys, 0.0, [col; 4], alpha);
                 xx += tw;
             }
             yy += th;
@@ -90,9 +101,9 @@ impl Game {
     }
 
     /// Draws a texture (sprite/background/surface) in one of the standard forms.
-    fn draw_form(&mut self, tex: Option<(Rc<Texture>, f64, f64)>, form: Form, a: &A, base: usize) -> R {
+    fn draw_form(&mut self, tex: Src, form: Form, a: &A, base: usize) -> R {
         let Some((t, ox, oy)) = tex else { return zero() };
-        let (tw, th) = (t.w as f64, t.h as f64);
+        let (tw, th) = (t.w() as f64, t.h() as f64);
         let g = &mut self.gfx;
         g.texture_repeat = false;
         let w = |i: usize| a.r(base + i);
@@ -152,12 +163,9 @@ impl Game {
         zero()
     }
 
-    fn surface_mut(&mut self, id: i32) -> Result<&mut Canvas, Error> {
-        self.gfx
-            .surfaces
-            .get_mut(id.max(0) as usize)
-            .and_then(|s| s.as_mut())
-            .ok_or_else(|| Error::new(format!("Surface does not exist: {}", id)))
+    /// Size of an existing surface (error if it does not exist).
+    fn surface_mut(&mut self, id: i32) -> Result<(u32, u32), Error> {
+        self.gfx.surface_size(id).ok_or_else(|| Error::new(format!("Surface does not exist: {}", id)))
     }
 
     fn healthbar(&mut self, a: &A) -> R {
@@ -192,49 +200,14 @@ impl Game {
     fn flush_primitive(&mut self) {
         let Some((kind, texid, v)) = self.gfx.prim.take() else { return };
         let tex = if texid >= 0 { self.gfx.texture(texid) } else { None };
-        let pt = |i: usize| (v[i].0, v[i].1);
-        let cl = |i: usize| rgba(v[i].4, v[i].5);
-        let uv = |t: &Texture, i: usize| ((v[i].2 * t.w as f64) as f32, (v[i].3 * t.h as f64) as f32);
-        let repeat = self.gfx.texture_repeat;
-        let mut p = self.gfx.painter();
-        let tri = |p: &mut crate::draw::Painter, a: usize, b: usize, c: usize| match &tex {
-            Some(t) => p.tri_tex(t, [pt(a), pt(b), pt(c)], [uv(t, a), uv(t, b), uv(t, c)], [cl(a), cl(b), cl(c)], repeat),
-            None => p.tri([pt(a), pt(b), pt(c)], [cl(a), cl(b), cl(c)]),
-        };
-        let n = v.len();
-        match kind {
-            1 => {
-                for i in 0..n {
-                    p.point(v[i].0, v[i].1, cl(i));
-                }
-            }
-            2 => {
-                for i in (0..n.saturating_sub(1)).step_by(2) {
-                    p.line(v[i].0, v[i].1, v[i + 1].0, v[i + 1].1, 1.0, cl(i), cl(i + 1));
-                }
-            }
-            3 => {
-                for i in 1..n {
-                    p.line(v[i - 1].0, v[i - 1].1, v[i].0, v[i].1, 1.0, cl(i - 1), cl(i));
-                }
-            }
-            4 => {
-                for i in (0..n.saturating_sub(2)).step_by(3) {
-                    tri(&mut p, i, i + 1, i + 2);
-                }
-            }
-            5 => {
-                for i in 2..n {
-                    tri(&mut p, i - 2, i - 1, i);
-                }
-            }
-            6 => {
-                for i in 2..n {
-                    tri(&mut p, 0, i - 1, i);
-                }
-            }
-            _ => {}
-        }
+        let z = self.gfx.d3d.depth;
+        let verts: Vec<crate::d3d::MV> = v
+            .iter()
+            .map(|p| crate::d3d::MV { p: [p.0, p.1, z], uv: [p.2, p.3], col: Some((p.4, p.5)), n: [0.0; 3] })
+            .collect();
+        let (pipe, st) = self.gfx.pipe_state();
+        let gfx = &mut self.gfx;
+        gfx.d3d.draw_mesh(&mut *gfx.be, &pipe, &st, kind, tex.as_ref(), &verts, [0.0; 3], (gfx.color, gfx.alpha));
     }
 }
 
@@ -292,121 +265,121 @@ pub fn register(l: &mut Reg) {
     }));
     // sprites
     l.push(("draw_sprite", |g, _, c, a| {
-        let t = g.sprite_tex(a.i(0)?, g.sub(c, a.r(1)?));
+        let t = g.spr_src(a.i(0)?, g.sub(c, a.r(1)?));
         g.draw_form(t, Form::Plain, a, 2)
     }));
     l.push(("draw_sprite_ext", |g, _, c, a| {
-        let t = g.sprite_tex(a.i(0)?, g.sub(c, a.r(1)?));
+        let t = g.spr_src(a.i(0)?, g.sub(c, a.r(1)?));
         g.draw_form(t, Form::Ext, a, 2)
     }));
     l.push(("draw_sprite_stretched", |g, _, c, a| {
-        let t = g.sprite_tex(a.i(0)?, g.sub(c, a.r(1)?));
+        let t = g.spr_src(a.i(0)?, g.sub(c, a.r(1)?));
         g.draw_form(t, Form::Stretched, a, 2)
     }));
     l.push(("draw_sprite_stretched_ext", |g, _, c, a| {
-        let t = g.sprite_tex(a.i(0)?, g.sub(c, a.r(1)?));
+        let t = g.spr_src(a.i(0)?, g.sub(c, a.r(1)?));
         g.draw_form(t, Form::StretchedExt, a, 2)
     }));
     l.push(("draw_sprite_tiled", |g, _, c, a| {
-        let t = g.sprite_tex(a.i(0)?, g.sub(c, a.r(1)?));
+        let t = g.spr_src(a.i(0)?, g.sub(c, a.r(1)?));
         g.draw_form(t, Form::Tiled, a, 2)
     }));
     l.push(("draw_sprite_tiled_ext", |g, _, c, a| {
-        let t = g.sprite_tex(a.i(0)?, g.sub(c, a.r(1)?));
+        let t = g.spr_src(a.i(0)?, g.sub(c, a.r(1)?));
         g.draw_form(t, Form::TiledExt, a, 2)
     }));
     l.push(("draw_sprite_part", |g, _, c, a| {
-        let t = g.sprite_tex(a.i(0)?, g.sub(c, a.r(1)?));
+        let t = g.spr_src(a.i(0)?, g.sub(c, a.r(1)?));
         g.draw_form(t, Form::Part, a, 2)
     }));
     l.push(("draw_sprite_part_ext", |g, _, c, a| {
-        let t = g.sprite_tex(a.i(0)?, g.sub(c, a.r(1)?));
+        let t = g.spr_src(a.i(0)?, g.sub(c, a.r(1)?));
         g.draw_form(t, Form::PartExt, a, 2)
     }));
     l.push(("draw_sprite_general", |g, _, c, a| {
-        let t = g.sprite_tex(a.i(0)?, g.sub(c, a.r(1)?));
+        let t = g.spr_src(a.i(0)?, g.sub(c, a.r(1)?));
         g.draw_form(t, Form::General, a, 2)
     }));
     l.push(("draw_sprite_pos", |g, _, c, a| {
-        let Some((t, _, _)) = g.sprite_tex(a.i(0)?, g.sub(c, a.r(1)?)) else { return zero() };
+        let Some((t, _, _)) = g.spr_src(a.i(0)?, g.sub(c, a.r(1)?)) else { return zero() };
         let p = [(a.r(2)?, a.r(3)?), (a.r(4)?, a.r(5)?), (a.r(6)?, a.r(7)?), (a.r(8)?, a.r(9)?)];
         let col = rgba(0xFFFFFF, a.r(10)?);
-        let (w, h) = (t.w as f32, t.h as f32);
+        let (w, h) = (t.w() as f32, t.h() as f32);
         g.gfx.painter().quad_tex(&t, p, [(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)], [col; 4], false);
         zero()
     }));
     // backgrounds
     l.push(("draw_background", |g, _, _, a| {
-        let t = g.bg_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.bg_src(a.i(0)?);
         g.draw_form(t, Form::Plain, a, 1)
     }));
     l.push(("draw_background_ext", |g, _, _, a| {
-        let t = g.bg_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.bg_src(a.i(0)?);
         g.draw_form(t, Form::Ext, a, 1)
     }));
     l.push(("draw_background_stretched", |g, _, _, a| {
-        let t = g.bg_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.bg_src(a.i(0)?);
         g.draw_form(t, Form::Stretched, a, 1)
     }));
     l.push(("draw_background_stretched_ext", |g, _, _, a| {
-        let t = g.bg_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.bg_src(a.i(0)?);
         g.draw_form(t, Form::StretchedExt, a, 1)
     }));
     l.push(("draw_background_tiled", |g, _, _, a| {
-        let t = g.bg_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.bg_src(a.i(0)?);
         g.draw_form(t, Form::Tiled, a, 1)
     }));
     l.push(("draw_background_tiled_ext", |g, _, _, a| {
-        let t = g.bg_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.bg_src(a.i(0)?);
         g.draw_form(t, Form::TiledExt, a, 1)
     }));
     l.push(("draw_background_part", |g, _, _, a| {
-        let t = g.bg_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.bg_src(a.i(0)?);
         g.draw_form(t, Form::Part, a, 1)
     }));
     l.push(("draw_background_part_ext", |g, _, _, a| {
-        let t = g.bg_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.bg_src(a.i(0)?);
         g.draw_form(t, Form::PartExt, a, 1)
     }));
     l.push(("draw_background_general", |g, _, _, a| {
-        let t = g.bg_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.bg_src(a.i(0)?);
         g.draw_form(t, Form::General, a, 1)
     }));
     // surfaces drawn like sprites
     l.push(("draw_surface", |g, _, _, a| {
-        let t = g.surf_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.surf_src(a.i(0)?);
         g.draw_form(t, Form::Plain, a, 1)
     }));
     l.push(("draw_surface_ext", |g, _, _, a| {
-        let t = g.surf_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.surf_src(a.i(0)?);
         g.draw_form(t, Form::Ext, a, 1)
     }));
     l.push(("draw_surface_stretched", |g, _, _, a| {
-        let t = g.surf_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.surf_src(a.i(0)?);
         g.draw_form(t, Form::Stretched, a, 1)
     }));
     l.push(("draw_surface_stretched_ext", |g, _, _, a| {
-        let t = g.surf_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.surf_src(a.i(0)?);
         g.draw_form(t, Form::StretchedExt, a, 1)
     }));
     l.push(("draw_surface_tiled", |g, _, _, a| {
-        let t = g.surf_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.surf_src(a.i(0)?);
         g.draw_form(t, Form::Tiled, a, 1)
     }));
     l.push(("draw_surface_tiled_ext", |g, _, _, a| {
-        let t = g.surf_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.surf_src(a.i(0)?);
         g.draw_form(t, Form::TiledExt, a, 1)
     }));
     l.push(("draw_surface_part", |g, _, _, a| {
-        let t = g.surf_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.surf_src(a.i(0)?);
         g.draw_form(t, Form::Part, a, 1)
     }));
     l.push(("draw_surface_part_ext", |g, _, _, a| {
-        let t = g.surf_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.surf_src(a.i(0)?);
         g.draw_form(t, Form::PartExt, a, 1)
     }));
     l.push(("draw_surface_general", |g, _, _, a| {
-        let t = g.surf_tex(a.i(0)?).map(|t| (t, 0.0, 0.0));
+        let t = g.surf_src(a.i(0)?);
         g.draw_form(t, Form::General, a, 1)
     }));
     // shapes
@@ -592,12 +565,12 @@ pub fn register(l: &mut Reg) {
     l.push(("draw_healthbar", |g, _, _, a| g.healthbar(a)));
     l.push(("draw_getpixel", |g, _, _, a| {
         let (x, y) = g.gfx.pass_xf.apply(a.r(0)?, a.r(1)?);
-        let b = &g.gfx.back;
+        let (bw, bh) = g.gfx.back_size();
         let (xi, yi) = (x.floor() as i32, y.floor() as i32);
-        if xi < 0 || yi < 0 || xi >= b.w as i32 || yi >= b.h as i32 {
+        if xi < 0 || yi < 0 || xi >= bw as i32 || yi >= bh as i32 {
             return zero();
         }
-        let p = b.get(xi as u32, yi as u32);
+        let p = g.gfx.be.pixel(Target::Back, xi, yi);
         r((p[0] as i32 | (p[1] as i32) << 8 | (p[2] as i32) << 16) as f64)
     }));
     // state
@@ -642,14 +615,13 @@ pub fn register(l: &mut Reg) {
     l.push(("merge_color", |_, _, _, a| r(crate::particles::mix(a.i(0)?, a.i(1)?, a.r(2)?.clamp(0.0, 1.0)) as f64)));
     l.push(("screen_save", |g, _, _, a| {
         let p = g.resolve_path(&a.s(0)?);
-        g.gfx.back.save_png(&p, true).map_err(|e| Error::new(e.to_string()))?;
+        g.gfx.read_back().save_png(&p, true).map_err(|e| Error::new(e.to_string()))?;
         zero()
     }));
     l.push(("screen_save_part", |g, _, _, a| {
         let p = g.resolve_path(&a.s(0)?);
         let (x, y, w, h) = (a.i(1)?, a.i(2)?, a.i(3)?.max(1), a.i(4)?.max(1));
-        let mut c = Canvas::new(w as u32, h as u32);
-        c.blit(&g.gfx.back, x, y, w, h, 0, 0);
+        let c = g.gfx.be.read(Target::Back, x, y, w as u32, h as u32);
         c.save_png(&p, true).map_err(|e| Error::new(e.to_string()))?;
         zero()
     }));
@@ -765,18 +737,27 @@ pub fn register(l: &mut Reg) {
     }));
     l.push(("surface_get_texture", |g, _, _, a| {
         let s = a.i(0)?;
+        if g.gfx.surface_size(s).is_none() {
+            return r(-1.0);
+        }
+        if let Some(i) = g.gfx.textures.iter().position(|t| matches!(t, TexRef::Surface(x) if *x == s)) {
+            return r(i as f64);
+        }
         g.gfx.textures.push(TexRef::Surface(s));
         r((g.gfx.textures.len() - 1) as f64)
     }));
     l.push(("texture_preload", |_, _, _, _| zero()));
     l.push(("texture_set_priority", |_, _, _, _| zero()));
-    l.push(("texture_get_width", |_, _, _, _| r(1.0)));
-    l.push(("texture_get_height", |_, _, _, _| r(1.0)));
+    l.push(("texture_get_width", |g, _, _, a| r(g.gfx.texture_frac(a.i(0)?).0)));
+    l.push(("texture_get_height", |g, _, _, a| r(g.gfx.texture_frac(a.i(0)?).1)));
     l.push(("texture_set_interpolation", |g, _, _, a| {
         g.gfx.interpolate = a.b(0)?;
         zero()
     }));
-    l.push(("texture_set_blending", |_, _, _, _| zero()));
+    l.push(("texture_set_blending", |g, _, _, a| {
+        g.gfx.d3d.tex_blend = a.b(0)?;
+        zero()
+    }));
     l.push(("texture_set_repeat", |g, _, _, a| {
         g.gfx.texture_repeat = a.b(0)?;
         zero()
@@ -795,70 +776,70 @@ pub fn register(l: &mut Reg) {
     // surfaces
     l.push(("surface_create", |g, _, _, a| {
         let (w, h) = (a.i(0)?.max(1) as u32, a.i(1)?.max(1) as u32);
-        r(g.alloc_surface(Canvas::new(w, h)) as f64)
+        r(g.gfx.surface_create(w, h) as f64)
     }));
     l.push(("surface_free", |g, _, _, a| {
         let id = a.i(0)?;
-        if let Some(s) = g.gfx.surfaces.get_mut(id.max(0) as usize) {
-            *s = None;
-        }
         if g.gfx.target == id {
-            g.gfx.target = -1;
+            g.reset_surface_target();
         }
+        g.gfx.surface_free(id);
         zero()
     }));
-    l.push(("surface_exists", |g, _, _, a| {
-        let id = a.i(0)?;
-        bo(id >= 0 && g.gfx.surfaces.get(id as usize).map(|s| s.is_some()).unwrap_or(false))
-    }));
-    l.push(("surface_get_width", |g, _, _, a| r(g.surface_mut(a.i(0)?)?.w as f64)));
-    l.push(("surface_get_height", |g, _, _, a| r(g.surface_mut(a.i(0)?)?.h as f64)));
+    l.push(("surface_exists", |g, _, _, a| bo(g.gfx.surface_size(a.i(0)?).is_some())));
+    l.push(("surface_get_width", |g, _, _, a| r(g.surface_mut(a.i(0)?)?.0 as f64)));
+    l.push(("surface_get_height", |g, _, _, a| r(g.surface_mut(a.i(0)?)?.1 as f64)));
     l.push(("surface_set_target", |g, _, _, a| {
         let id = a.i(0)?;
         g.surface_mut(id)?;
-        g.gfx.target = id;
+        g.set_surface_target(id);
         zero()
     }));
     l.push(("surface_reset_target", |g, _, _, _| {
-        g.gfx.target = -1;
+        g.reset_surface_target();
         zero()
     }));
     l.push(("surface_getpixel", |g, _, _, a| {
         let (x, y) = (a.i(1)?, a.i(2)?);
-        let s = g.surface_mut(a.i(0)?)?;
-        if x < 0 || y < 0 || x >= s.w as i32 || y >= s.h as i32 {
+        let id = a.i(0)?;
+        let (w, h) = g.surface_mut(id)?;
+        if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
             return zero();
         }
-        let p = s.get(x as u32, y as u32);
+        let p = g.gfx.be.pixel(Target::Surface(id), x, y);
         r((p[0] as i32 | (p[1] as i32) << 8 | (p[2] as i32) << 16) as f64)
     }));
     l.push(("surface_save", |g, _, _, a| {
         let p = g.resolve_path(&a.s(1)?);
-        let s = g.surface_mut(a.i(0)?)?.clone();
+        let id = a.i(0)?;
+        let (w, h) = g.surface_mut(id)?;
+        let s = g.gfx.be.read(Target::Surface(id), 0, 0, w, h);
         s.save_png(&p, false).map_err(|e| Error::new(e.to_string()))?;
         zero()
     }));
     l.push(("surface_save_part", |g, _, _, a| {
         let p = g.resolve_path(&a.s(1)?);
         let (x, y, w, h) = (a.i(2)?, a.i(3)?, a.i(4)?.max(1), a.i(5)?.max(1));
-        let s = g.surface_mut(a.i(0)?)?.clone();
-        let mut c = Canvas::new(w as u32, h as u32);
-        c.blit(&s, x, y, w, h, 0, 0);
+        let id = a.i(0)?;
+        g.surface_mut(id)?;
+        let c = g.gfx.be.read(Target::Surface(id), x, y, w as u32, h as u32);
         c.save_png(&p, false).map_err(|e| Error::new(e.to_string()))?;
         zero()
     }));
     l.push(("surface_copy", |g, _, _, a| {
-        let src = g.surface_mut(a.i(3)?)?.clone();
+        let (dst, src) = (a.i(0)?, a.i(3)?);
+        let (sw, sh) = g.surface_mut(src)?;
+        g.surface_mut(dst)?;
         let (x, y) = (a.i(1)?, a.i(2)?);
-        let d = g.surface_mut(a.i(0)?)?;
-        d.blit(&src, 0, 0, src.w as i32, src.h as i32, x, y);
+        g.gfx.be.copy(Target::Surface(dst), x, y, Target::Surface(src), 0, 0, sw as i32, sh as i32);
         zero()
     }));
     l.push(("surface_copy_part", |g, _, _, a| {
-        let src = g.surface_mut(a.i(3)?)?.clone();
+        let (dst, src) = (a.i(0)?, a.i(3)?);
+        g.surface_mut(src)?;
+        g.surface_mut(dst)?;
         let (x, y, xs, ys, ws, hs) = (a.i(1)?, a.i(2)?, a.i(4)?, a.i(5)?, a.i(6)?, a.i(7)?);
-        let d = g.surface_mut(a.i(0)?)?;
-        d.blit(&src, xs, ys, ws, hs, x, y);
+        g.gfx.be.copy(Target::Surface(dst), x, y, Target::Surface(src), xs, ys, ws, hs);
         zero()
     }));
     // tiles
@@ -1004,10 +985,10 @@ pub fn register(l: &mut Reg) {
     l.push(("display_set_all", |_, _, _, _| bo(false)));
     l.push(("display_test_all", |_, _, _, _| bo(false)));
     l.push(("display_reset", |g, _, _, _| {
-        for s in g.gfx.surfaces.iter_mut() {
-            *s = None;
+        g.reset_surface_target();
+        for id in 0..g.gfx.surfaces.len() as i32 {
+            g.gfx.surface_free(id);
         }
-        g.gfx.target = -1;
         zero()
     }));
     l.push(("display_mouse_get_x", |g, _, _, _| r(g.win.x.max(0) as f64 + g.input.mouse_x)));
@@ -1190,7 +1171,10 @@ pub fn register(l: &mut Reg) {
         g.automatic_draw = a.b(0)?;
         zero()
     }));
-    l.push(("set_synchronization", |_, _, _, _| zero()));
+    l.push(("set_synchronization", |g, _, _, a| {
+        g.gfx.vsync_change = Some(a.b(0)?);
+        zero()
+    }));
     l.push(("YoYo_EnableAlphaBlend", |g, _, _, a| {
         g.gfx.blend = if a.b(0)? { Blend::NORMAL } else { Blend { src: 2, dst: 1 } };
         zero()

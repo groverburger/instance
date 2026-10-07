@@ -1174,7 +1174,7 @@ impl Game {
             loop {
                 let p = std::path::Path::new(&self.working_directory).join(format!("screenshot{:03}.png", n));
                 if !p.exists() {
-                    let _ = self.gfx.back.save_png(&p, true);
+                    let _ = self.gfx.read_back().save_png(&p, true);
                     break;
                 }
                 n += 1;
@@ -1221,8 +1221,8 @@ impl Game {
     }
 
     /// The current frame as RGBA (back buffer).
-    pub fn frame_image(&self) -> &Texture {
-        &self.gfx.back
+    pub fn frame_image(&mut self) -> Texture {
+        self.gfx.read_back()
     }
 
     /// Requests a room change. A pending game end / restart / load is not

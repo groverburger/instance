@@ -1,10 +1,13 @@
 //! Windowed frontend: winit event loop on the main thread, game logic on a
-//! big-stack thread, frames presented with softbuffer (software, no GPU).
+//! big-stack thread. Frames are presented either by OpenGL from the game
+//! thread (the context is made current there on the winit window) or, as a
+//! fallback, by copying software-rendered pixels to the window with softbuffer.
 
+use gm_runner::draw::gl::GlBackend;
+use gm_runner::draw::Backend;
 use gm_runner::{Game, InputEvent, UiHooks};
 use std::num::NonZeroU32;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -15,16 +18,25 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
+/// Renderer choice (`--renderer`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Renderer {
+    Gl,
+    Software,
+}
+
 #[derive(Debug)]
 enum UserEvent {
     Frame,
     Exit(i32),
 }
 
-/// What the game thread publishes for the window.
+/// What the game thread publishes for the window (and the window for it).
 #[derive(Default)]
 struct Slot {
+    /// Software frames (0RGB).
     pixels: Vec<u32>,
+    /// Region (back buffer) size.
     w: u32,
     h: u32,
     caption: String,
@@ -37,8 +49,16 @@ struct Slot {
     req_h: i32,
     resize: bool,
     set_mouse: Option<(f64, f64)>,
+    /// Current client size of the window (set by the main thread).
+    win_w: u32,
+    win_h: u32,
+    /// Colour outside the region (0RGB).
+    outside: u32,
+    /// Frames are presented by OpenGL from the game thread.
+    gl: bool,
 }
 
+#[derive(Clone, Copy)]
 struct Mapping {
     ox: f64,
     oy: f64,
@@ -46,15 +66,35 @@ struct Mapping {
     sy: f64,
 }
 
+/// Placement of the region in the window (runtime.md §12.1).
+fn mapping(ww: u32, wh: u32, rw: u32, rh: u32, scale: f64, fullscreen: bool) -> Mapping {
+    let (ww, wh) = (ww.max(1) as f64, wh.max(1) as f64);
+    let (rw, rh) = (rw.max(1) as f64, rh.max(1) as f64);
+    let (sx, sy) = if scale > 0.0 && !fullscreen {
+        (scale, scale)
+    } else if scale == 0.0 {
+        (ww / rw, wh / rh)
+    } else {
+        let k = (ww / rw).min(wh / rh);
+        (k, k)
+    };
+    Mapping { ox: ((ww - rw * sx) / 2.0).floor(), oy: ((wh - rh * sy) / 2.0).floor(), sx, sy }
+}
+
+fn slot_mapping(s: &Slot) -> Mapping {
+    mapping(s.win_w, s.win_h, s.w, s.h, s.scale, s.fullscreen)
+}
+
 struct App {
     slot: Arc<Mutex<Slot>>,
     input: Sender<InputEvent>,
-    window: Option<Rc<Window>>,
-    surface: Option<softbuffer::Surface<Rc<Window>, Rc<Window>>>,
-    map: Mapping,
+    window: Option<Arc<Window>>,
+    win_tx: Option<Sender<Arc<Window>>>,
+    surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
     exit_code: i32,
     last_caption: String,
     fullscreen: bool,
+    shown: bool,
 }
 
 fn vk(code: KeyCode) -> Option<u8> {
@@ -162,32 +202,57 @@ fn vk(code: KeyCode) -> Option<u8> {
 }
 
 impl App {
-    fn ensure_window(&mut self, el: &ActiveEventLoop) {
+    fn create_window(&mut self, el: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
         }
-        let s = self.slot.lock().unwrap();
-        let (w, h) = client_size(&s);
         let attrs = Window::default_attributes()
-            .with_title(s.caption.clone())
-            .with_inner_size(winit::dpi::LogicalSize::new(w, h));
-        drop(s);
+            .with_title("")
+            .with_visible(false)
+            .with_inner_size(winit::dpi::PhysicalSize::new(640, 480));
         let win = match el.create_window(attrs) {
-            Ok(w) => Rc::new(w),
+            Ok(w) => Arc::new(w),
             Err(e) => {
                 eprintln!("gm-runner: cannot create window: {}", e);
                 el.exit();
                 return;
             }
         };
-        let ctx = softbuffer::Context::new(win.clone()).expect("softbuffer context");
-        let surface = softbuffer::Surface::new(&ctx, win.clone()).expect("softbuffer surface");
+        {
+            let size = win.inner_size();
+            let mut s = self.slot.lock().unwrap();
+            s.win_w = size.width;
+            s.win_h = size.height;
+        }
+        if let Some(tx) = self.win_tx.take() {
+            let _ = tx.send(win.clone());
+        }
         self.window = Some(win);
-        self.surface = Some(surface);
     }
 
+    /// Software presentation through softbuffer.
     fn redraw(&mut self) {
-        let (Some(win), Some(surface)) = (self.window.as_ref(), self.surface.as_mut()) else { return };
+        let Some(win) = self.window.clone() else { return };
+        if self.slot.lock().unwrap().gl {
+            return;
+        }
+        if self.surface.is_none() {
+            let ctx = match softbuffer::Context::new(win.clone()) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("gm-runner: softbuffer: {}", e);
+                    return;
+                }
+            };
+            match softbuffer::Surface::new(&ctx, win.clone()) {
+                Ok(s) => self.surface = Some(s),
+                Err(e) => {
+                    eprintln!("gm-runner: softbuffer: {}", e);
+                    return;
+                }
+            }
+        }
+        let surface = self.surface.as_mut().unwrap();
         let size = win.inner_size();
         let (ww, wh) = (size.width.max(1), size.height.max(1));
         if surface.resize(NonZeroU32::new(ww).unwrap(), NonZeroU32::new(wh).unwrap()).is_err() {
@@ -196,27 +261,18 @@ impl App {
         let s = self.slot.lock().unwrap();
         let Ok(mut buf) = surface.buffer_mut() else { return };
         let (rw, rh) = (s.w.max(1) as f64, s.h.max(1) as f64);
-        let (sx, sy) = if s.scale > 0.0 && !self.fullscreen {
-            (s.scale, s.scale)
-        } else if s.scale == 0.0 {
-            (ww as f64 / rw, wh as f64 / rh)
-        } else {
-            let k = (ww as f64 / rw).min(wh as f64 / rh);
-            (k, k)
-        };
-        let (ox, oy) = (((ww as f64 - rw * sx) / 2.0).floor(), ((wh as f64 - rh * sy) / 2.0).floor());
-        self.map = Mapping { ox, oy, sx, sy };
-        let outside = 0u32;
+        let m = mapping(ww, wh, s.w, s.h, s.scale, s.fullscreen);
+        let outside = s.outside;
         for y in 0..wh {
-            let ry = ((y as f64 - oy) / sy).floor();
+            let ry = ((y as f64 - m.oy) / m.sy).floor();
             let row = (y * ww) as usize;
-            if ry < 0.0 || ry >= rh || s.pixels.is_empty() {
+            if ry < 0.0 || ry >= rh || s.pixels.len() < (s.w * s.h) as usize || s.pixels.is_empty() {
                 buf[row..row + ww as usize].fill(outside);
                 continue;
             }
             let src_row = ry as usize * s.w as usize;
             for x in 0..ww {
-                let rx = ((x as f64 - ox) / sx).floor();
+                let rx = ((x as f64 - m.ox) / m.sx).floor();
                 buf[row + x as usize] = if rx < 0.0 || rx >= rw { outside } else { s.pixels[src_row + rx as usize] };
             }
         }
@@ -237,12 +293,20 @@ impl App {
         }
         if std::mem::take(&mut s.resize) && !self.fullscreen {
             let (w, h) = client_size(&s);
-            let _ = win.request_inner_size(winit::dpi::LogicalSize::new(w, h));
+            if let Some(size) = win.request_inner_size(winit::dpi::LogicalSize::new(w, h)) {
+                s.win_w = size.width;
+                s.win_h = size.height;
+            }
         }
         win.set_cursor_visible(s.cursor_visible);
         if let Some((x, y)) = s.set_mouse.take() {
-            let m = &self.map;
+            let m = slot_mapping(&s);
             let _ = win.set_cursor_position(PhysicalPosition::new(m.ox + x * m.sx, m.oy + y * m.sy));
+        }
+        drop(s);
+        if !self.shown {
+            self.shown = true;
+            win.set_visible(true);
         }
     }
 }
@@ -256,15 +320,19 @@ fn client_size(s: &Slot) -> (u32, u32) {
 }
 
 impl ApplicationHandler<UserEvent> for App {
-    fn resumed(&mut self, _el: &ActiveEventLoop) {}
+    fn resumed(&mut self, el: &ActiveEventLoop) {
+        self.create_window(el);
+    }
 
     fn user_event(&mut self, el: &ActiveEventLoop, ev: UserEvent) {
         match ev {
             UserEvent::Frame => {
-                self.ensure_window(el);
+                self.create_window(el);
                 self.apply_window_state();
                 if let Some(w) = &self.window {
-                    w.request_redraw();
+                    if !self.slot.lock().unwrap().gl {
+                        w.request_redraw();
+                    }
                 }
             }
             UserEvent::Exit(code) => {
@@ -280,6 +348,11 @@ impl ApplicationHandler<UserEvent> for App {
                 let _ = self.input.send(InputEvent::Close);
             }
             WindowEvent::RedrawRequested => self.redraw(),
+            WindowEvent::Resized(size) => {
+                let mut s = self.slot.lock().unwrap();
+                s.win_w = size.width;
+                s.win_h = size.height;
+            }
             WindowEvent::Focused(f) => {
                 let _ = self.input.send(InputEvent::Focus(f));
             }
@@ -299,7 +372,7 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                let m = &self.map;
+                let m = slot_mapping(&self.slot.lock().unwrap());
                 let x = (position.x - m.ox) / m.sx.max(1e-9);
                 let y = (position.y - m.oy) / m.sy.max(1e-9);
                 let _ = self.input.send(InputEvent::MouseMove(x, y));
@@ -327,6 +400,7 @@ impl ApplicationHandler<UserEvent> for App {
         }
     }
 }
+
 
 /// Native dialogs through rfd.
 struct RfdUi {
@@ -427,32 +501,31 @@ impl UiHooks for RfdUi {
     }
 }
 
-fn publish(g: &Game, slot: &Arc<Mutex<Slot>>) {
-    let img = g.frame_image();
-    let mut s = slot.lock().unwrap();
-    s.w = img.w;
-    s.h = img.h;
-    s.pixels.clear();
-    s.pixels.extend(img.px.iter().map(|p| ((p[0] as u32) << 16) | ((p[1] as u32) << 8) | p[2] as u32));
+
+fn rgb_to_0rgb(c: u32) -> u32 {
+    ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF)
 }
 
-fn game_thread(path: PathBuf, input: Vec<(u64, InputEvent)>, rx: Receiver<InputEvent>, slot: Arc<Mutex<Slot>>, proxy: EventLoopProxy<UserEvent>) -> i32 {
-    let mut vm = gml::Vm::new();
-    let mut g = match gm_runner::load_game(&path, &mut vm, false) {
-        Ok(g) => g,
-        Err(e) => {
-            rfd::MessageDialog::new().set_title("gm-runner").set_description(&e).show();
-            eprintln!("gm-runner: {}", e);
-            return 1;
-        }
-    };
-    let title = Arc::new(Mutex::new(String::new()));
-    g.ui = Box::new(RfdUi { title: title.clone() });
-    g.scripted_input = input;
-    {
-        let slot = slot.clone();
-        let proxy = proxy.clone();
-        g.gfx.present = Some(Box::new(move |img| {
+/// Installs the presentation hook for the chosen renderer.
+fn install_present(g: &mut Game, slot: &Arc<Mutex<Slot>>, proxy: &EventLoopProxy<UserEvent>, gl: bool) {
+    let slot = slot.clone();
+    let proxy = proxy.clone();
+    if gl {
+        g.gfx.present = Some(Box::new(move |be: &mut dyn Backend| {
+            let (w, h) = be.back_size();
+            let s = slot.lock().unwrap();
+            let m = mapping(s.win_w, s.win_h, w, h, s.scale, s.fullscreen);
+            let (ww, wh, out) = (s.win_w, s.win_h, s.outside);
+            drop(s);
+            if let Some(gl) = be.as_gl() {
+                let o = [(out >> 16) as u8, (out >> 8) as u8, out as u8, 255];
+                gl.present(ww, wh, m.ox, m.oy, m.sx, m.sy, o, false);
+            }
+            let _ = proxy.send_event(UserEvent::Frame);
+        }));
+    } else {
+        g.gfx.present = Some(Box::new(move |be: &mut dyn Backend| {
+            let img = be.read_back();
             let mut s = slot.lock().unwrap();
             s.w = img.w;
             s.h = img.h;
@@ -462,6 +535,50 @@ fn game_thread(path: PathBuf, input: Vec<(u64, InputEvent)>, rx: Receiver<InputE
             let _ = proxy.send_event(UserEvent::Frame);
         }));
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn game_thread(
+    path: PathBuf,
+    input: Vec<(u64, InputEvent)>,
+    rx: Receiver<InputEvent>,
+    slot: Arc<Mutex<Slot>>,
+    proxy: EventLoopProxy<UserEvent>,
+    renderer: Renderer,
+    win_rx: Receiver<Arc<Window>>,
+) -> i32 {
+    let mut vm = gml::Vm::new();
+    let mut g = match gm_runner::load_game(&path, &mut vm, false) {
+        Ok(g) => g,
+        Err(e) => {
+            rfd::MessageDialog::new().set_title("gm-runner").set_description(&e).show();
+            eprintln!("gm-runner: {}", e);
+            return 1;
+        }
+    };
+    let mut use_gl = false;
+    if renderer == Renderer::Gl {
+        match win_rx.recv() {
+            Ok(win) => match GlBackend::for_window(win, g.settings.vsync & 1 != 0) {
+                Ok(gl) => {
+                    g.gfx.set_backend(Box::new(gl));
+                    use_gl = true;
+                }
+                Err(e) => eprintln!("gm-runner: OpenGL initialisation failed ({}); using the software renderer", e),
+            },
+            Err(_) => return 1,
+        }
+    }
+    eprintln!("gm-runner: renderer: {}", g.gfx.be.name());
+    {
+        let mut s = slot.lock().unwrap();
+        s.gl = use_gl;
+        s.outside = rgb_to_0rgb(g.settings.color_outside_room);
+    }
+    let title = Arc::new(Mutex::new(String::new()));
+    g.ui = Box::new(RfdUi { title: title.clone() });
+    g.scripted_input = input;
+    install_present(&mut g, &slot, &proxy, use_gl);
     g.pump = Some(Box::new(move || rx.try_iter().collect()));
     if let Err(e) = g.start(&mut vm) {
         eprintln!("gm-runner: {}", e);
@@ -469,13 +586,15 @@ fn game_thread(path: PathBuf, input: Vec<(u64, InputEvent)>, rx: Receiver<InputE
     }
     let mut next = Instant::now();
     let mut last_region = (0, 0);
+    let (mut frames, mut busy, mut t_report) = (0u64, 0.0f64, Instant::now());
+    let report = std::env::var_os("GM_RUNNER_FPS").is_some();
     while !g.ended {
+        let t0 = Instant::now();
         g.pump_input();
         if let Err(e) = g.step(&mut vm) {
             eprintln!("gm-runner: {}", e);
             break;
         }
-        publish(&g, &slot);
         {
             let mut s = slot.lock().unwrap();
             let cap = g.caption();
@@ -483,6 +602,10 @@ fn game_thread(path: PathBuf, input: Vec<(u64, InputEvent)>, rx: Receiver<InputE
             s.caption = cap;
             s.scale = g.win.region_scale;
             s.fullscreen = g.fullscreen;
+            s.outside = rgb_to_0rgb(g.settings.color_outside_room);
+            let (bw, bh) = g.gfx.back_size();
+            s.w = bw;
+            s.h = bh;
             s.cursor_visible = g.cursor != -1 && g.cursor_sprite < 0 && (g.settings.display_cursor || g.cursor != 0);
             if g.window_dirty || last_region != (g.region_w, g.region_h) {
                 if last_region != (g.region_w, g.region_h) || g.win.w > 0 {
@@ -497,8 +620,14 @@ fn game_thread(path: PathBuf, input: Vec<(u64, InputEvent)>, rx: Receiver<InputE
                 s.set_mouse = Some(m);
             }
         }
-        if proxy.send_event(UserEvent::Frame).is_err() {
-            break;
+        g.gfx.present_now();
+        busy += t0.elapsed().as_secs_f64();
+        frames += 1;
+        if report && t_report.elapsed() >= Duration::from_secs(2) {
+            eprintln!("gm-runner: {:.2} ms/frame ({} frames, {})", busy * 1000.0 / frames as f64, frames, g.gfx.be.name());
+            frames = 0;
+            busy = 0.0;
+            t_report = Instant::now();
         }
         let dt = Duration::from_secs_f64(1.0 / g.rs.speed.max(1.0));
         next += dt;
@@ -517,7 +646,7 @@ fn game_thread(path: PathBuf, input: Vec<(u64, InputEvent)>, rx: Receiver<InputE
 }
 
 /// Runs the game in a window; returns the exit code.
-pub fn run(path: PathBuf, input: Vec<(u64, InputEvent)>) -> i32 {
+pub fn run(path: PathBuf, input: Vec<(u64, InputEvent)>, renderer: Renderer) -> i32 {
     let event_loop = match EventLoop::<UserEvent>::with_user_event().build() {
         Ok(e) => e,
         Err(e) => {
@@ -533,13 +662,14 @@ pub fn run(path: PathBuf, input: Vec<(u64, InputEvent)>) -> i32 {
         ..Default::default()
     }));
     let (tx, rx) = channel();
+    let (win_tx, win_rx) = channel();
     let slot2 = slot.clone();
     let proxy2 = proxy.clone();
     let handle = std::thread::Builder::new()
         .name("game".into())
         .stack_size(gm_runner::GAME_STACK_SIZE)
         .spawn(move || {
-            let code = game_thread(path, input, rx, slot2, proxy2.clone());
+            let code = game_thread(path, input, rx, slot2, proxy2.clone(), renderer, win_rx);
             let _ = proxy2.send_event(UserEvent::Exit(code));
             code
         })
@@ -548,11 +678,12 @@ pub fn run(path: PathBuf, input: Vec<(u64, InputEvent)>) -> i32 {
         slot,
         input: tx,
         window: None,
+        win_tx: Some(win_tx),
         surface: None,
-        map: Mapping { ox: 0.0, oy: 0.0, sx: 1.0, sy: 1.0 },
         exit_code: 0,
         last_caption: String::new(),
         fullscreen: false,
+        shown: false,
     };
     if let Err(e) = event_loop.run_app(&mut app) {
         eprintln!("gm-runner: event loop error: {}", e);

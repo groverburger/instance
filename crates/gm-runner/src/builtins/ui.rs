@@ -6,7 +6,7 @@
 
 use super::{bo, r, st, zero, Reg, A};
 use crate::draw::painter::Xf;
-use crate::draw::{rgba, Clip};
+use crate::draw::rgba;
 use crate::game::{Game, HighscoreEntry};
 use crate::input::{vk, InputEvent};
 use gml::{Error, Value};
@@ -187,10 +187,15 @@ impl Game {
         if self.headless || self.pump.is_none() || self.gfx.present.is_none() {
             return None;
         }
-        let saved = self.gfx.back.clone();
+        let saved = self.gfx.read_back();
         let (sx, sc, st_) = (self.gfx.pass_xf, self.gfx.pass_clip, self.gfx.target);
+        // overlays are plain 2D
+        let saved3d = (self.gfx.d3d.on, self.gfx.d3d.world, self.gfx.d3d.proj);
+        self.gfx.d3d.on = false;
+        self.gfx.d3d.world = crate::draw::mat::IDENT;
+        self.gfx.d3d.proj = crate::d3d::Proj::Default;
         self.gfx.pass_xf = Xf::IDENTITY;
-        self.gfx.pass_clip = Clip::full(&self.gfx.back);
+        self.gfx.pass_clip = self.gfx.back_clip();
         self.gfx.target = -1;
         let result;
         loop {
@@ -204,12 +209,13 @@ impl Game {
                 result = Some(v);
                 break;
             }
-            self.gfx.back = saved.clone();
+            self.gfx.be.write(crate::draw::Target::Back, 0, 0, &saved);
             draw(self);
             self.gfx.present_now();
             std::thread::sleep(std::time::Duration::from_millis(16));
         }
-        self.gfx.back = saved;
+        self.gfx.be.write(crate::draw::Target::Back, 0, 0, &saved);
+        (self.gfx.d3d.on, self.gfx.d3d.world, self.gfx.d3d.proj) = saved3d;
         self.gfx.pass_xf = sx;
         self.gfx.pass_clip = sc;
         self.gfx.target = st_;
@@ -261,7 +267,7 @@ impl Game {
                 None
             },
             |g| {
-                let (w, h) = (g.gfx.back.w as f64, g.gfx.back.h as f64);
+                let (w, h) = (g.gfx.back_size().0 as f64, g.gfx.back_size().1 as f64);
                 let (bw, bh) = (w.min(360.0), 110.0);
                 let (x0, y0) = ((w - bw) / 2.0, (h - bh) / 2.0);
                 let mut p = g.gfx.painter();
@@ -328,12 +334,12 @@ impl Game {
                 }
             },
             move |g| {
-                let (w, h) = (g.gfx.back.w as f64, g.gfx.back.h as f64);
+                let (w, h) = (g.gfx.back_size().0 as f64, g.gfx.back_size().1 as f64);
                 let (bw, bh) = (360.0f64.min(w), 400.0f64.min(h));
                 let (x0, y0) = ((w - bw) / 2.0, (h - bh) / 2.0);
                 if let Some(bg) = g.background(style2.background).map(|b| b.tex.clone()) {
                     let (sx, sy) = (bw / bg.w.max(1) as f64, bh / bg.h.max(1) as f64);
-                    g.gfx.draw_tex(&bg, 0.0, 0.0, bg.w as f64, bg.h as f64, 0.0, 0.0, x0, y0, sx, sy, 0.0, [0xFFFFFF; 4], 1.0);
+                    g.gfx.draw_tex(&crate::draw::Tex::Img(bg.clone()), 0.0, 0.0, bg.w as f64, bg.h as f64, 0.0, 0.0, x0, y0, sx, sy, 0.0, [0xFFFFFF; 4], 1.0);
                 } else {
                     g.gfx.painter().rect(x0, y0, x0 + bw, y0 + bh, [rgba(style2.back_col, 1.0); 4], false);
                 }
@@ -468,7 +474,8 @@ pub fn register(l: &mut Reg) {
     l.push(("splash_show_image", |g, _, _, a| {
         let p = g.resolve_path(&a.s(0)?);
         let delay = a.r(1)?;
-        if let Some(t) = crate::draw::Texture::load_file(&p) {
+        if let Some(t) = crate::draw::Texture::load_file(&p).map(std::rc::Rc::new) {
+            let tt = crate::draw::Tex::Img(t.clone());
             let start = std::time::Instant::now();
             g.modal(
                 |_, evs| {
@@ -480,11 +487,11 @@ pub fn register(l: &mut Reg) {
                     }
                 },
                 |g| {
-                    let (w, h) = (g.gfx.back.w as f64, g.gfx.back.h as f64);
+                    let (w, h) = (g.gfx.back_size().0 as f64, g.gfx.back_size().1 as f64);
                     g.gfx.painter().clear([0, 0, 0, 255]);
                     let s = (w / t.w.max(1) as f64).min(h / t.h.max(1) as f64);
                     let (x0, y0) = ((w - t.w as f64 * s) / 2.0, (h - t.h as f64 * s) / 2.0);
-                    g.gfx.draw_tex(&t, 0.0, 0.0, t.w as f64, t.h as f64, 0.0, 0.0, x0, y0, s, s, 0.0, [0xFFFFFF; 4], 1.0);
+                    g.gfx.draw_tex(&tt, 0.0, 0.0, t.w as f64, t.h as f64, 0.0, 0.0, x0, y0, s, s, 0.0, [0xFFFFFF; 4], 1.0);
                 },
             );
         }

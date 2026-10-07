@@ -9,6 +9,7 @@ pub mod actions;
 pub mod audio;
 pub mod builtins;
 pub mod collision;
+pub mod d3d;
 pub mod draw;
 pub mod events;
 pub mod game;

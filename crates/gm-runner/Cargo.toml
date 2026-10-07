@@ -6,9 +6,12 @@ version.workspace = true
 
 [dependencies]
 fontdue = "0.9.4"
+glow = "0.17"
+glutin = "0.32"
 gm-format = { path = "../gm-format" }
 gml = { path = "../gml" }
 png = "0.18.1"
+raw-window-handle = "0.6"
 rfd = "0.17.2"
 rodio = "0.22.2"
 softbuffer = "0.4.8"

@@ -1544,9 +1544,12 @@ name = "gm-runner"
 version = "0.1.0"
 dependencies = [
  "fontdue",
+ "glow",
+ "glutin",
  "gm-format",
  "gml",
  "png",
+ "raw-window-handle",
  "rfd",
  "rodio",
  "softbuffer",
