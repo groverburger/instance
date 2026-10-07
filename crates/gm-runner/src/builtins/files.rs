@@ -196,7 +196,98 @@ impl Game {
     }
 }
 
+/// Windows clipboard (CF_TEXT, i.e. ANSI bytes as GML strings use).
+#[cfg(windows)]
+mod clip {
+    use std::ffi::c_void;
+    #[link(name = "user32")]
+    extern "system" {
+        fn OpenClipboard(h: *mut c_void) -> i32;
+        fn CloseClipboard() -> i32;
+        fn EmptyClipboard() -> i32;
+        fn GetClipboardData(f: u32) -> *mut c_void;
+        fn SetClipboardData(f: u32, h: *mut c_void) -> *mut c_void;
+        fn IsClipboardFormatAvailable(f: u32) -> i32;
+    }
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GlobalAlloc(flags: u32, n: usize) -> *mut c_void;
+        fn GlobalLock(h: *mut c_void) -> *mut c_void;
+        fn GlobalUnlock(h: *mut c_void) -> i32;
+    }
+    const CF_TEXT: u32 = 1;
+
+    pub fn has_text() -> bool {
+        // SAFETY: plain Win32 query.
+        unsafe { IsClipboardFormatAvailable(CF_TEXT) != 0 }
+    }
+
+    pub fn get() -> Vec<u8> {
+        // SAFETY: the clipboard is opened/closed around the access; the locked
+        // memory is a NUL-terminated CF_TEXT buffer.
+        unsafe {
+            if OpenClipboard(std::ptr::null_mut()) == 0 {
+                return Vec::new();
+            }
+            let mut out = Vec::new();
+            let h = GetClipboardData(CF_TEXT);
+            if !h.is_null() {
+                let p = GlobalLock(h) as *const u8;
+                if !p.is_null() {
+                    let mut i = 0;
+                    while *p.add(i) != 0 {
+                        out.push(*p.add(i));
+                        i += 1;
+                    }
+                    GlobalUnlock(h);
+                }
+            }
+            CloseClipboard();
+            out
+        }
+    }
+
+    pub fn set(b: &[u8]) {
+        // SAFETY: allocate a movable global block, copy the bytes plus NUL, and hand
+        // ownership to the clipboard.
+        unsafe {
+            if OpenClipboard(std::ptr::null_mut()) == 0 {
+                return;
+            }
+            EmptyClipboard();
+            let h = GlobalAlloc(2, b.len() + 1);
+            if !h.is_null() {
+                let p = GlobalLock(h) as *mut u8;
+                if !p.is_null() {
+                    std::ptr::copy_nonoverlapping(b.as_ptr(), p, b.len());
+                    *p.add(b.len()) = 0;
+                    GlobalUnlock(h);
+                    SetClipboardData(CF_TEXT, h);
+                }
+            }
+            CloseClipboard();
+        }
+    }
+}
+
+#[cfg(not(windows))]
+mod clip {
+    pub fn has_text() -> bool {
+        false
+    }
+    pub fn get() -> Vec<u8> {
+        Vec::new()
+    }
+    pub fn set(_: &[u8]) {}
+}
+
 pub fn register(l: &mut Reg) {
+    l.push(("clipboard_has_text", |_, _, _, _| bo(clip::has_text())));
+    l.push(("clipboard_get_text", |_, _, _, _| Ok(Value::Str(clip::get().into()))));
+    l.push(("clipboard_set_text", |_, _, _, a| {
+        clip::set(&a.text(0));
+        zero()
+    }));
     fn open_text(g: &mut Game, a: &A, mode: u8) -> Result<Value, Error> {
         let p = g.resolve_path(&a.s(0)?);
         let tf = match mode {

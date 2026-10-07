@@ -1,7 +1,7 @@
 //! `gml::Host` implementation: built-in variables (runtime.md §1, §7) and the
 //! dispatch of world functions and scripts.
 
-use crate::game::{Game, Pending};
+use crate::game::Game;
 use gml::builtins::variables as v;
 use gml::{Ctx, Error, FunctionId, Host, Value, VarTable, VariableId, Vm};
 
@@ -503,7 +503,7 @@ impl Game {
                 if !self.room_exists(r) {
                     return Err(Error::new(format!("Unexisting room number: {}", r)));
                 }
-                self.pending = Some(Pending::Goto(r));
+                self.request_goto(r);
             }
             v::ROOM_CAPTION => {
                 self.rs.caption = string(var, &x)?;

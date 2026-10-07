@@ -111,6 +111,7 @@ const ZERO: &[&str] = &[
     "external_free",
     "get_function_address",
     "window_handle",
+    "YoYo_GetPlatform",
 ];
 
 const EMPTY_STRING: &[&str] = &[

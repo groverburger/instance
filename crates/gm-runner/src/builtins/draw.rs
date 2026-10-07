@@ -1191,5 +1191,9 @@ pub fn register(l: &mut Reg) {
         zero()
     }));
     l.push(("set_synchronization", |_, _, _, _| zero()));
+    l.push(("YoYo_EnableAlphaBlend", |g, _, _, a| {
+        g.gfx.blend = if a.b(0)? { Blend::NORMAL } else { Blend { src: 2, dst: 1 } };
+        zero()
+    }));
     let _ = |_: &mut Vm| ();
 }

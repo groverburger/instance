@@ -207,7 +207,7 @@ pub fn register(l: &mut Reg) {
         if !g.room_exists(rm) {
             return Err(Error::new(format!("Unexisting room number: {}", rm)));
         }
-        g.pending = Some(Pending::Goto(rm));
+        g.request_goto(rm);
         zero()
     }));
     l.push(("room_goto_previous", |g, _, _, _| {
@@ -215,7 +215,7 @@ pub fn register(l: &mut Reg) {
         if p < 0 {
             return Err(Error::new("Moving to the previous room before the first room."));
         }
-        g.pending = Some(Pending::Goto(p));
+        g.request_goto(p);
         zero()
     }));
     l.push(("room_goto_next", |g, _, _, _| {
@@ -223,13 +223,13 @@ pub fn register(l: &mut Reg) {
         if n < 0 {
             return Err(Error::new("Moving to the next room after the last room."));
         }
-        g.pending = Some(Pending::Goto(n));
+        g.request_goto(n);
         zero()
     }));
     l.push(("room_previous", |g, _, _, a| r(g.room_previous(a.i(0)?) as f64)));
     l.push(("room_next", |g, _, _, a| r(g.room_next(a.i(0)?) as f64)));
     l.push(("room_restart", |g, _, _, _| {
-        g.pending = Some(Pending::Goto(g.room));
+        g.request_goto(g.room);
         zero()
     }));
     l.push(("game_end", |g, _, _, _| {

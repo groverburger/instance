@@ -111,7 +111,7 @@ fn goto_with_transition(g: &mut Game, room: i32, trans: i32) -> R {
         return Err(Error::new(format!("Unexisting room number: {}", room)));
     }
     g.transition_kind = trans;
-    g.pending = Some(Pending::Goto(room));
+    g.request_goto(room);
     ok()
 }
 

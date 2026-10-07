@@ -340,3 +340,96 @@ Choices made where specs/ide.md is silent; please confirm or correct.
 - IMPL-IDE-14 (rendering backend, not a spec issue): eframe's default wgpu backend
   crashed with an access violation on the development machine; the IDE uses the glow
   (OpenGL) backend.
+
+## [IMPL-RUN] crates/gm-runner implementation choices (2026-10-07)
+
+Choices made where specs/runtime.md, actions.json or builtins.json are silent or
+leave a recommendation open. Each is easy to change; please confirm or correct.
+
+Loop / events
+- R-1: Step order exactly as runtime.md §4.2 (recommended positions for xprevious,
+  timelines, particles, view update, animation after draw). A pending room change is
+  checked after every event dispatch and aborts the rest of the step (no draw).
+  Events raised synchronously from code (No More Lives/Health, Game Start/Room Start
+  during a room change) are delivered to everyone even if a change is pending.
+- R-2: A room change requested after `game_end`/`game_restart`/`game_load` in the
+  same step does NOT override it (street racing.gm81 calls Restart Game from the No
+  More Lives event and then "restart current room" in the same action list; with
+  "last request wins" the game would never end). Among room changes the last wins.
+- R-3: No More Lives / No More Health raised by `lives = ...` in code are dispatched
+  after the running action finishes (the Host setter has no Vm); the Set Lives /
+  Set Health actions dispatch immediately.
+- R-4: Drag-and-drop questions with "applies to" an object are true only if true for
+  every instance (false when there is none). Function actions applied to other/object
+  run with `other` = the original self, like `with`.
+- R-5: Action argument kind 2 ("both"): text starting with `"` or `'` is compiled as
+  an expression, anything else is a literal string (matches the samples:
+  `'Score: ' + string(score)` vs `Street Racing`). Kinds 3–14 are parsed as numbers
+  (falling back to expressions).
+- R-6: Move Fixed relative adds the chosen vector (motion_add); the "stop" cell with
+  relative does nothing. Wrap (action) uses the motion sign and the bounding box:
+  moving left and bbox_right < 0 → x += room_width + bbox width (and symmetric).
+- R-7: Timeline moments run with event_type = -1 (no event) and event_object = the
+  instance's object; errors report "action number N".
+- R-8: Trigger conditions are compiled as `return (<condition>);`.
+- R-9: Ignore on an error abandons only the failing action; the action list goes on
+  (gml-language.md §13). Errors in headless mode go to stderr and are ignored unless
+  fatal / "abort on all errors". Compile errors are reported once at load and the
+  action raises its message each time it runs.
+- R-10: Persistent objects placed in a room are created again on re-entry (RT-19
+  recommendation). Placed instance ids are reused if free, else a new id is allocated.
+
+Collision / geometry
+- R-11: bbox edges: left = round(min), right = round(max) - 1 (never < left), using
+  ties-to-even rounding; rotation of the scaled local box around the origin. Mask pixel
+  test samples room pixel centres; point queries (position_*, mouse) test the point
+  itself. Alpha tolerance comparison is strict (alpha > tolerance).
+- R-12: Combined (non-separate) masks are the union of all frames; automatic bbox per
+  frame for separate masks. A user box larger than the image counts as set outside
+  the image for ellipse/diamond/rectangle shapes.
+- R-13: collision_* with prec=false use the instance bbox; with prec=true the mask
+  only if the sprite's shape is not rectangle. Shapes are rasterised by pixel centre
+  (lines: centre within half a pixel of the segment).
+- R-14: Solid collisions: the put-back is triggered by the other instance's solidity
+  only; after the event the instance moves by hspeed/vspeed (path followers to their
+  path position) and is put back if it still collides (RT-06 recommendation).
+
+Drawing
+- R-15: Software rasteriser, pixel-centre sampling with a top-left fill rule. Filled
+  rectangles cover x1..x2 inclusive; lines are 1-px quads centred on pixel centres;
+  ellipses/circles are triangle fans with draw_set_circle_precision segments.
+- R-16: Blend modes (spec only defines normal): bm_add = (src_alpha, one), bm_max =
+  (src_alpha, inv_src_color), bm_subtract = (zero, inv_src_color). The alpha channel
+  is blended with the same factors (D3D default), which matters only for surfaces.
+- R-17: Fonts: system TrueType files found by family name (Windows font folder,
+  name-table scan as fallback), rasterised at size × 96/72 px per em; line height =
+  ascent − descent of the face; bold/italic pick the matching face file (no synthesis).
+  Sprite fonts (font_add_sprite) are drawn from the sprite frames.
+- R-18: Without views the room is drawn 1:1 into a back buffer of the room size; the
+  window scales it per the "scaling" setting (>0 fixed %, 0 stretch, <0 keep aspect).
+  Window sizes are logical (DPI-scaled) pixels.
+- R-19: Particle shapes are generated procedurally (64×64 at size 1). The built-in
+  effects (effect_create_*) are approximations; their exact look is unspecified.
+- R-20: Room transitions 1–17, 20, 21 are implemented; interlaced (10–13) and rotate
+  (18, 19) fall back to "create from centre". Transitions are skipped in headless mode.
+
+Sound / UI / files
+- R-21: MIDI (and any undecodable sound) is not played; it counts as "playing" while
+  looped so sound_isplaying works for background music. sound_fade sets the volume
+  immediately; pan, tempo, effects, 3D sound and CD audio are accepted but ignored.
+- R-22: get_string/get_integer and the highscore name entry use an in-game overlay
+  (Enter confirms, Escape cancels → default/empty). show_message/show_question use
+  native dialogs; show_message_ext maps to up to three native buttons. In headless
+  mode questions answer "yes", inputs return their default, highscore names "Player".
+- R-23: Highscores and registry_* values are stored in
+  %APPDATA%\gm81-runner\highscore_<game_id>.txt / registry_<game_id>.txt (not the real
+  registry). registry_set_root only namespaces the _ext keys.
+- R-24: game_save/game_load use an implementation-defined binary format (magic
+  "GM81RSV1"); F5/F6 use <working_directory>\_save.gmd.
+- R-25: working_directory = the folder of the game file (canonicalised), or the
+  process's current directory when the game file lives in the temp folder (IDE "Run").
+- R-26: File ids for file_text_*/file_bin_* start at 1. file_text_write_real writes a
+  leading space and integers without decimals, others with 6 decimals.
+- R-27: Not supported (stubs that return 0/""/false): multiplayer (413), DLL calls
+  (414), 3D mode (415; d3d_start returns false), joysticks (none present), CD audio,
+  video/web splash screens, message_* dialog styling, clipboard (not yet).

@@ -1225,6 +1225,15 @@ impl Game {
         &self.gfx.back
     }
 
+    /// Requests a room change. A pending game end / restart / load is not
+    /// overridden by a later room change (see OPEN_QUESTIONS [IMPL-RUN]).
+    pub fn request_goto(&mut self, r: i32) {
+        match self.pending {
+            Some(Pending::End) | Some(Pending::Restart) | Some(Pending::Load(_)) => {}
+            _ => self.pending = Some(Pending::Goto(r)),
+        }
+    }
+
     /// Dispatches No More Lives / No More Health raised by assignments (§5.4).
     pub fn flush_edge_events(&mut self, vm: &mut Vm) -> Result<(), Error> {
         if std::mem::take(&mut self.pending_lives_event) {

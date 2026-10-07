@@ -38,7 +38,14 @@ pub fn load_game(path: &std::path::Path, vm: &mut gml::Vm, headless: bool) -> Re
         .map(|p| if p.as_os_str().is_empty() { std::path::Path::new(".") } else { p })
         .unwrap_or(std::path::Path::new("."));
     let dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
-    let d = dir.to_string_lossy().trim_start_matches("\\?\\").to_string();
+    let mut d = dir.to_string_lossy().trim_start_matches("\\?\\").to_string();
+    // a game started from the IDE lives in the temp folder: use the current directory
+    let tmp = std::fs::canonicalize(std::env::temp_dir()).unwrap_or_else(|_| std::env::temp_dir());
+    if dir.starts_with(&tmp) {
+        if let Ok(cwd) = std::env::current_dir() {
+            d = cwd.to_string_lossy().to_string();
+        }
+    }
     g.working_directory = d.clone();
     g.program_directory = d;
     g.export_included_files();

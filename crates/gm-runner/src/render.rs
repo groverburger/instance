@@ -261,8 +261,53 @@ impl Game {
         face.as_ref().map(|f| f.line_height as f64).unwrap_or(16.0)
     }
 
+    /// The current font if it is a sprite font: (sprite, first char, proportional, sep).
+    fn sprite_font(&self) -> Option<(i32, i32, bool, i32)> {
+        if self.gfx.font < 0 {
+            return None;
+        }
+        self.fonts.get(self.gfx.font as usize)?.as_ref()?.sprite
+    }
+
+    /// Advance and glyph frame of a character in a sprite font.
+    fn sprite_glyph(&self, sf: (i32, i32, bool, i32), ch: char) -> (f64, Option<usize>) {
+        let Some(spr) = self.sprite(sf.0) else { return (0.0, None) };
+        let code = gm_format::text::encode_cp1252(&ch.to_string()).first().copied().unwrap_or(b'?') as i32;
+        let k = code - sf.1;
+        if k < 0 || k as usize >= spr.frames.len() {
+            return (spr.width as f64 / 2.0 + sf.3 as f64, None);
+        }
+        let f = &spr.frames[k as usize];
+        let adv = if sf.2 {
+            // proportional: opaque columns
+            let cols: Vec<u32> = (0..f.w).filter(|&x| (0..f.h).any(|y| f.get(x, y)[3] > 0)).collect();
+            match (cols.first(), cols.last()) {
+                (Some(a), Some(b)) => (b - a + 1) as f64,
+                _ => spr.width as f64 / 2.0,
+            }
+        } else {
+            spr.width as f64
+        };
+        (adv + sf.3 as f64, Some(k as usize))
+    }
+
+    fn sprite_text_lines(&self, s: &[u8], sf: (i32, i32, bool, i32)) -> Vec<(Vec<char>, f64)> {
+        split_lines(s)
+            .into_iter()
+            .map(|l| {
+                let w = l.iter().map(|c| self.sprite_glyph(sf, *c).0).sum();
+                (l, w)
+            })
+            .collect()
+    }
+
     /// `string_width_ext` / `string_height_ext`.
     pub fn text_size(&mut self, s: &[u8], sep: f64, w: f64) -> (f64, f64) {
+        if let Some(sf) = self.sprite_font() {
+            let lines = self.sprite_text_lines(s, sf);
+            let lh = if sep >= 0.0 { sep } else { self.sprite(sf.0).map(|x| x.height as f64).unwrap_or(16.0) };
+            return (lines.iter().map(|l| l.1).fold(0.0, f64::max), lh * lines.len() as f64);
+        }
         let (face, lines) = self.layout_text(s, w);
         let lh = Self::line_sep(&face, sep);
         let width = lines.iter().map(|l| l.1).fold(0.0f32, f32::max) as f64;
@@ -284,6 +329,39 @@ impl Game {
         cols: [i32; 4],
         alpha: f64,
     ) {
+        if let Some(sf) = self.sprite_font() {
+            let lines = self.sprite_text_lines(s, sf);
+            let Some(spr) = self.sprite(sf.0).cloned() else { return };
+            let lh = if sep >= 0.0 { sep } else { spr.height as f64 };
+            let total = lh * lines.len() as f64;
+            let y0 = match self.gfx.valign {
+                1 => -total / 2.0,
+                2 => -total,
+                _ => 0.0,
+            };
+            let a = angle.to_radians();
+            let (c, sn) = (a.cos(), a.sin());
+            for (li, (line, lw)) in lines.iter().enumerate() {
+                let mut pen = match self.gfx.halign {
+                    1 => -lw / 2.0,
+                    2 => -lw,
+                    _ => 0.0,
+                };
+                let ly = y0 + li as f64 * lh;
+                for ch in line {
+                    let (adv, frame) = self.sprite_glyph(sf, *ch);
+                    if let Some(k) = frame {
+                        let f = spr.frames[k].clone();
+                        let left = if sf.2 { (0..f.w).find(|&x| (0..f.h).any(|y| f.get(x, y)[3] > 0)).unwrap_or(0) as f64 } else { 0.0 };
+                        let (px, py) = ((pen - left) * xs, ly * ys);
+                        let (gx, gy) = (x + px * c + py * sn, y - px * sn + py * c);
+                        self.gfx.draw_tex(&f, 0.0, 0.0, f.w as f64, f.h as f64, 0.0, 0.0, gx, gy, xs, ys, angle, cols, alpha);
+                    }
+                    pen += adv;
+                }
+            }
+            return;
+        }
         let (face, lines) = self.layout_text(s, w);
         let Some(face) = face else { return };
         let lh = Self::line_sep(&Some(face.clone()), sep);
