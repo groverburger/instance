@@ -25,7 +25,12 @@ fn main() -> eframe::Result<()> {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 800.0])
             .with_min_inner_size([640.0, 400.0])
-            .with_drag_and_drop(true),
+            .with_drag_and_drop(true)
+            .with_icon(eframe::egui::IconData {
+                rgba: gm_brand::icon_rgba(48),
+                width: 48,
+                height: 48,
+            }),
         ..Default::default()
     };
     eframe::run_native(

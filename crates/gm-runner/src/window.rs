@@ -32,6 +32,18 @@ pub enum Renderer {
 enum UserEvent {
     Frame,
     Exit(i32),
+    /// The game's own window icon (RGBA, width, height).
+    Icon(Vec<u8>, u32, u32),
+}
+
+/// Window icon from straight RGBA pixels.
+fn window_icon(rgba: Vec<u8>, w: u32, h: u32) -> Option<winit::window::Icon> {
+    winit::window::Icon::from_rgba(rgba, w, h).ok()
+}
+
+/// The gm81-clean icon, used unless the game has an icon of its own.
+fn default_icon() -> Option<winit::window::Icon> {
+    window_icon(gm_brand::icon_rgba(48), 48, 48)
 }
 
 /// What the game thread publishes for the window (and the window for it).
@@ -211,6 +223,7 @@ impl App {
         }
         let attrs = Window::default_attributes()
             .with_title("")
+            .with_window_icon(default_icon())
             .with_visible(false)
             .with_inner_size(winit::dpi::PhysicalSize::new(640, 480));
         let win = match el.create_window(attrs) {
@@ -341,6 +354,11 @@ impl ApplicationHandler<UserEvent> for App {
             UserEvent::Exit(code) => {
                 self.exit_code = code;
                 el.exit();
+            }
+            UserEvent::Icon(rgba, w, h) => {
+                if let Some(win) = &self.window {
+                    win.set_window_icon(window_icon(rgba, w, h));
+                }
             }
         }
     }
@@ -574,6 +592,12 @@ fn game_thread(
         }
     }
     eprintln!("gm-runner: renderer: {}", g.gfx.be.name());
+    // A game that kept GameMaker's stock icon shows ours (set at window creation).
+    if !gm_brand::is_stock_icon(&g.settings.icon) {
+        if let Some((rgba, w, h)) = gm_brand::decode_ico(&g.settings.icon, 48) {
+            let _ = proxy.send_event(UserEvent::Icon(rgba, w, h));
+        }
+    }
     {
         let mut s = slot.lock().unwrap();
         s.gl = use_gl;

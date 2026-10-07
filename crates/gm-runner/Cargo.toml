@@ -10,6 +10,7 @@ glow = "0.17"
 glutin = "0.32"
 gm-dllcall = { path = "../gm-dllcall" }
 gilrs = "0.11.2"
+gm-brand = { path = "../gm-brand" }
 gm-format = { path = "../gm-format" }
 gm-net = { path = "../gm-net" }
 gml = { path = "../gml" }
@@ -26,3 +27,6 @@ winit = "0.30.13"
 
 [target."cfg(windows)".dependencies]
 windows = { version = "0.62.2", features = ["Win32_Media_Audio", "Win32_Media_Multimedia", "Win32_Media", "Win32_Foundation"] }
+
+[build-dependencies]
+gm-brand = { path = "../gm-brand" }

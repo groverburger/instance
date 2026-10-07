@@ -8,6 +8,7 @@ description = "Clean-room GameMaker 8.1 compatible IDE (egui)"
 [dependencies]
 arboard = "3.6.1"
 fontdue = "0.9.4"
+gm-brand = { path = "../gm-brand" }
 gm-format = { path = "../gm-format" }
 eframe = { version = "0.36.2", default-features = false, features = ["accesskit", "default_fonts", "glow", "links", "wayland", "x11"] }
 image = { version = "0.25.10", default-features = false, features = ["png", "bmp", "gif", "jpeg"] }
@@ -17,3 +18,6 @@ serde_json = "1.0.151"
 
 [dev-dependencies]
 egui_kittest = { version = "0.36", features = ["eframe", "wgpu"] }
+
+[build-dependencies]
+gm-brand = { path = "../gm-brand" }

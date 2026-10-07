@@ -1603,6 +1603,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gm-brand"
+version = "0.1.0"
+dependencies = [
+ "png",
+]
+
+[[package]]
 name = "gm-dllcall"
 version = "0.1.0"
 
@@ -1623,6 +1630,7 @@ dependencies = [
  "eframe",
  "egui_kittest",
  "fontdue",
+ "gm-brand",
  "gm-format",
  "image",
  "rfd",
@@ -1646,6 +1654,7 @@ dependencies = [
  "gilrs",
  "glow",
  "glutin",
+ "gm-brand",
  "gm-dllcall",
  "gm-format",
  "gm-net",
