@@ -77,9 +77,27 @@ struct Fbo {
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum TexKey {
     None,
+    /// An image's own texture.
     Img(usize),
+    /// A page of the atlas of small images.
+    Page(u32),
     Surf(i32),
 }
+
+/// Cached GPU copy of an image: its own texture (made when needed, e.g. for
+/// repeat addressing or for large images) and/or a place in the atlas.
+struct ImgEntry {
+    weak: Weak<Texture>,
+    own: Option<glow::Texture>,
+    /// (page, x, y) of the image inside the atlas (a 1-pixel replicated border
+    /// surrounds it so clamp-to-edge filtering is preserved).
+    at: Option<(u32, u32, u32)>,
+}
+
+/// Atlas page size and the largest image put into the atlas.
+const PAGE: u32 = 2048;
+const ATLAS_MAX: u32 = 256;
+const MAX_PAGES: usize = 8;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 struct BatchKey {
@@ -148,7 +166,12 @@ pub struct GlBackend {
     back: Fbo,
     surfaces: HashMap<i32, Fbo>,
     target: Target,
-    images: HashMap<usize, (Weak<Texture>, glow::Texture)>,
+    images: HashMap<usize, ImgEntry>,
+    pages: Vec<glow::Texture>,
+    /// Shelf packer of the last page: x, y, row height.
+    shelf: (u32, u32, u32),
+    /// Texture-coordinate transform of the draw being pushed (offset, scale).
+    uvx: Option<[f32; 4]>,
     sweep_at: usize,
     batch: Vec<f32>,
     key: Option<BatchKey>,
@@ -286,6 +309,9 @@ impl GlBackend {
                 surfaces: HashMap::new(),
                 target: Target::Back,
                 images: HashMap::new(),
+                pages: Vec::new(),
+                shelf: (0, 0, 0),
+                uvx: None,
                 sweep_at: 1024,
                 batch: Vec::with_capacity(1 << 16),
                 key: None,
@@ -385,46 +411,132 @@ impl GlBackend {
         }
     }
 
-    /// GL texture of an image, uploading it on first use.
-    fn image_texture(&mut self, img: &Rc<Texture>) -> glow::Texture {
+    /// Where an image lives on the GPU for a draw, uploading it on first use:
+    /// the batch texture key and the texture-coordinate transform (atlas).
+    /// Small images go into the atlas (so draws of different sprites batch);
+    /// repeat addressing and large images use the image's own texture.
+    fn image_texture(&mut self, img: &Rc<Texture>, repeat: bool) -> (TexKey, Option<[f32; 4]>) {
         let key = Rc::as_ptr(img) as usize;
-        if let Some((w, t)) = self.images.get(&key) {
-            if w.strong_count() > 0 {
-                return *t;
+        let alive = matches!(self.images.get(&key), Some(e) if e.weak.strong_count() > 0);
+        if !alive {
+            if let Some(old) = self.images.remove(&key) {
+                if let Some(t) = old.own {
+                    // SAFETY: texture created by this backend.
+                    unsafe { self.gl.delete_texture(t) };
+                }
+            }
+            self.images.insert(key, ImgEntry { weak: Rc::downgrade(img), own: None, at: None });
+            if self.images.len() >= self.sweep_at {
+                self.sweep();
+                self.sweep_at = (self.images.len() * 2).max(1024);
             }
         }
-        if let Some((_, old)) = self.images.remove(&key) {
-            // SAFETY: texture created by this backend.
-            unsafe { self.gl.delete_texture(old) };
+        let small = img.w <= ATLAS_MAX && img.h <= ATLAS_MAX;
+        if small && !repeat {
+            if self.images[&key].at.is_none() {
+                let at = self.atlas_insert(img);
+                if let Some(e) = self.images.get_mut(&key) {
+                    e.at = Some(at);
+                }
+            }
+            let (p, x, y) = self.images[&key].at.unwrap();
+            let s = PAGE as f32;
+            return (TexKey::Page(p), Some([(x + 1) as f32 / s, (y + 1) as f32 / s, img.w as f32 / s, img.h as f32 / s]));
         }
-        // SAFETY: context is current; data length matches w*h*4.
-        let t = unsafe {
-            let bytes: &[u8] = std::slice::from_raw_parts(img.px.as_ptr() as *const u8, img.px.len() * 4);
-            Self::upload_raw(&self.gl, img.w, img.h, bytes).unwrap_or(self.white)
-        };
-        self.images.insert(key, (Rc::downgrade(img), t));
+        if self.images[&key].own.is_none() {
+            // SAFETY: context is current; data length matches w*h*4.
+            let t = unsafe {
+                let bytes: &[u8] = std::slice::from_raw_parts(img.px.as_ptr() as *const u8, img.px.len() * 4);
+                Self::upload_raw(&self.gl, img.w, img.h, bytes).unwrap_or(self.white)
+            };
+            self.counters[1] += 1;
+            if let Some(e) = self.images.get_mut(&key) {
+                e.own = Some(t);
+            }
+        }
+        (TexKey::Img(key), None)
+    }
+
+    /// Packs an image (with a replicated 1-pixel border) into the atlas.
+    fn atlas_insert(&mut self, img: &Texture) -> (u32, u32, u32) {
+        let (w, h) = (img.w + 2, img.h + 2);
+        let (mut x, mut y, mut rh) = self.shelf;
+        if x + w > PAGE {
+            x = 0;
+            y += rh;
+            rh = 0;
+        }
+        if self.pages.is_empty() || y + h > PAGE {
+            // pending draws may reference atlas places that are about to move
+            self.flush_batch();
+            if self.pages.len() >= MAX_PAGES {
+                // full: start over (dead images' space is reclaimed this way)
+                for p in self.pages.drain(..) {
+                    // SAFETY: page textures belong to this backend.
+                    unsafe { self.gl.delete_texture(p) };
+                }
+                for e in self.images.values_mut() {
+                    e.at = None;
+                }
+            }
+            let z = vec![0u8; (PAGE * PAGE * 4) as usize];
+            // SAFETY: buffer matches the page size.
+            let t = unsafe { Self::upload_raw(&self.gl, PAGE, PAGE, &z).unwrap_or(self.white) };
+            self.pages.push(t);
+            x = 0;
+            y = 0;
+            rh = 0;
+        }
+        // padded copy with the edge pixels replicated
+        let mut buf = Vec::with_capacity((w * h * 4) as usize);
+        for yy in 0..h {
+            let sy = (yy as i64 - 1).clamp(0, img.h as i64 - 1) as u32;
+            for xx in 0..w {
+                let sx = (xx as i64 - 1).clamp(0, img.w as i64 - 1) as u32;
+                buf.extend_from_slice(&img.get(sx, sy));
+            }
+        }
+        let page = (self.pages.len() - 1) as u32;
+        // SAFETY: the rectangle lies inside the page; buffer holds w*h pixels.
+        unsafe {
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(self.pages[page as usize]));
+            self.gl.tex_sub_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                x as i32,
+                y as i32,
+                w as i32,
+                h as i32,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(Some(&buf)),
+            );
+        }
         self.counters[1] += 1;
-        if self.images.len() >= self.sweep_at {
-            self.sweep();
-            self.sweep_at = (self.images.len() * 2).max(1024);
-        }
-        t
+        self.shelf = (x + w, y, rh.max(h));
+        (page, x, y)
     }
 
     /// Frees textures of images that no longer exist.
     pub fn sweep(&mut self) {
-        let dead: Vec<usize> = self.images.iter().filter(|(_, (w, _))| w.strong_count() == 0).map(|(k, _)| *k).collect();
+        let dead: Vec<usize> = self.images.iter().filter(|(_, e)| e.weak.strong_count() == 0).map(|(k, _)| *k).collect();
         for k in dead {
-            if let Some((_, t)) = self.images.remove(&k) {
-                // SAFETY: texture created by this backend.
-                unsafe { self.gl.delete_texture(t) };
+            if let Some(e) = self.images.remove(&k) {
+                if let Some(t) = e.own {
+                    // SAFETY: texture created by this backend.
+                    unsafe { self.gl.delete_texture(t) };
+                }
             }
         }
     }
 
     fn push(&mut self, v: &Vertex) {
         let v = &super::backend::snap(v);
-        self.batch.extend_from_slice(&[v.x, v.y, v.z, v.w, v.u, v.v, v.c[0], v.c[1], v.c[2], v.c[3], v.fog]);
+        let (u, vv) = match self.uvx {
+            Some([ox, oy, sx, sy]) => (ox + v.u * sx, oy + v.v * sy),
+            None => (v.u, v.v),
+        };
+        self.batch.extend_from_slice(&[v.x, v.y, v.z, v.w, u, vv, v.c[0], v.c[1], v.c[2], v.c[3], v.fog]);
     }
 
     fn blend_factor(f: u8) -> u32 {
@@ -444,14 +556,6 @@ impl GlBackend {
         }
     }
 
-    fn tex_key(tex: Option<&Tex>) -> TexKey {
-        match tex {
-            None => TexKey::None,
-            Some(Tex::Img(i)) => TexKey::Img(Rc::as_ptr(i) as usize),
-            Some(Tex::Surf { id, .. }) => TexKey::Surf(*id),
-        }
-    }
-
     /// Executes the pending batch.
     fn flush_batch(&mut self) {
         let Some(key) = self.key.take() else { return };
@@ -464,7 +568,8 @@ impl GlBackend {
         unsafe {
             let tex = match key.tex {
                 TexKey::None => self.white,
-                TexKey::Img(k) => self.images.get(&k).map(|e| e.1).unwrap_or(self.white),
+                TexKey::Img(k) => self.images.get(&k).and_then(|e| e.own).unwrap_or(self.white),
+                TexKey::Page(p) => self.pages.get(p as usize).copied().unwrap_or(self.white),
                 TexKey::Surf(id) => {
                     if self.target == Target::Surface(id) {
                         // feedback: copy the surface first
@@ -708,19 +813,30 @@ impl Backend for GlBackend {
                 return;
             }
         }
-        if let Some(Tex::Img(i)) = tex {
-            if i.w == 0 || i.h == 0 {
-                return;
+        let (tkey, uvx) = match tex {
+            Some(Tex::Img(i)) => {
+                if i.w == 0 || i.h == 0 {
+                    return;
+                }
+                self.image_texture(i, st.repeat)
             }
-            self.image_texture(i);
-        }
+            Some(Tex::Surf { id, .. }) => (TexKey::Surf(*id), None),
+            None => (TexKey::None, None),
+        };
+        self.uvx = uvx;
         let plain2d = v.iter().all(|p| p.w == 1.0);
         let mode = match prim {
             Prim::Lines if !plain2d => glow::LINES,
             Prim::Points if !plain2d => glow::POINTS,
             _ => glow::TRIANGLES,
         };
-        let key = BatchKey { st: *st, tex: Self::tex_key(tex), mode };
+        // the sampler's wrap mode does not matter for atlas pages (clamped by
+        // the replicated border), so batch atlas draws regardless of `repeat`
+        let mut kst = *st;
+        if matches!(tkey, TexKey::Page(_)) {
+            kst.repeat = false;
+        }
+        let key = BatchKey { st: kst, tex: tkey, mode };
         if self.key != Some(key) || self.batch.len() > (1 << 20) {
             self.flush_batch();
             self.key = Some(key);
@@ -874,8 +990,13 @@ impl Drop for GlBackend {
         // SAFETY: deleting objects we created while the context is current.
         unsafe {
             let gl = &self.gl;
-            for (_, (_, t)) in self.images.drain() {
-                gl.delete_texture(t);
+            for (_, e) in self.images.drain() {
+                if let Some(t) = e.own {
+                    gl.delete_texture(t);
+                }
+            }
+            for p in self.pages.drain(..) {
+                gl.delete_texture(p);
             }
             for (_, f) in self.surfaces.drain() {
                 Self::delete_fbo(gl, &f);
