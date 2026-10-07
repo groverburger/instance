@@ -7,6 +7,7 @@ pub mod history;
 pub mod ops;
 pub mod raster;
 pub mod text;
+pub mod tool_icons;
 
 #[cfg(test)]
 mod tests;
@@ -23,6 +24,7 @@ use history::History;
 use ops::{DialogResult, ImageOp, OpDialog};
 use raster::{ColorMode, Mask, Px, Rgba};
 use text::{Align, FontSource};
+use tool_icons::TIcon;
 
 /// Drawing tools (specs/ide.md §7 tool table).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,6 +87,23 @@ impl Tool {
             Tool::Text => "Click to place text, then Apply (Enter)",
             Tool::Select => "Drag to select; drag inside to move (right = copy)",
         }
+    }
+}
+
+/// Palette icon of a tool.
+fn tool_icon(t: Tool) -> TIcon {
+    match t {
+        Tool::Pencil => TIcon::Pencil,
+        Tool::Spray => TIcon::Spray,
+        Tool::Eraser => TIcon::Eraser,
+        Tool::Picker => TIcon::Picker,
+        Tool::Line => TIcon::Line,
+        Tool::Rect => TIcon::Rect,
+        Tool::Ellipse => TIcon::Ellipse,
+        Tool::Fill => TIcon::Fill,
+        Tool::ChangeColor => TIcon::ChangeColor,
+        Tool::Text => TIcon::Text,
+        Tool::Select => TIcon::Select,
     }
 }
 
@@ -1038,55 +1057,110 @@ impl ImageEditor {
             action = self.menus(ui);
         });
         ui.horizontal(|ui| {
-            if ui
-                .button("✔ Close Saving")
-                .on_hover_text("Close saving changes")
-                .clicked()
+            ui.spacing_mut().item_spacing.x = 1.0;
+            let tb = |ui: &mut Ui, icon: TIcon, label: &str, tip: &str, enabled: bool| {
+                tool_icons::button(ui, icon, 24.0, label, tip, enabled, None)
+            };
+            if tb(
+                ui,
+                TIcon::CloseSave,
+                "✔ Close Saving",
+                "Close saving changes",
+                true,
+            )
+            .clicked()
             {
                 action = EditorAction::Close { save: true };
             }
-            ui.separator();
-            if ui
-                .add_enabled(self.history.can_undo(), egui::Button::new("⟲ Undo"))
-                .clicked()
+            crate::icons::tool_separator(ui);
+            if tb(
+                ui,
+                TIcon::Undo,
+                "Undo",
+                "Undo (Ctrl+Z)",
+                self.history.can_undo(),
+            )
+            .clicked()
             {
                 self.undo();
             }
-            if ui
-                .add_enabled(self.history.can_redo(), egui::Button::new("⟳ Redo"))
-                .clicked()
+            if tb(
+                ui,
+                TIcon::Redo,
+                "Redo",
+                "Redo (Ctrl+Y)",
+                self.history.can_redo(),
+            )
+            .clicked()
             {
                 self.redo();
             }
-            ui.separator();
-            if ui.button("−").on_hover_text("Zoom out").clicked() {
+            crate::icons::tool_separator(ui);
+            if tb(ui, TIcon::ZoomOut, "Zoom Out", "Zoom out", true).clicked() {
                 self.zoom_by(0.5, None);
             }
-            ui.label(format!("{:.0}%", self.zoom * 100.0));
-            if ui.button("+").on_hover_text("Zoom in").clicked() {
+            // fixed-width zoom read-out so the row never reflows
+            let (zr, _) = ui.allocate_exact_size(Vec2::new(46.0, 24.0), Sense::hover());
+            ui.painter().text(
+                zr.center(),
+                egui::Align2::CENTER_CENTER,
+                format!("{:.0}%", self.zoom * 100.0),
+                egui::TextStyle::Body.resolve(ui.style()),
+                ui.visuals().text_color(),
+            );
+            if tb(ui, TIcon::ZoomIn, "Zoom In", "Zoom in", true).clicked() {
                 self.zoom_by(2.0, None);
             }
-            if ui.button("1:1").clicked() {
+            if tb(ui, TIcon::ZoomOne, "No Zoom", "No zoom (1:1)", true).clicked() {
                 self.zoom = 1.0;
                 self.pan = Vec2::ZERO;
             }
-            if ui.button("Fit").clicked() {
+            if tb(
+                ui,
+                TIcon::ZoomFit,
+                "Zoom to Fit",
+                "Zoom to fit the window",
+                true,
+            )
+            .clicked()
+            {
                 self.fit_pending = true;
             }
-            ui.checkbox(&mut self.grid, "Grid");
-            if self.onion.is_some() {
-                ui.checkbox(&mut self.show_onion, "Onion skin");
+            crate::icons::tool_separator(ui);
+            if tool_icons::button(
+                ui,
+                TIcon::Grid,
+                24.0,
+                "Grid",
+                "Show the pixel grid",
+                true,
+                Some(self.grid),
+            )
+            .clicked()
+            {
+                self.grid = !self.grid;
+            }
+            if self.onion.is_some()
+                && tool_icons::button(
+                    ui,
+                    TIcon::Onion,
+                    24.0,
+                    "Onion skin",
+                    "Show the previous frame (onion skin)",
+                    true,
+                    Some(self.show_onion),
+                )
+                .clicked()
+            {
+                self.show_onion = !self.show_onion;
             }
             if let Some((i, n)) = self.frame {
                 if n > 1 {
-                    ui.separator();
-                    if ui.add_enabled(i > 0, egui::Button::new("◀ Prev")).clicked() {
+                    crate::icons::tool_separator(ui);
+                    if tb(ui, TIcon::Prev, "◀ Prev", "Previous image", i > 0).clicked() {
                         action = EditorAction::Prev;
                     }
-                    if ui
-                        .add_enabled(i + 1 < n, egui::Button::new("Next ▶"))
-                        .clicked()
-                    {
+                    if tb(ui, TIcon::Next, "Next ▶", "Next image", i + 1 < n).clicked() {
                         action = EditorAction::Next;
                     }
                 }
@@ -1280,53 +1354,110 @@ impl ImageEditor {
     }
 
     fn tools_ui(&mut self, ui: &mut Ui) {
-        ui.label("Tools");
-        egui::Grid::new("tool_grid")
-            .num_columns(2)
-            .spacing([4.0, 4.0])
-            .show(ui, |ui| {
-                for (i, t) in Tool::ALL.iter().enumerate() {
-                    let b = egui::Button::selectable(self.tool == *t, t.label())
-                        .min_size(Vec2::new(76.0, 22.0));
-                    if ui.add(b).on_hover_text(t.hint()).clicked() && self.tool != *t {
-                        self.commit_pending();
-                        self.tool = *t;
-                    }
-                    if i % 2 == 1 {
-                        ui.end_row();
-                    }
+        tool_icons::caption(ui, "Tools");
+        // classic paint-program tool box: two columns of fixed-size buttons
+        ui.vertical_centered(|ui| {
+            tool_icons::well(ui, |ui| {
+                ui.spacing_mut().item_spacing = Vec2::splat(1.0);
+                for pair in Tool::ALL.chunks(2) {
+                    ui.horizontal(|ui| {
+                        for t in pair {
+                            let tip = format!("{} — {}", t.label(), t.hint());
+                            if tool_icons::button(
+                                ui,
+                                tool_icon(*t),
+                                30.0,
+                                t.label(),
+                                &tip,
+                                true,
+                                Some(self.tool == *t),
+                            )
+                            .clicked()
+                                && self.tool != *t
+                            {
+                                self.commit_pending();
+                                self.tool = *t;
+                            }
+                        }
+                    });
                 }
             });
-        ui.separator();
-        ui.label("Options");
+        });
+        ui.add_space(4.0);
+        tool_icons::caption(ui, self.tool.label());
         match self.tool {
             Tool::Pencil | Tool::Line | Tool::Eraser | Tool::Spray | Tool::Rect | Tool::Ellipse => {
+                tool_icons::well(ui, |ui| {
+                    ui.spacing_mut().item_spacing = Vec2::splat(1.0);
+                    for row in [[1u32, 2, 3], [5, 8, 12]] {
+                        ui.horizontal(|ui| {
+                            for s in row {
+                                if tool_icons::brush_button(ui, s, self.brush == s).clicked() {
+                                    self.brush = s;
+                                }
+                            }
+                        });
+                    }
+                });
                 ui.horizontal(|ui| {
                     ui.label("Size");
                     ui.add(egui::DragValue::new(&mut self.brush).range(1..=64));
-                });
-                ui.horizontal_wrapped(|ui| {
-                    for s in [1u32, 2, 3, 5, 8, 12] {
-                        if ui
-                            .selectable_label(self.brush == s, s.to_string())
-                            .clicked()
-                        {
-                            self.brush = s;
-                        }
-                    }
                 });
             }
             _ => {}
         }
         match self.tool {
             Tool::Rect | Tool::Ellipse => {
-                ui.radio_value(&mut self.shape_fill, ShapeFill::Outline, "Outline");
-                ui.radio_value(&mut self.shape_fill, ShapeFill::Filled, "Filled");
-                ui.radio_value(
-                    &mut self.shape_fill,
-                    ShapeFill::Both,
-                    "Outline + fill (other colour)",
-                );
+                let ell = self.tool == Tool::Ellipse;
+                let variants = [
+                    (
+                        ShapeFill::Outline,
+                        if ell {
+                            TIcon::EllipseOutline
+                        } else {
+                            TIcon::RectOutline
+                        },
+                        "Outline",
+                    ),
+                    (
+                        ShapeFill::Filled,
+                        if ell {
+                            TIcon::EllipseFilled
+                        } else {
+                            TIcon::RectFilled
+                        },
+                        "Filled",
+                    ),
+                    (
+                        ShapeFill::Both,
+                        if ell {
+                            TIcon::EllipseBoth
+                        } else {
+                            TIcon::RectBoth
+                        },
+                        "Outline + fill (other colour)",
+                    ),
+                ];
+                tool_icons::well(ui, |ui| {
+                    ui.spacing_mut().item_spacing = Vec2::splat(1.0);
+                    ui.horizontal(|ui| {
+                        for (f, icon, label) in variants {
+                            if tool_icons::button(
+                                ui,
+                                icon,
+                                30.0,
+                                label,
+                                label,
+                                true,
+                                Some(self.shape_fill == f),
+                            )
+                            .clicked()
+                            {
+                                self.shape_fill = f;
+                            }
+                        }
+                    });
+                });
             }
             Tool::Eraser => {
                 ui.label("Strength");
@@ -1351,7 +1482,6 @@ impl ImageEditor {
             _ => {}
         }
     }
-
     fn text_options(&mut self, ui: &mut Ui) {
         let changed_before = (
             self.text.clone(),
@@ -1453,7 +1583,17 @@ impl ImageEditor {
                     self.active = b;
                 }
             }
-            if ui.button("⇄").on_hover_text("Swap colours").clicked() {
+            if tool_icons::button(
+                ui,
+                TIcon::Swap,
+                24.0,
+                "Swap colours",
+                "Swap the left and right colours",
+                true,
+                None,
+            )
+            .clicked()
+            {
                 let (l, r) = (self.left, self.right);
                 self.set_color(0, r);
                 self.set_color(1, l);
