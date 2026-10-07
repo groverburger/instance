@@ -761,3 +761,19 @@ GML files are a sequence of `#define name` sections, one per script/function.
 | room order | 700 | 700 |
 | .lib file / action | 520 / 520 | — |
 | .ged / file / function / constant | 700 | — |
+
+## Addendum: verification against a real 810 sample
+
+`treasure.gm81` (saved by the GM 8.1 IDE from the 701 `treasure.gmk`) was decoded
+end-to-end by `specs/tools/gmk_dump.py` with exact consumption to EOF. Observed:
+
+- Header version is 810; every section/record below it uses the 800 layout unchanged.
+- Settings version 800; triggers and constants sections present (version 800, empty).
+- Section versions: sounds/sprites/backgrounds/paths/scripts/fonts/timelines/objects/rooms
+  = 800; included files 800; game information 800; extension packages 700;
+  library creation code 500; room order 700.
+- Record versions: sound 800, sprite 800, background 710, script 800, object 430,
+  action 440, room 541.
+- So the 810 differences previously marked [I] are confirmed as "none beyond the header
+  version" for every section present in this sample. Paths, fonts, timelines, triggers,
+  constants, tiles and included files remain unverified (no instances in this sample).
