@@ -16,9 +16,12 @@ cargo build --release
 target/release/gm-ide [project.gm81]          # editor; F5 runs the game
 target/release/gm-runner game.gm81            # play a .gmk (v701/v800) or .gm81 project
 target/release/gm-runner game.gm81 --headless --frames 300 --screenshot out.png
+target/release/gm-runner game.gm81 --renderer software   # force the CPU renderer (default: OpenGL, falls back)
+target/release/gm-runner game.gm81 --compare-renderers DIR --frames 300 --screenshot-every 50 DIR
+                                              # render with both renderers and diff the frames
 target/release/gmk-info game.gm81 [--tree]    # print a resource summary
 cargo test --workspace                        # sample tests read $GM81_SAMPLES
 ```
 
-Not supported: compiled game .exe files, MIDI music, D3D 3D mode, multiplayer, DLLs.
+Not supported: compiled game .exe files, MIDI music, multiplayer, DLLs.
 Open spec questions and implementation choices: `specs/OPEN_QUESTIONS.md`.
