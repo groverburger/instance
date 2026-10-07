@@ -14,6 +14,7 @@
 
 pub mod actionlib;
 pub mod error;
+pub mod exe;
 pub mod export;
 pub mod gmk;
 pub mod image;
