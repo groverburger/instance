@@ -928,6 +928,7 @@ impl Game {
     /// Starts the game: first room with Game Start (§2 step 7).
     pub fn start(&mut self, vm: &mut Vm) -> Result<(), Error> {
         vm.randomize();
+        self.audio.preload(&self.sounds);
         let first = match self.room_order.first() {
             Some(&r) => r,
             None => return Err(Error::fatal("The game has no rooms.")),

@@ -304,6 +304,8 @@ impl Game {
         let released = self.input.mb_released;
         let (wu, wd) = (self.input.wheel_up, self.input.wheel_down);
         let any_held = held[1] || held[2] || held[3];
+        // joystick events (specs/input-joystick.md §4): level-triggered, first
+        let joy = self.input.joy.events();
         // button index mapping: GM mb_left=1, mb_right=2, mb_middle=3 → events 0,1,2
         let mut k = 0;
         while k < self.instances.len() {
@@ -328,7 +330,7 @@ impl Game {
             if let Some(i) = self.inst_mut(id) {
                 i.mouse_over = over;
             }
-            let mut evs: Vec<i32> = Vec::new();
+            let mut evs: Vec<i32> = joy.clone();
             if over {
                 for b in 0..3 {
                     if held[b + 1] {

@@ -20,5 +20,13 @@ target/release/gmk-info game.gm81 [--tree]    # print a resource summary
 cargo test --workspace                        # sample tests read $GM81_SAMPLES
 ```
 
-Not supported: compiled game .exe files, MIDI music, D3D 3D mode, multiplayer, DLLs.
+Not supported: compiled game .exe files, D3D 3D mode, multiplayer, DLLs.
+
+Sound: MIDI music plays through the Windows synthesiser (midiOut). Elsewhere, or
+with `GM81_MIDI=soundfont`, it is rendered with a SoundFont looked up from
+`GM81_SOUNDFONT`, then `<runner dir>/soundfonts/default.sf2`, then common system
+locations (none is shipped). `GM81_AUDIO_DEBUG=1` logs MIDI activity.
+Joysticks are read with gilrs (`GM81_JOYSTICK=0` disables, `GM81_JOY_DPAD_AS_STICK=1`,
+`GM81_JOY_RAW=1`); `--input` also accepts `STEP:joy1:button:N:down|up`,
+`STEP:joy1:axis:x|y|z|r|u|v:VALUE`, `STEP:joy1:pov:ANGLE`, `STEP:joy1:connect|disconnect`.
 Open spec questions and implementation choices: `specs/OPEN_QUESTIONS.md`.
