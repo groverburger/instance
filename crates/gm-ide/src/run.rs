@@ -1,0 +1,93 @@
+//! Run normally (specs/ide.md §20.1): save the project to a temporary `.gm81` and
+//! launch the runner executable with it.
+
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command};
+
+use gm_format::Project;
+
+/// File name of the runner executable.
+pub fn runner_file_name() -> &'static str {
+    if cfg!(windows) {
+        "gm-runner.exe"
+    } else {
+        "gm-runner"
+    }
+}
+
+/// Locate the runner: the configured path, next to the IDE executable, or in a cargo
+/// `target/{debug,release}` directory above the IDE executable.
+pub fn find_runner(configured: Option<&str>) -> Option<PathBuf> {
+    if let Some(c) = configured.filter(|c| !c.trim().is_empty()) {
+        let p = PathBuf::from(c.trim());
+        return p.is_file().then_some(p);
+    }
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let here = dir.join(runner_file_name());
+    if here.is_file() {
+        return Some(here);
+    }
+    for anc in dir.ancestors() {
+        if anc.file_name().is_some_and(|n| n == "target") {
+            for profile in ["debug", "release"] {
+                let p = anc.join(profile).join(runner_file_name());
+                if p.is_file() {
+                    return Some(p);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Temporary folder of this IDE instance.
+pub fn temp_dir() -> PathBuf {
+    std::env::temp_dir()
+        .join("gm81-clean-ide")
+        .join(std::process::id().to_string())
+}
+
+/// Write the project to a temporary game file.
+pub fn write_temp_game(p: &Project) -> Result<PathBuf, String> {
+    let dir = temp_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let file = dir.join("game.gm81");
+    let bytes = crate::project_ops::project_bytes(p)?;
+    std::fs::write(&file, bytes).map_err(|e| format!("{}: {e}", file.display()))?;
+    Ok(file)
+}
+
+/// Check the preconditions and launch the runner.
+pub fn launch(
+    p: &Project,
+    runner: Option<&str>,
+    project_path: Option<&Path>,
+) -> Result<Child, String> {
+    if p.rooms.iter().flatten().next().is_none() {
+        return Err("A game needs at least one room to run.".into());
+    }
+    let exe = find_runner(runner).ok_or_else(|| {
+        format!(
+            "Runner executable '{}' not found next to the IDE or in a cargo target \
+             directory. Set its path in File > Preferences.",
+            runner_file_name()
+        )
+    })?;
+    let game = write_temp_game(p)?;
+    let workdir = project_path
+        .and_then(|p| p.parent())
+        .filter(|d| d.is_dir())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(temp_dir);
+    Command::new(&exe)
+        .arg(&game)
+        .current_dir(workdir)
+        .spawn()
+        .map_err(|e| format!("Cannot start {}: {e}", exe.display()))
+}
+
+/// Remove this instance's temporary folder.
+pub fn cleanup() {
+    let _ = std::fs::remove_dir_all(temp_dir());
+}

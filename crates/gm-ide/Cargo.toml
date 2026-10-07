@@ -3,5 +3,15 @@ name = "gm-ide"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
+description = "Clean-room GameMaker 8.1 compatible IDE (egui)"
 
 [dependencies]
+gm-format = { path = "../gm-format" }
+eframe = { version = "0.36.2", default-features = false, features = ["accesskit", "default_fonts", "glow", "links", "wayland", "x11"] }
+image = { version = "0.25.10", default-features = false, features = ["png", "bmp", "gif", "jpeg"] }
+rfd = "0.17.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+
+[dev-dependencies]
+egui_kittest = { version = "0.36", features = ["eframe"] }

@@ -289,3 +289,54 @@ Data structures (chapter 411)
   `ds_grid_value_x/y` return -1 when not found; search order is row by row.
 - G-34: `ds_*_write` produce an implementation-defined hex text format (not compatible
   with files written by GM 8.1); `ds_*_read` of a malformed string is a runtime error.
+
+## [IMPL-IDE] crates/gm-ide implementation choices and spec gaps (2026-10-07)
+
+Choices made where specs/ide.md is silent; please confirm or correct.
+
+- IMPL-IDE-1 (action list text): `actions.json` omits list/hint templates, so action
+  rows show "palette title: arg, arg" (resource args by name, menu args by caption,
+  booleans true/false), prefixed "for other:" / "for all <obj>:" and "NOT ", suffixed
+  "(relative)". The code action shows its `///` label; comment (lib 1, id 605) is
+  italic. Need the template token rules (`@0`, `@r`, `@w`, ...) plus template text, or
+  a paraphrased template per action, to match the original rows.
+- IMPL-IDE-2 (Move Fixed grid): arg0 edited as a 3x3 toggle grid using the
+  keypad-order mask from actions.json (rows top→bottom = indices 6-8, 3-5, 0-2).
+- IMPL-IDE-3 (smooth path drawing): the editor draws smooth paths as a quadratic
+  B-spline through edge midpoints (open paths start/end at the end points),
+  2^precision subdivisions per segment. The real curve formula is not in the spec
+  and matters for the runner (path_* positions) too.
+- IMPL-IDE-4 (timestamps): `last_changed` values are written as UTC Delphi
+  TDateTime (unix/86400 + 25569). Is the original local time?
+- IMPL-IDE-5 (empty events): events without actions are dropped on OK only if they
+  were added in this form session; pre-existing empty events in a loaded file are
+  kept so that open→OK is lossless. Spec §13.1 says "removed when committed".
+- IMPL-IDE-6 (automatic bbox): with bbox mode Automatic / Full image the stored
+  bbox_left/top/right/bottom are recomputed only when frames, tolerance or mode
+  change in the form (tight box of alpha > tolerance over all frames; empty image →
+  full image). Is the stored bbox for automatic mode the union over frames?
+- IMPL-IDE-7 (new resource placement / naming): Resources menu creates into the
+  selected group of that kind, else at the end of the root; Duplicate inserts right
+  after the source and names the copy `<name>_copy`; default names use N = new id,
+  bumped while the name is taken (IDE-2/IDE-3 still open).
+- IMPL-IDE-8 (room_order): recomputed from the room tree order whenever rooms are
+  created/deleted/moved; all samples have room_order == tree order. Unchanged
+  otherwise, so open→save stays lossless.
+- IMPL-IDE-9 (trigger slots): a new trigger reuses the first empty slot (slot index =
+  event number); deleting trims trailing empty slots. Confirm the IDE's behaviour.
+- IMPL-IDE-10 (game information): edited as plain text (P0 stopgap). On change the
+  RTF prefix up to the first body text/\par (font table, colour table, initial
+  formatting words) is kept and the body is regenerated (`\par` per line, cp1252
+  `\'hh` escapes). Unchanged text keeps the RTF byte-identical.
+- IMPL-IDE-11 (instance/tile ids on duplicate): duplicating a room renumbers its
+  instances/tiles from the project allocators so ids stay unique (spec §15.4).
+  Whether the original IDE does the same is unverified.
+- IMPL-IDE-12 (resolution/frequency lists): the Resolution tab exposes `resolution`
+  and `frequency` as raw indices because the option lists are not specified.
+- IMPL-IDE-13 (runner invocation): Run writes `<temp>/gm81-clean-ide/<pid>/game.gm81`
+  and starts `gm-runner <file>` with the project folder as working directory (temp
+  folder for unsaved projects). No secure-mode/debug flags are passed yet: the runner
+  CLI for those needs to be specified.
+- IMPL-IDE-14 (rendering backend, not a spec issue): eframe's default wgpu backend
+  crashed with an access violation on the development machine; the IDE uses the glow
+  (OpenGL) backend.
