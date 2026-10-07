@@ -211,7 +211,8 @@ impl Vm {
     }
 
     /// Calls a built-in function by id: natively if implemented by this crate, else
-    /// through [`Host::call_function`]. No argument-count check is done here.
+    /// through [`Host::call_function`]. The argument count is checked against the
+    /// function's arity (an error is returned if it does not match).
     pub fn call_function(
         &mut self,
         host: &mut dyn Host,
@@ -219,6 +220,13 @@ impl Vm {
         func: FunctionId,
         args: &[Value],
     ) -> Result<Value, Error> {
+        let info = func.info();
+        if args.len() < info.min_args as usize || args.len() > info.max_args as usize {
+            return Err(Error::new(format!(
+                "Wrong number of arguments to function {}.",
+                info.name
+            )));
+        }
         match natives::native(func) {
             Some(f) => f(self, host, ctx, Args { vals: args, func }),
             None => host.call_function(self, ctx, func, args),

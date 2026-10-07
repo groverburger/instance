@@ -818,3 +818,38 @@ fn performance_one_million_iterations() {
         assert!(el.as_secs_f64() < 1.0, "too slow: {:?}", el);
     }
 }
+
+#[test]
+fn host_side_function_calls() {
+    let (mut vm, mut h) = (Vm::new(), Mock::new());
+    let id = h.add(0);
+    let ctx = Ctx::new(id, id);
+    let f = builtins::functions::POINT_DISTANCE;
+    let args = [0.0, 0.0, 3.0, 4.0].map(Value::Real);
+    assert_eq!(
+        vm.call_function(&mut h, &ctx, f, &args).unwrap(),
+        Value::Real(5.0)
+    );
+    assert!(vm
+        .call_function(&mut h, &ctx, f, &args[..2])
+        .unwrap_err()
+        .message
+        .contains("Wrong number"));
+    // non-native functions go to the host
+    let e = vm
+        .call_function(
+            &mut h,
+            &ctx,
+            builtins::functions::DRAW_SPRITE,
+            &[0.0, 0.0, 0.0, 0.0].map(Value::Real),
+        )
+        .unwrap_err();
+    assert!(e.message.contains("unsupported function draw_sprite"));
+    // globalvar names that were never assigned are uninitialised
+    assert!(
+        run_in(&mut vm, &mut h, "globalvar never_set; return never_set")
+            .unwrap_err()
+            .message
+            .contains("Unknown variable never_set")
+    );
+}
