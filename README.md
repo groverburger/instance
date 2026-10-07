@@ -18,6 +18,9 @@ target/release/gm-runner game.gm81            # play a .gmk (v701/v800) or .gm81
 target/release/gm-runner game.gm81 --headless --frames 300 --screenshot out.png
 target/release/gmk-info game.gm81 [--tree]    # print a resource summary
 cargo test --workspace                        # sample tests read $GM81_SAMPLES
+target/release/gm-runner game.gm81 --headless --frames 600 --random-input 1 --max-seconds 60
+GM_PROFILE=1 target/release/gm-runner game.gm81 --headless   # per-phase/event/function timings
+cargo test --release -p gm-runner --test corpus -- --ignored --nocapture   # runs every game in $GM81_CORPUS
 ```
 
 Not supported: compiled game .exe files, MIDI music, D3D 3D mode, multiplayer, DLLs.
