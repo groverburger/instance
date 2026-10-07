@@ -123,12 +123,6 @@ fn gml_extension_functions_constants_init_final() {
         "",
         &["Test GML Ext"],
     );
-    // script_execute through the index of an extension function is not needed by GM
-    // code; replace the last statement with a plain call.
-    let mut p = p;
-    if let Some(o) = p.objects[0].as_mut() {
-        o.events[0].actions[0].args[0] = o.events[0].actions[0].args[0].replace("", "");
-    }
     let (mut g, mut vm) = start(p);
     assert!(g.ext.unavailable().is_empty(), "{:?}", g.ext.unavailable());
     assert_eq!(gstr(&mut vm, "init_seen"), "i", "init ran before Create");

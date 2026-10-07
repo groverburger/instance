@@ -266,6 +266,7 @@ impl FrameBuf {
         self.buf.extend_from_slice(data);
     }
     /// Next complete frame `(type, payload)`; `Err` on a protocol violation.
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> io::Result<Option<(u8, Vec<u8>)>> {
         if self.buf.len() < 4 {
             return Ok(None);

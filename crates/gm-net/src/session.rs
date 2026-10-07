@@ -232,10 +232,8 @@ impl Host {
     fn deliver(&mut self, from: u32, to: u32, id: f64, val: NetValue, guaranteed: bool, ev: &Sender<Event>) {
         let mut w = W::new();
         w.u32(from).f64(id).value(&val);
-        if to == 0 || to == self.st.my_id {
-            if from != self.st.my_id {
-                let _ = ev.send(Event::Msg { from, id, val: val.clone() });
-            }
+        if (to == 0 || to == self.st.my_id) && from != self.st.my_id {
+            let _ = ev.send(Event::Msg { from, id, val: val.clone() });
         }
         for i in 0..self.clients.len() {
             let cid = self.clients[i].id;
@@ -449,16 +447,11 @@ impl Host {
         loop {
             let mut busy = false;
             // new connections
-            loop {
-                match self.listener.accept() {
-                    Ok((s, _)) => {
-                        if let Ok(c) = Conn::new(s) {
-                            self.pending.push((c, Instant::now()));
-                        }
-                        busy = true;
-                    }
-                    Err(_) => break,
+            while let Ok((s, _)) = self.listener.accept() {
+                if let Ok(c) = Conn::new(s) {
+                    self.pending.push((c, Instant::now()));
                 }
+                busy = true;
             }
             // pending handshakes
             let pend = std::mem::take(&mut self.pending);
