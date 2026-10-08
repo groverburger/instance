@@ -872,3 +872,15 @@ fn keyword_after_dot_is_not_a_variable() {
         assert_eq!(compile_err(src).message, "Variable name expected.", "{src}");
     }
 }
+
+#[test]
+fn constant_type_mix_is_a_compile_error() {
+    // GM 8.1 (bb_lang): `'a' + 1` in a script fails to compile with
+    // "Wrong type of arguments to +."
+    assert_eq!(compile_err("x = 'a' + 1").message, "Wrong type of arguments to +.");
+    assert!(compile_err("x = 2 * 'b'").message.starts_with("Wrong type of arguments"));
+    // through variables it is a runtime error, not a compile error
+    let mut vm = Vm::new();
+    let h = Mock::new();
+    assert!(vm.compile("t", b"s = 'a'; x = s + 1", &h).is_ok());
+}

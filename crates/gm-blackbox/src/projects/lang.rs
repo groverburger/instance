@@ -36,7 +36,7 @@ pub fn arg_scripts(g: &mut Gen) {
     g.script("sc_noreturn", "global.bb_q = 1;");
     g.script("sc_exit", "global.bb_q = 2; exit; global.bb_q = 3;");
     g.script("sc_with_arg", "with (other) global.bb_q = argument0; return global.bb_q;");
-    g.script("sc_err", "global.bb_q2 = 1; global.bb_tmp = 'a' + 1; global.bb_q2 = 2;");
+    g.script("sc_err", "global.bb_q2 = 1; global.bb_tmp = chr(97) + 1; global.bb_q2 = 2;");
     g.script("sc_fact", "if (argument0 <= 1) return 1; return argument0 * sc_fact(argument0 - 1);");
 }
 
@@ -180,19 +180,19 @@ fn build_with(name: &'static str, id: i32, consts: bool, part: Option<(usize, us
 
     // ---- mixed real/string (GML-2)
     t.extend(errs(&[
-        ("mix.eq_a_1", "('a' == 1)"),
-        ("mix.eq_1s_1", "('1' == 1)"),
-        ("mix.ne_a_1", "('a' != 1)"),
-        ("mix.lt_a_1", "('a' < 1)"),
-        ("mix.gt_1_a", "(1 > 'a')"),
-        ("mix.add_r_s", "(1 + 'a')"),
-        ("mix.add_s_r", "('a' + 1)"),
-        ("mix.sub_s_s", "('a' - 'b')"),
-        ("mix.mul_s_r", "('a' * 2)"),
-        ("mix.and_s", "('a' && 1)"),
-        ("mix.not_s", "(!'a')"),
-        ("mix.neg_s", "(-'a')"),
-        ("mix.bitor_s", "('a' | 1)"),
+        ("mix.eq_a_1", "(chr(97) == 1)"),
+        ("mix.eq_1s_1", "(chr(49) == 1)"),
+        ("mix.ne_a_1", "(chr(97) != 1)"),
+        ("mix.lt_a_1", "(chr(97) < 1)"),
+        ("mix.gt_1_a", "(1 > chr(97))"),
+        ("mix.add_r_s", "(1 + chr(97))"),
+        ("mix.add_s_r", "(chr(97) + 1)"),
+        ("mix.sub_s_s", "(chr(97) - chr(98))"),
+        ("mix.mul_s_r", "(chr(97) * 2)"),
+        ("mix.and_s", "(chr(97) && 1)"),
+        ("mix.not_s", "(!chr(97))"),
+        ("mix.neg_s", "(-chr(97))"),
+        ("mix.bitor_s", "(chr(97) | 1)"),
     ]));
     t.push(vals(
         "strcmp",
@@ -595,13 +595,13 @@ fn build_with(name: &'static str, id: i32, consts: bool, part: Option<(usize, us
         name: "errcont".into(),
         actions: vec![
             "error_occurred = false; global.bb_q = 0; global.bb_q2 = 0;".into(),
-            "global.bb_q = 1; global.bb_tmp = 'a' + 1; global.bb_q = 2;".into(),
+            "global.bb_q = 1; global.bb_tmp = chr(97) + 1; global.bb_q = 2;".into(),
             "bb_log('errcont.rest_of_action', global.bb_q); bb_log('errcont.next_action_runs', 1);".into(),
             "global.bb_q = 1; sc_err(); global.bb_q = 3;".into(),
             "bb_log('errcont.script_rest', global.bb_q2); bb_log('errcont.caller_rest', global.bb_q);".into(),
-            "global.bb_q = 0; with (bb_out) { global.bb_tmp = 'a' + 1; global.bb_q = 1; } global.bb_q += 10;".into(),
+            "global.bb_q = 0; with (bb_out) { global.bb_tmp = chr(97) + 1; global.bb_q = 1; } global.bb_q += 10;".into(),
             "bb_log('errcont.in_with', global.bb_q);".into(),
-            "global.bb_q = 0; repeat (3) { global.bb_q += 1; global.bb_tmp = 'a' * 2; }".into(),
+            "global.bb_q = 0; repeat (3) { global.bb_q += 1; global.bb_tmp = chr(97) * 2; }".into(),
             "bb_log('errcont.in_loop', global.bb_q);".into(),
         ],
     });

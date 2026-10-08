@@ -222,6 +222,14 @@ Notes:
     black-box in GM 8.1 Lite: a script containing `global.bb_out[...] = ...` while an
     object named `bb_out` exists fails to compile with exactly that message.
 
+13. **Constant folding type errors.** GM 8.1 evaluates operations on literal
+    constants while compiling, so a literal type mix such as `'a' + 1` is a
+    *compile* error ("Wrong type of arguments to +."). VERIFIED black-box: a script
+    containing it makes the game fail at startup (with "Display errors" off it just
+    closes). The same operation through variables or function results is a runtime
+    error. Scripts are compiled at game start; code actions are compiled when first
+    executed, where a compile error is FATAL.
+
 ### 3.1 Lvalues
 ```
 lvalue      = var_ref ;

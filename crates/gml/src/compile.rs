@@ -547,8 +547,13 @@ impl<'a> Compiler<'a> {
                 let a = self.expr(a)?;
                 let b = self.expr(b)?;
                 if let (Ex::Const(x), Ex::Const(y)) = (&a, &b) {
-                    if let Ok(r) = binary(*op, x, y) {
-                        return Ok(Ex::Const(r));
+                    match binary(*op, x, y) {
+                        Ok(r) => return Ok(Ex::Const(r)),
+                        // GM 8.1 folds constants while compiling, so a literal type mix
+                        // like `'a' + 1` is a compile error (gml-language.md §3 note 13,
+                        // verified black-box). Other errors (division by 0) stay runtime.
+                        Err(m) if m.starts_with("Wrong type") => return err(m, e.span),
+                        Err(_) => {}
                     }
                 }
                 Ex::Binary(*op, Box::new(a), Box::new(b), pos)
