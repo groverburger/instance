@@ -9,6 +9,8 @@ use eframe::egui::{
 };
 use gm_format::ResourceKind;
 
+pub mod actions;
+
 /// Every icon the IDE can paint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Icon {

@@ -11,6 +11,8 @@ pub mod gameinfo;
 pub mod image_editor;
 pub mod included;
 pub mod object;
+#[cfg(test)]
+mod object_ui_tests;
 pub mod path;
 pub mod room;
 pub mod script;
@@ -47,6 +49,8 @@ pub enum Request {
     Open(ResKey),
     /// Show a message box.
     Message(String),
+    /// Create a new resource of a kind (at the end of its tree) and open its form.
+    Create(ResourceKind),
 }
 
 /// Shared context handed to forms each frame.
@@ -157,6 +161,14 @@ pub trait Editor {
     fn commit(&mut self, p: &mut Project) -> bool;
     /// The resource was renamed from the tree while the form is open.
     fn on_renamed(&mut self, _name: &str) {}
+    /// The form draws its own OK button (no OK/Cancel bar above the contents).
+    fn has_own_ok(&self) -> bool {
+        false
+    }
+    /// Whether the form's own OK button was pressed since the last call.
+    fn take_ok(&mut self) -> bool {
+        false
+    }
 }
 
 /// Commit a list-resource working copy: stamps `last_changed` when it differs.
