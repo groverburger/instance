@@ -229,6 +229,11 @@ These override anything above that disagrees.
   then perform §3.2 into `room_first` with `is_game_start = true`. User `global.*`
   variables, particle systems, surfaces, data structures and dynamically changed
   resources are **not** reset (`[412_02]` confirms for particle systems).
+  **VERIFIED black-box (bb_restart2 rs2.phase1_log = "CR1 id100003 before
+  after_call RE xRE GE xGE"):** the action that called `game_restart()` runs to its
+  end; the remaining actions of the event are skipped (as for a room change,
+  §3.2a rule 1); then **Room End** runs for every instance, then **Game End** for
+  every instance (instance order), with no Destroy events; then the restart.
   **VERIFIED black-box (bb_restart rs.p2.\*), correcting the above:**
   - Global user variables (`global.*` and `globalvar` names) are **cleared**: after
     the restart, `variable_global_exists` is false for them.
@@ -548,6 +553,23 @@ Using the instance's bounding box (§8.2) and the room rectangle
   `mask_index`, `solid`, `visible`, `persistent`, `depth` from the new object while
   keeping position, motion and all user variables `[112_02]`; if `perf`, run the
   new object's Create. The id is unchanged.
+  **VERIFIED black-box (bb_instances change.\*):**
+  - With `perf`, Destroy and Create run inside the call: "c1 d1 c2".
+  - Without `perf`, the code that called it (the rest of the `with` body) still
+    reads the OLD `object_index`, `sprite_index`, `depth`, `solid`, `visible`,
+    `persistent` and `mask_index` [change.props].
+  - In the next action the instance belongs to the new object:
+    `instance_number(old)` = 0, `instance_number(new)` counts it,
+    `instance_exists(id)` = 1 [change.later.counts = "0/2/1"]. But
+    `with (id)` runs nothing [change.later.next_action never logged].
+  - This fits GM replacing the instance record: the running code keeps the old
+    record, and the id still finds the old, dead record first until it is purged.
+  - gm-runner: without `perf` the change is applied when the calling action ends;
+    `with (id)` and `id.var = ...` address nothing for an instance changed this
+    step, until the end-step purge. Unverified: when exactly the change becomes
+    visible to other code inside the same action, when `with (id)` works again,
+    whether writes to `self` after the call survive, and whether `perf = true`
+    behaves the same way for `with (id)`.
 * `position_destroy(x,y)` destroys every instance whose sprite/mask contains the
   point; `position_change(x,y,obj,perf)` changes them `[403_05]`. (The Destroy-at
   -Position action uses the bounding box `[112_02]`.)
@@ -1245,6 +1267,12 @@ backgrounds, tiles `[302_01]` (same flag as `texture_set_interpolation`).
     `Error in code at line L:`, the source line, a caret, `at position P: msg`).
   - gm-runner implements this in `Game::report_error` and `Host::soft_error`.
   - Reading `argument[16]` or above abandons the event with no message.
+  - The action number in the header is a single "current action" value that a
+    nested event overwrites and does not restore. The event and object are
+    restored. **VERIFIED black-box (bb_instances destroy.read_after):**
+    `with (u) instance_destroy(); global.bb_r = u.x;` in a Create event's action 3
+    reports "action number 1 / of Create Event", because u's Destroy event has one
+    action. The next action numbers itself again.
 * File functions, **VERIFIED black-box (bb_optional file.\*):**
   - `file_text_open_read` of a missing file returns -1 with no error.
   - `file_text_write_real` writes a leading space. Integral values are written as

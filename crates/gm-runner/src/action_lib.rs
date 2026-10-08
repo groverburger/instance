@@ -510,7 +510,7 @@ fn build() -> HashMap<&'static str, ActionFn> {
         vm.call_function(g, c, f, &[a.first().cloned().unwrap_or_default(), Value::Real(0.0)])
     });
     act!("action_restart_game", |g, _, _, _, _| {
-        g.pending = Some(Pending::Restart);
+        g.request_restart();
         ok()
     });
     act!("action_end_game", |g, _, _, _, _| {

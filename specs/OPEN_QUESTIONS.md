@@ -694,6 +694,37 @@ bb_optional `xform.*` keys.
 - Animation (§7.5): negative image_speed never wraps and fires no Animation
   End (mo.an3: −1, −2, −3, ...).
 
+## [RESOLVED-FOLLOWUP] bb_lang2 / bb_restart2 / bb_instances follow-ups (2026-10-08)
+
+Evidence: `gm81_blackbox_tests/gm/results_bb_lang2.txt`, `results_bb_restart2.txt`,
+`results_bb_instances.txt`. gm-runner now matches every non-informational key of all
+projects with GM results.
+- GML-3: RESOLVED (bounds). Equality is not Delphi's `SameValue` with 1e-12: `0 == 1e-13`,
+  `1 == 1 + 5e-13` and `1e6 == 1e6 + 1e-7` are false, while `sin(pi) == 0` is true.
+  gm-runner uses `|a-b| <= max(min(|a|,|b|), 1) * 1e-14` (gml-language.md, Comparison).
+  Still open: the exact constant and whether it is relative above 1 (proposed bb_lang3
+  keys: `0 == 1e-14`, `0 == 5e-15`, `0 == 1e-15`, `100 == 100 + 1.5e-13`,
+  `1e6 == 1e6 + 5e-9`).
+- G-24: CORRECTED AGAIN. Case mapping keeps one byte per character; it is `ord()` that
+  returns the first UTF-8 byte (`ord(chr(192))` = 195, `string_length(chr(192))` = 1).
+  Open: whether Latin-1 letters are case-mapped (test: `string_lower(chr(192)) ==
+  chr(224)`), and `ord(chr(128))` / `ord(chr(159))` (code page 1252).
+- G-25: RESOLVED. `mean()` counts strings as 0 (`mean(1, 'a')` = 0.5, no error).
+- GML-11: RESOLVED. The implicit result is the last assignment or call statement
+  (`abs(5);` last gives 5); `if` conditions don't count. "Script requires at least N
+  arguments" for scripts that also use `argument[i]`. `script_execute` with too many
+  arguments reports a non-aborting error and runs the script anyway. Open: whether the
+  script also runs when `script_execute` passes too few (the result is 0 either way).
+- RT-04: RESOLVED (runtime.md §3.3). `game_restart`: the action finishes, the rest of the
+  event is skipped, Room End then Game End for all instances, no Destroy events.
+- RT-21: PARTLY RESOLVED (runtime.md §5.7). Without events, the calling code keeps the
+  old object and properties; by the next action the instance is the new object, but
+  `with (id)` finds nothing. Open (proposed follow-up): `instance_number(new)` and
+  `with (new)` right after the call inside the same code; `x = 5` after the call, read
+  in the next step; `with (id)` in the next step; the same with `perf = true`.
+- GML-18: action numbers in error headers are not restored after a nested event
+  (runtime.md, errors): `destroy.read_after` reports "action number 1".
+
 ## [RESOLVED-EVENTS] Event dispatch verified in GM 8.1 (bb_events, bb_instances, 2026-10-08)
 
 Evidence: `gm81_blackbox_tests/gm/results_bb_events.txt`, `results_bb_instances.txt`

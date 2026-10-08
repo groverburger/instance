@@ -240,7 +240,7 @@ pub fn register(l: &mut Reg) {
         zero()
     }));
     l.push(("game_restart", |g, _, _, _| {
-        g.pending = Some(Pending::Restart);
+        g.request_restart();
         zero()
     }));
     l.push(("game_load", |g, _, _, a| {

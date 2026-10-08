@@ -581,6 +581,10 @@ impl Host for Game {
     }
 
     fn select_instances(&mut self, target: i32, out: &mut Vec<i32>) {
+        // `with (id)` of an instance changed this step (see Game::change_instance)
+        if !self.changed_ids.is_empty() && self.changed_ids.contains(&target) {
+            return;
+        }
         self.select(target, out);
     }
 

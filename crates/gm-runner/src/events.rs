@@ -179,14 +179,23 @@ impl Game {
             etype: t,
             number: n,
             object: owner,
-            action: 0,
+            action: -1,
         };
         let t0 = self.prof.as_ref().map(|_| web_time::Instant::now());
         let r = actions::execute(self, vm, list, id, other);
         if let (Some(p), Some(t0)) = (self.prof.as_mut(), t0) {
             crate::profile::Profiler::add(&mut p.events, (owner, t, n), t0);
         }
+        // VERIFIED black-box (bb_instances destroy.read_after): the event, object and
+        // instance are restored after a nested event, but the action number is not.
+        // An error later in the calling action names the nested event's last action
+        // ("action number 1" after `with (u) instance_destroy()` ran u's one-action
+        // Destroy event, although the code was the Create event's action 3).
+        let nested_action = self.ev.action;
         self.ev = saved;
+        if nested_action >= 0 {
+            self.ev.action = nested_action;
+        }
         self.in_timeline = saved_tl;
         r
     }

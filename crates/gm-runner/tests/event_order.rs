@@ -325,3 +325,101 @@ fn no_more_lives_runs_at_the_assignment() {
     g.step(&mut vm).unwrap();
     assert_eq!(take(&mut vm), "before NML after");
 }
+
+#[test]
+fn error_after_a_nested_event_names_the_nested_action_number() {
+    // bb_instances destroy.read_after: "action number 1" (the Destroy event's only
+    // action) although the failing code is the Create event's third action
+    let mut b = B::new();
+    let ou = b.object("ou", vec![ev(DESTROY, 0, &["global.d = 1;"])]);
+    let ctl = b.object(
+        "ctl",
+        vec![ev(
+            CREATE,
+            0,
+            &[
+                "global.a = 1;",
+                "global.a = 2;",
+                "var u; u = instance_create(5, 0, ou); with (u) instance_destroy(); global.r = u.x;",
+                "global.after = error_last;",
+                "global.r = noone.x;",
+                "global.after2 = error_last;",
+            ],
+        )],
+    );
+    let _ = ou;
+    b.room(640, &[(ctl, 0, 0)]);
+    let (_g, mut vm) = b.start();
+    let msg = global(&mut vm, "after").to_gml_string().to_string_lossy();
+    assert!(msg.contains("action number 1\r\n"), "{msg}");
+    // later actions number themselves again
+    let msg = global(&mut vm, "after2").to_gml_string().to_string_lossy();
+    assert!(msg.contains("action number 5\r\n"), "{msg}");
+}
+
+#[test]
+fn instance_change_without_events_takes_effect_after_the_action() {
+    // bb_instances change.props / change.later: the calling code still sees the old
+    // object; the next action sees the new one, but `with (id)` finds nothing
+    let mut b = B::new();
+    let ic1 = b.object("ic1", vec![]);
+    let ic2 = b.object("ic2", vec![]);
+    b.p.objects[ic1 as usize].as_mut().unwrap().depth = 3;
+    b.p.objects[ic2 as usize].as_mut().unwrap().depth = 7;
+    let ctl = b.object(
+        "ctl",
+        vec![ev(
+            CREATE,
+            0,
+            &[
+                "global.i = instance_create(0, 0, ic1); with (global.i) { instance_change(ic2, false); global.same = string(object_index) + '/' + string(depth); }",
+                "global.w = 0; with (global.i) global.w += 1; global.next = string(instance_number(ic1)) + '/' + string(instance_number(ic2)) + '/' + string(instance_exists(global.i)) + '/' + string((global.i).depth);",
+            ],
+        )],
+    );
+    b.room(640, &[(ctl, 0, 0)]);
+    let (mut g, mut vm) = b.start();
+    assert_eq!(global(&mut vm, "same"), Value::from(format!("{ic1}/3").as_str()));
+    assert_eq!(global(&mut vm, "w"), Value::Real(0.0));
+    assert_eq!(global(&mut vm, "next"), Value::from("0/1/1/7"));
+    // after the step, the id addresses the instance again
+    g.step(&mut vm).unwrap();
+    let p = vm.compile("t", b"global.w = 0; with (global.i) global.w += 1;", &g).unwrap();
+    let me = g.instances[0].id;
+    vm.run_code(&mut g, &p, gml::Ctx::new(me, me)).unwrap();
+    assert_eq!(global(&mut vm, "w"), Value::Real(1.0));
+}
+
+#[test]
+fn game_restart_finishes_the_action_then_room_end_then_game_end() {
+    // bb_restart2 rs2.phase1_log "CR1 id100003 before after_call RE xRE GE xGE":
+    // the rest of the event is skipped, then Room End and Game End for every
+    // instance. health survives the restart, so it carries the sequence as digits.
+    let mut b = B::new();
+    let x = b.object(
+        "x",
+        vec![
+            ev(OTHER, 5, &["if (health > 0) health = health * 10 + 4;"]),
+            ev(OTHER, 3, &["if (health > 0) health = health * 10 + 6;"]),
+        ],
+    );
+    let ctl = b.object(
+        "ctl",
+        vec![
+            ev(CREATE, 0, &["if (health == 100) { health = 0; instance_create(0, 0, x); } else global.done = 1;"]),
+            ev(
+                STEP,
+                0,
+                &["if (health == 0) { health = 1; game_restart(); health = health * 10 + 2; }", "health = health * 10 + 9;"],
+            ),
+            ev(OTHER, 5, &["if (health > 0) health = health * 10 + 3;"]),
+            ev(OTHER, 3, &["if (health > 0) health = health * 10 + 5;"]),
+        ],
+    );
+    let _ = x;
+    b.room(640, &[(ctl, 0, 0)]);
+    let (mut g, mut vm) = b.start();
+    g.step(&mut vm).unwrap();
+    assert_eq!(g.health, 123456.0);
+    assert_eq!(global(&mut vm, "done"), Value::Real(1.0));
+}

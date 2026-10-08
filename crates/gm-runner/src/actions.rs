@@ -309,7 +309,11 @@ fn exec_node(g: &mut Game, vm: &mut Vm, n: &Node, self_id: i32, other: i32) -> R
             Ok(Flow::Next)
         }
         Node::Act(a) => {
-            run_act(g, vm, a, self_id, other)?;
+            let r = run_act(g, vm, a, self_id, other);
+            if !g.pending_changes.is_empty() {
+                g.apply_pending_changes(g.list_depth);
+            }
+            r?;
             Ok(if aborted(g) { Flow::Exit } else { Flow::Next })
         }
         Node::Shared(l) => {
@@ -435,7 +439,10 @@ fn run_act(g: &mut Game, vm: &mut Vm, a: &Act, self_id: i32, other: i32) -> Resu
                 if e.kind == ErrorKind::Halt || e.kind == ErrorKind::AbortEvent {
                     return Err(e);
                 }
-                g.report_error(e, a.idx)?;
+                // the current action number, which a nested event may have changed
+                // (see Game::run_handler)
+                let no = if g.ev.action >= 0 { g.ev.action } else { a.idx };
+                g.report_error(e, no)?;
                 if a.question {
                     result = false;
                 }

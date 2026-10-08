@@ -184,6 +184,13 @@ pub struct Game {
     /// Action lists at this depth or shallower stop after their current action
     /// (a room change was requested while they ran; 0 = none).
     pub abort_at: u32,
+    /// `instance_change(obj, false)` requests not applied yet: (id, object,
+    /// list depth of the request). See [`Game::change_instance`].
+    pub pending_changes: Vec<(i32, i32, u32)>,
+    /// Instances changed by `instance_change(obj, false)` during this step: a
+    /// `with (id)` (or `id.var = ...`) addresses no instance until the step's
+    /// destroyed instances are purged.
+    pub changed_ids: Vec<i32>,
     pub transition_kind: i32,
     pub transition_steps: i32,
     pub transition_color: i32,
@@ -405,6 +412,8 @@ impl Game {
             pending: None,
             list_depth: 0,
             abort_at: 0,
+            pending_changes: Vec::new(),
+            changed_ids: Vec::new(),
             transition_kind: 0,
             transition_steps: 80,
             transition_color: 0,
@@ -969,17 +978,56 @@ impl Game {
     }
 
     /// `instance_change` (§5.7).
+    ///
+    /// VERIFIED black-box (bb_instances change.*): without events
+    /// (`perf = false`) the code that called it keeps seeing the old object and its
+    /// properties (object_index, sprite, depth, solid, visible, persistent, mask:
+    /// change.props); by the next action the instance belongs to the new object
+    /// (change.later.counts "0/2/1": instance_exists(id) is true) but `with (id)`
+    /// finds nothing (change.later.next_action was never logged). This matches GM
+    /// replacing the instance record: the running code keeps the old record and
+    /// the id addresses the old, dead record until it is purged. gm-runner applies
+    /// the change at the end of the calling action and blocks `with (id)` until the
+    /// end of the step (the exact end of both is unverified). With events
+    /// (`perf = true`) Destroy runs, the change is applied, then Create runs, all
+    /// inside the call (change.events_perf "c1 d1 c2").
     pub fn change_instance(&mut self, vm: &mut Vm, id: i32, obj: i32, perf: bool) -> Result<(), Error> {
         if self.object(obj).is_none() {
             return Err(Error::new(format!("Changing instance to non-existing object: {}", obj)));
         }
-        if perf {
-            self.run_event(vm, id, ev::DESTROY, 0, id)?;
+        if !perf {
+            if self.inst(id).is_some() {
+                self.pending_changes.push((id, obj, self.list_depth));
+                self.changed_ids.push(id);
+            }
+            return Ok(());
         }
-        let (spr, mask, solid, vis, pers, depth) = {
-            let o = self.object(obj).unwrap();
-            (o.sprite, o.mask, o.solid, o.visible, o.persistent, o.depth)
-        };
+        self.run_event(vm, id, ev::DESTROY, 0, id)?;
+        self.apply_change(id, obj);
+        self.run_event(vm, id, ev::CREATE, 0, id)?;
+        Ok(())
+    }
+
+    /// Applies the `instance_change(obj, false)` requests made at list depth
+    /// `depth` or deeper (all with `depth = 0`).
+    pub fn apply_pending_changes(&mut self, depth: u32) {
+        let mut k = 0;
+        while k < self.pending_changes.len() {
+            let (id, obj, d) = self.pending_changes[k];
+            if d >= depth {
+                self.pending_changes.remove(k);
+                self.apply_change(id, obj);
+            } else {
+                k += 1;
+            }
+        }
+    }
+
+    /// Switches an instance to object `obj` with that object's sprite, mask,
+    /// solid, visible, persistent and depth.
+    fn apply_change(&mut self, id: i32, obj: i32) {
+        let Some(o) = self.object(obj) else { return };
+        let (spr, mask, solid, vis, pers, depth) = (o.sprite, o.mask, o.solid, o.visible, o.persistent, o.depth);
         let old = self.inst(id).map(|i| i.object_index).unwrap_or(-1);
         if let Some(i) = self.inst_mut(id) {
             i.object_index = obj;
@@ -993,10 +1041,6 @@ impl Game {
         if let Some(&k) = self.inst_index.get(&id) {
             self.objlists.borrow_mut().changed(self, k, old);
         }
-        if perf {
-            self.run_event(vm, id, ev::CREATE, 0, id)?;
-        }
-        Ok(())
     }
 
     /// Updates [`Game::draw_order`]: drops dead instances, appends new ones in
@@ -1022,6 +1066,10 @@ impl Game {
 
     /// Removes destroyed instances from the list.
     pub fn purge_destroyed(&mut self) {
+        if !self.pending_changes.is_empty() {
+            self.apply_pending_changes(0);
+        }
+        self.changed_ids.clear();
         if self.instances.iter().any(|i| i.destroyed) {
             self.instances.retain(|i| !i.destroyed);
             self.reindex();
@@ -1322,11 +1370,17 @@ impl Game {
                     return Ok(());
                 }
                 Pending::Restart => {
-                    // Game End for everyone, then clean slate
-                    let ids: Vec<i32> = self.instances.iter().filter(|i| i.alive()).map(|i| i.id).collect();
-                    for id in ids {
-                        if self.has_handler_inst(id, ev::OTHER, ev_other::GAME_END) {
-                            self.run_event(vm, id, ev::OTHER, ev_other::GAME_END, id)?;
+                    // VERIFIED black-box (bb_restart2 rs2.phase1_log "CR1 id100003
+                    // before after_call RE xRE GE xGE"): the calling action finishes,
+                    // the rest of the event is skipped (request_restart), then Room
+                    // End for every instance, then Game End for every instance (no
+                    // Destroy events), then a clean slate.
+                    for n in [ev_other::ROOM_END, ev_other::GAME_END] {
+                        let ids: Vec<i32> = self.instances.iter().filter(|i| i.alive()).map(|i| i.id).collect();
+                        for id in ids {
+                            if self.inst(id).is_some_and(|i| i.alive()) && self.has_handler_inst(id, ev::OTHER, n) {
+                                self.run_event(vm, id, ev::OTHER, n, id)?;
+                            }
                         }
                     }
                     self.instances.clear();
@@ -1473,6 +1527,14 @@ impl Game {
                 self.abort_at = self.list_depth;
             }
         }
+    }
+
+    /// Requests `game_restart`: like a room change, the current action finishes and
+    /// the rest of every running event is skipped (VERIFIED black-box, bb_restart2:
+    /// the next action of the calling event did not run).
+    pub fn request_restart(&mut self) {
+        self.pending = Some(Pending::Restart);
+        self.abort_at = self.list_depth;
     }
 
     /// Dispatches No More Lives / No More Health raised by assignments (§5.4).
