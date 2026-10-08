@@ -555,3 +555,40 @@ log `key=value` observations for most RT-*, GML-*, G-*, R-* items above plus eve
 built-in constant (GML-19). The key → question mapping is `specs/blackbox-tests.md`;
 `gm-blackbox compare <ours> <gm>` lists where gm-runner differs from GM 8.1. Resolve the
 items here once GM results are in.
+
+## [RESOLVED-ROOMS] Room transitions verified in GM 8.1 (bb_rooms, 2026-10-08)
+
+Evidence: `gm81_blackbox_tests/gm/results_bb_rooms.txt` (GM 8.1 Lite); rules written
+up in runtime.md §3.2a. gm-runner now matches all 48 bb_rooms keys.
+- RT-02: RESOLVED (runtime.md §3.2a rule 1). After `room_goto` the current action
+  finishes, the remaining actions of the event are skipped, the rest of the step is
+  abandoned (no later instances / phases / draw) and the transition runs at once.
+  Observed `go.ST go.after_goto k.RE ...` with no `go.next_action` and no `gx.ST`.
+  Only room changes were verified; gm-runner keeps game_end/game_restart/game_load
+  as before (remaining actions run; rest of the step abandoned).
+- RT-03: RESOLVED (§3.2a rule 2c/2e, observed s08). Re-entering a persistent room
+  does not re-run the room creation code (no `r1.CC2`); restored instances do get
+  Room Start (`pi.RS42`), restored instances first, then the carried ones.
+- RT-19: RESOLVED (§3.2a rule 2b). A placed instance whose id already exists (a
+  carried persistent instance) is not created again: no duplicate, no creation code,
+  no Create (`pp.RS1` on every re-entry).
+- R-1: RESOLVED / corrected (§3.2a rules 1, 3). The change is now also checked
+  between the actions of an event list (event lists running when it was requested
+  stop after their current action; lists started later, e.g. the Create of an
+  instance_create after the call, run normally). A frame is drawn right after a
+  room is entered (after Room Start, before the first Begin Step), also at game
+  start.
+- R-10: RESOLVED / corrected (§3.2a rule 2). All placed instances are added to the
+  list before any creation code / Create runs (`instance_count` = all placed);
+  carried persistent instances follow them; then per placed instance its creation
+  code and Create; then Game Start (first room only), room creation code, Room Start.
+- RT-12: PARTLY RESOLVED (§3.2a rule 4): defaults (score 0, lives -1, health 100,
+  show_score 1, show_lives/health 0, captions) and the caption format
+  `Cap Score: 12 Lives: 3 Health: 50` (single spaces; `window_get_caption` returns
+  the shown caption). The No More Lives/Health timing remains open.
+- R-28 (new implementation choice, unverified): a room change requested while a
+  room is being entered (Create, creation code, Room Start) does not cut the entry
+  short: the requesting event stops after its action, the entry completes without
+  drawing its frame, then the new room is entered at once (also before the first
+  step). The new room's entry events still see the input edges of the step in which
+  the change was requested (they are cleared after the transition).

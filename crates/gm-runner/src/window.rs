@@ -558,11 +558,15 @@ fn game_thread(
     let mut last_center = true;
     let (mut frames, mut busy, mut t_report) = (0u64, 0.0f64, Instant::now());
     let report = std::env::var_os("GM_RUNNER_FPS").is_some();
+    // the first room's entry frame (drawn by `start`) is shown before the first step
+    let mut first = true;
     while !g.ended {
         let t0 = Instant::now();
-        if let Err(e) = frontend::tick(&mut g, &mut vm) {
-            eprintln!("gm-runner: {}", e);
-            break;
+        if !std::mem::take(&mut first) {
+            if let Err(e) = frontend::tick(&mut g, &mut vm) {
+                eprintln!("gm-runner: {}", e);
+                break;
+            }
         }
         if let Some(link) = &debug {
             if crate::debug_window::service(&mut g, &mut vm, link, &mut debug_last, &mut debug_seen) {

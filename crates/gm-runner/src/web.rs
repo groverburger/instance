@@ -432,7 +432,16 @@ pub fn start_game(canvas_id: &str, data: &[u8], renderer: Option<String>) -> Res
         gl,
         done: false,
     }));
-    runner.borrow_mut().apply_view();
+    {
+        // show the first room's entry frame (drawn by `start`) before the first step
+        let mut r = runner.borrow_mut();
+        r.apply_view();
+        let caption = r.g.caption();
+        *r.title.borrow_mut() = caption;
+        r.g.gfx.present_now();
+        let speed = r.g.rs.speed;
+        r.pacer.advance(speed);
+    }
 
     // requestAnimationFrame loop
     let cb: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));

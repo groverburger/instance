@@ -138,9 +138,9 @@ fn event_order_in_step_and_room_start() {
     );
     b.room(&[(o, 0, 0)]);
     let (mut g, mut vm) = b.start();
-    assert_eq!(gstr(&mut vm, "log"), "CGR");
+    assert_eq!(gstr(&mut vm, "log"), "CGRd");
     run(&mut g, &mut vm, 2);
-    assert_eq!(gstr(&mut vm, "log"), "CGRbaksedbksed");
+    assert_eq!(gstr(&mut vm, "log"), "CGRdbaksedbksed");
 }
 
 #[test]

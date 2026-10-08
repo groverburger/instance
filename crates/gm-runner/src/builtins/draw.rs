@@ -1039,7 +1039,7 @@ pub fn register(l: &mut Reg) {
         g.window_dirty = true;
         zero()
     }));
-    l.push(("window_get_caption", |g, _, _, _| st(&g.rs.caption)));
+    l.push(("window_get_caption", |g, _, _, _| st(&g.caption())));
     l.push(("window_set_cursor", |g, _, _, a| {
         g.cursor = a.i(0)?;
         g.window_dirty = true;

@@ -172,6 +172,11 @@ pub struct Game {
     pub rs: RoomState,
     pub snapshots: HashMap<i32, Snapshot>,
     pub pending: Option<Pending>,
+    /// Nesting depth of running action lists (events, timeline moments).
+    pub list_depth: u32,
+    /// Action lists at this depth or shallower stop after their current action
+    /// (a room change was requested while they ran; 0 = none).
+    pub abort_at: u32,
     pub transition_kind: i32,
     pub transition_steps: i32,
     pub transition_color: i32,
@@ -388,6 +393,8 @@ impl Game {
             rs: RoomState::default(),
             snapshots: HashMap::new(),
             pending: None,
+            list_depth: 0,
+            abort_at: 0,
             transition_kind: 0,
             transition_steps: 80,
             transition_color: 0,
@@ -1063,7 +1070,9 @@ impl Game {
             None => return Err(Error::fatal("The game has no rooms.")),
         };
         crate::ext::run_inits(self, vm)?;
-        self.goto_room(vm, first, true)
+        self.goto_room(vm, first, true)?;
+        // a room change requested while entering the room is performed at once
+        self.process_pending(vm)
     }
 
     /// Runs one complete step (§4.2), including drawing.
@@ -1220,16 +1229,21 @@ impl Game {
                 b.y += b.vspeed;
             }
         }
+        self.purge_destroyed();
+        // 21. pending room change / end / restart / load. A room change has
+        // abandoned the rest of the step above and is performed at once
+        // (runtime.md §3.2a rule 1), so the new room's Create / Room Start
+        // events still see this step's input edges.
+        let r = self.process_pending(vm);
         // 20. clear input edges
         self.input.end_step();
-        self.purge_destroyed();
-        // 21. pending
-        self.process_pending(vm)
+        r
     }
 
     /// Performs a pending room change / end / restart (§3).
     pub fn process_pending(&mut self, vm: &mut Vm) -> Result<(), Error> {
         while let Some(p) = self.pending.take() {
+            self.abort_at = 0;
             match p {
                 Pending::End => {
                     self.game_end(vm)?;
@@ -1359,8 +1373,9 @@ impl Game {
             parts.push(format!("{}{}", self.caption_health, gml::real_to_string(self.health)));
         }
         for p in parts {
+            // single space between parts (runtime.md §3.2a rule 4)
             if !s.is_empty() {
-                s.push_str("  ");
+                s.push(' ');
             }
             s.push_str(&p);
         }
@@ -1377,7 +1392,12 @@ impl Game {
     pub fn request_goto(&mut self, r: i32) {
         match self.pending {
             Some(Pending::End) | Some(Pending::Restart) | Some(Pending::Load(_)) => {}
-            _ => self.pending = Some(Pending::Goto(r)),
+            _ => {
+                self.pending = Some(Pending::Goto(r));
+                // finish the current action, skip the rest of every running event
+                // (runtime.md §3.2a rule 1)
+                self.abort_at = self.list_depth;
+            }
         }
     }
 
