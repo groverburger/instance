@@ -229,6 +229,19 @@ These override anything above that disagrees.
   then perform §3.2 into `room_first` with `is_game_start = true`. User `global.*`
   variables, particle systems, surfaces, data structures and dynamically changed
   resources are **not** reset (`[412_02]` confirms for particle systems).
+  **VERIFIED black-box (bb_restart rs.p2.\*), correcting the above:**
+  - Global user variables (`global.*` and `globalvar` names) are **cleared**: after
+    the restart, `variable_global_exists` is false for them.
+  - `score` is reset to 0 and `lives` to -1, but **`health` keeps its value**
+    (40 stayed 40).
+  - The persistent controller exists once and the persistent extra instance is
+    gone, so all instances are removed.
+  - `room_speed` comes back from the room (30).
+  - Game Start and Room Start run again in the first room.
+  - Files and the clipboard survive.
+  - Not visible because the log lived in globals: whether the rest of the
+    calling action / Game End run, and whether instance ids restart. A follow-up
+    test should carry them in a file.
 
 ### 3.4 Transitions
 * `transition_kind` (0–21 built-ins listed in `[403_08]`; 0 = none) applies to the
@@ -1102,6 +1115,24 @@ backgrounds, tiles `[302_01]` (same flag as `texture_set_interpolation`).
   logged if enabled); `error_occurred = true`, `error_last = message` are set
   either way.
 * `show_error(str, abort)` raises a user error through the same path.
+* **VERIFIED black-box (bb_lang errcont.\*, math.\*, real.\*, misc.\*; details in
+  gml-language.md "Language and library details"):**
+  - An error in code (operator, variable, script call) abandons the rest of the
+    action; the next action runs.
+  - An error raised by a built-in function is reported, the function returns 0,
+    and the code continues.
+  - Errors inside `execute_string` don't stop the caller.
+  - `error_last` holds GM's full text. The header lines end with CR LF
+    (`ERROR in`, `action number N`, `of <Event> Event`, `for object <name>:`,
+    empty line). The body uses CR between its lines (`In script s:`,
+    `Error in code at line L:`, the source line, a caret, `at position P: msg`).
+  - gm-runner implements this in `Game::report_error` and `Host::soft_error`.
+  - Reading `argument[16]` or above abandons the event with no message.
+* File functions, **VERIFIED black-box (bb_optional file.\*):**
+  - `file_text_open_read` of a missing file returns -1 with no error.
+  - `file_text_write_real` writes a leading space. Integral values are written as
+    a 32-bit integer, wrapping (`100000000000` → ` 1215752192`); other values get
+    6 decimals.
 * `show_debug_message(str)` writes to the debug console (no-op without debug mode).
 
 ---

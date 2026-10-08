@@ -311,6 +311,8 @@ etc. are all reals. Arrays are a property of variables, not values (§9).
 
 ### 4.3 Truthiness
 
+> Black-box results refine this section: see "Language and library details — VERIFIED" at the end.
+
 When a value is used as a condition (`if`, `while`, `do…until`, `for` test, operands
 of `! && || ^^`, "test expression" actions) it is interpreted as a boolean:
 
@@ -356,6 +358,8 @@ Let `R` = real, `S` = string. "Error" means a runtime error (§13) with message
 
 ### 4.5 Comparison semantics
 
+> Black-box results refine this section: see "Language and library details — VERIFIED" at the end.
+
 - R vs R: numeric comparison. UNSPECIFIED – implementation choice: exact IEEE
   comparison (no epsilon). See OPEN_QUESTIONS.
 - S vs S: documented to work for all six operators. Equality is exact, byte-for-byte,
@@ -367,6 +371,8 @@ Let `R` = real, `S` = string. "Error" means a runtime error (§13) with message
   instead raise an error.)
 
 ### 4.6 Integer conversion
+
+> Black-box results refine this section: see "Language and library details — VERIFIED" at the end.
 
 Several operations need an integer from a real. Define
 `to_int(v)` = round `v` to the nearest integer, ties to even
@@ -386,6 +392,8 @@ Documented conversions elsewhere: `div` truncates toward zero; `irandom_range` r
 non-integer bounds down; date-time values store whole days in the integral part.
 
 ### 4.7 Converting reals to strings
+
+> Black-box results refine this section: see "Language and library details — VERIFIED" at the end.
 Defined by the library function `string(v)` (documented): integral values are
 written without decimals; non-integral values are written with exactly two
 decimals (e.g. `string(0.5)` = `"0.50"`, `string(1/3)` = `"0.33"`).
@@ -523,6 +531,8 @@ declaring names.
   should be rejected at load with a warning).
 
 ### 6.3 Script arguments
+
+> Black-box results refine this section: see "Language and library details — VERIFIED" at the end.
 Inside a script, the passed values are available as:
 - `argument0` … `argument15` – read/write variables;
 - `argument[0]` … `argument[15]` – the same storage, array form; the index is any
@@ -815,6 +825,8 @@ resources are inaccessible from code (the built-in meaning wins).
 
 ## 13. Runtime errors
 
+> Black-box results refine this section: see "Language and library details — VERIFIED" at the end.
+
 - Error options (Global Game Settings): display error messages; write them to
   `game_errors.log`; abort on all errors; treat uninitialised variables as 0.
 - Errors are either fatal (always abort) or non-fatal (player may ignore).
@@ -890,8 +902,8 @@ resources are inaccessible from code (the built-in meaning wins).
   (argument order doesn't matter).
 - `choose(v0..vk-1)`: step, index `(u * k) >> 32`.
 - The seed at game start differs per run (the game is randomized at start).
-- Open: values >= 2^31 printed via `floor(...)` + `string_format` came out negative;
-  whether `floor()` or `string_format` wraps to 32 bits is answered by `bb_lang`.
+- Values >= 2^31 printed via `floor(...)` came out negative because `floor` returns
+  a 32-bit integer (see the bb_lang section below); `random` itself is unsigned.
 
 ## Script argument count and name priority — VERIFIED black-box (GM 8.1 Lite, `bb_clash`)
 
@@ -902,12 +914,179 @@ resources are inaccessible from code (the built-in meaning wins).
   error: `Illegal argument count calling script "abs".` / `Script requires 0
   arguments, 1 have been supplied.` So a script has a *required* argument count
   derived from its body (presumably the highest `argumentN` used + 1).
-- OPEN (answered by `bb_lang`'s script tests): whether fewer arguments than required
-  is also an error; how `argument[i]` and `argument_count` affect the required count;
-  whether `script_execute` is checked too. Do not implement the check until known.
+- The full rule (gated by settings flag bit 1) is in the bb_lang section below.
 
 ## `var` / `globalvar` of a built-in name — VERIFIED black-box (GM 8.1 Lite, `bb_perf`)
 
 `var i, t, n, x, ...` fails to compile at `x` with "Cannot redeclare a builtin
 variable." Locals (and, by the same rule, globalvars) cannot use the name of a
 built-in variable; they never shadow built-ins.
+
+## Language and library details — VERIFIED black-box (GM 8.1 Lite, `bb_lang`, `bb_args0`, `bb_random`, `bb_clash`)
+
+These rules come from the results of the gm-blackbox projects (key prefixes in
+brackets). Where they conflict with earlier sections of this document, they
+take priority. Implemented in `crates/gml` (regression tests in
+`crates/gml/tests/verified.rs`).
+
+**Numeric literals** [syn.double_dot, strfmt.1_23456_0_20, div0.tiny]
+- The value is built in double precision: integer digits as `v = v*10 + d`,
+  then each fraction digit adds `d*p` with `p = 0.1`, divided by 10 after each
+  digit. So `1.23456` comes out one ulp below the nearest double, and `0.3`
+  equals `0.1 + 0.2` exactly.
+- Dots after the first one are skipped: `1.2.3` is 1.23.
+- `1e3` is not a number literal (it gives "Assignment operator expected").
+- `%` is not an operator. It is a compile error, "Unexpected symbol." [syn.percent]
+
+**Comparison** [eq.*, math.sin_pi_is0, math.lengthdir_x_90_is0]
+- Reals are equal when `|a-b| <= max(min(|a|,|b|) * 1e-12, 1e-12)`, the same
+  rule as Delphi's `SameValue`.
+- Examples: `0.1+0.2 == 0.3`, `sin(pi) == 0` and `lengthdir_x(10,90) == 0`
+  are true; `0 == 0.000000000001` and `1 == 1.0000000001` are false.
+- `<` means "less and not equal", `<=` means "less or equal", and so on.
+  So `0.3 < 0.1+0.2` is false and `0.3 >= 0.1+0.2` is true.
+- `switch` cases use the same equality. A case of the other type simply doesn't
+  match; there is no error [syn.switch_mixed].
+- Open: whether the tolerance is relative for large values. The data only shows
+  that it is below 1e-12 near 1 and near 0.
+
+**Type errors** [mix.*, truth.str_*]
+- Comparing a string with a real (`== != < <= > >=`) is an error,
+  "Cannot compare arguments.".
+- Arithmetic on mixed or string operands is an error, "Wrong type of arguments to +."
+  (the same wording for `-`, `*`, and so on).
+- Bitwise and logical operators with a string operand give
+  "Wrong type of arguments for |." or "Wrong type of arguments for &&.".
+- Unary `-` and `!` on a string give "Wrong type of arguments to unary operator.".
+- A string used as the condition of `if`, `while`, `do … until` or `for` is a
+  run-time error, "Expression expected".
+- `repeat` with a string count gives "Repeat count must be a number".
+- These errors abandon the rest of the code action (see Errors below).
+
+**Integer conversion and bitwise operators** [bit.*, idx.*, repeat.*]
+- Bitwise operands are rounded half to even into a 64-bit integer.
+- `>>` is a logical (unsigned) shift: `-1 >> 1` is 2^63-1.
+- Shift counts follow Delphi's 64-bit helpers. The low byte of the count is
+  taken as a signed value. Below 32, including negative counts, the shift is by
+  `count & 31`. 32..63 shift across the word. 64 and above give 0.
+  Examples: `1 << -1` is 2^31, `1 << 63` is -2^63, `1 << 64` is 0.
+- The 64-bit result is converted back to a real.
+- `floor` and `ceil` return a **32-bit** integer: the value is truncated to 64
+  bits and wrapped to 32, so `floor(3698175007)` is -596792289 [bb_random raw.*].
+- `round` does not wrap: it rounds half to even.
+- `div` truncates. `mod` keeps the dividend's sign and works with fractions.
+- Division by zero is an error for `/` and `div` ("Division by 0.") and for
+  `mod` ("Modulo by 0.").
+
+**`string(x)` and `string_format`** [str.*, strfmt.*]
+- Integral reals print as integers. Outside the 64-bit range they print "ERROR"
+  (`string(power(10,20))`).
+- Other reals print with 2 decimals and at most 10 significant digits:
+  `4294967296.5` gives "4294967297.00".
+- A value with more than 10 integer digits switches to a scientific form:
+  "1.23456789E11". There is no `+` and no leading zeros in the exponent, and
+  trailing zeros are dropped.
+- `string_format(v, tot, dec)` uses up to 18 significant digits. Beyond that it
+  uses the scientific form: `string_format(1e20,0,2)` is "1E20". The result is
+  padded on the left to `tot`.
+- If `dec` is outside 0..18, the result shows 18 decimals but rounds with the
+  signed `dec`: `string_format(1.5,0,-1)` is "0.000000000000000000".
+- A string argument is returned unchanged.
+- Digit generation: the value is scaled by a power of ten in double precision to
+  an 18-digit integer, rounded half to even. The digits are then rounded half up
+  to the requested count.
+  - This explains "2.67" for `2.675` and "1.00" for `0.995`.
+  - It also explains `2^63` → "9.22337203685477632E18" and `$FFFFFFFFFFFF` →
+    "281474976710655.008".
+- A result whose digits are all zero gets no minus sign.
+
+**Scripts and arguments** [args.*, bb_args0 args.*]
+- Settings flag bit 1 is the Errors-tab option "Throw an error when arguments
+  aren't initialised correctly." With it set, a script call must supply exactly
+  `1 + highest argumentN index used` arguments; a script that uses none needs 0.
+  - A script that also uses `argument[i]` accepts more arguments.
+  - The call fails before the script runs with
+    `Illegal argument count calling script "<name>".` + CR +
+    `Script requires N arguments, M have been supplied.`.
+  - `argument[i]` with `i >= argument_count` gives "Unknown variable argument or
+    array index out of bounds".
+  - `script_execute` is checked the same way (assumed).
+- With bit 1 clear, any count is accepted, `argument_count` is the supplied
+  count, and missing arguments read 0.
+- Arguments live in **one global array**:
+  - A script call saves the array, installs its own arguments (the rest become 0),
+    and restores the old array on return, also after an ordinary error.
+  - Code actions don't touch the array; they see whatever it holds.
+  - `execute_string(code, args…)` writes `argument0..` but keeps `argument_count`
+    [args.exec_string_args = "1/b"].
+- Reading `argument[i]` with `i >= 16` abandons the whole event silently, like
+  a crash [args.arr_index_16.aborted]. On that path the script's arguments are
+  *not* restored: the next code actions read `argument0 = 16`,
+  `argument_count = 1` [args.code_action_*].
+- A script that ends without `return` (or with `exit`) returns the value of the
+  last assignment it ran [args.noreturn = 1, args.exit = 2].
+- Writing `argument_count` (or any read-only built-in, such as `id`) compiles,
+  but at run time it is the error "Cannot assign to the variable"
+  [args.write_count, type.readonly_id].
+- More than 16 call arguments is a compile error, "Wrong number of arguments to
+  function or script.".
+- `min()`, `max()`, `choose()`, `mean()` and `median()` accept no arguments and
+  return 0 [math.*_none].
+
+**Errors and recovery** [errcont.*, math.*, real.*, misc.*, type.readonly_id, var.shadow_x]
+- An error raised by an operator, a variable access or a script call abandons
+  the rest of the code action. The next action runs. Inside a script, the script
+  and its caller's action are both abandoned.
+- An error raised by a **built-in function itself** doesn't abandon anything:
+  the error is reported (`error_occurred`, `error_last`), the function returns
+  0, and the code continues. Examples: `sqrt(-1)`, `ln(0)`, `real('abc')`,
+  `sound_play(99)`.
+  - The message is "Error in function ln()."; `sqrt(-1)` gives "Cannot apply
+    sqrt to negative number."; `sound_play(99)` gives "Sound does not exist.".
+- Errors inside `execute_string` code, both compile and run-time, are reported,
+  and `execute_string` returns 0 to a caller that keeps running.
+- Message layout (the full text is in `error_last`):
+  - Header lines end with CR LF: `ERROR in` / `action number N` /
+    `of <Event> Event` / `for object <name>:` / empty line.
+  - Then, for errors in code, CR-separated lines: an optional
+    `In script <name>:`, then `Error in code at line L:`, three spaces plus the
+    source line, a caret line (P+1 spaces, then `^`), and
+    `at position P: <message>`.
+  - Function errors show only their message.
+  - A compile error in `execute_string` has no header:
+    `COMPILATION ERROR in string to be executed` + CR + the code part.
+- Positions: for an operator error, the start of the right operand (after `(`
+  for a parenthesised condition); for an index error, the start of the index
+  expression.
+- Message texts include "Unknown variable x" (also for `noone.x`, `obj.x` with
+  no instance, and a bad instance id); "Unknown variable a or array index out of
+  bounds" (an element that is not set); "Negative array index"; "Array index >=
+  32000"; "Wrong type of array index"; "Cannot assign to the variable" (also for
+  `noone.x = 5`).
+- `obj.x = 5` with no instance of `obj` is a silent no-op.
+
+**Built-in variables** [type.*, arr.builtin_x_index1]
+- Assigning a string to a real built-in (`x`, `speed`, `score`, `image_index`)
+  stores 0, with no error.
+- Boolean built-ins are set when the value is above 0.5: `solid = 0.5` reads 0
+  and `visible = 2` reads 1.
+- `x[1]` reads `x`: the index is ignored for non-array built-ins.
+
+**Library** [sf.*, real.*, math.max_mixed]
+- String functions given a real treat it as "" and raise no error:
+  `string_length(12.5)` is 0, `string_upper(5)` is "".
+- `string_delete` with an index below 1 deletes nothing.
+- `string_lower`/`string_upper` return non-ASCII (Latin-1) letters UTF-8-encoded:
+  `ord(string_lower(chr(192)))` = 195. Open: confirm with
+  `string_length(string_lower(chr(192)))`.
+- `real(str)` ignores surrounding whitespace. The rest must be a complete
+  `[+-]digits[.digits][e[+-]digits]`; `""` and `"."` give 0. Anything else
+  (`"12abc"`, `"0x10"`, `"$10"`, `"1,5"`, `"inf"`, `"-"`) is the function error
+  "Error in function real()." (non-aborting, result 0).
+- `min`/`max` skip arguments whose type differs from the first one:
+  `max('a', 1)` is "a".
+
+**Name resolution** [bb_clash]
+- A script named like a built-in function wins over the function.
+- A resource name wins over a user constant of the same name.
+- A user constant wins over a built-in constant (`c_red` defined as 5 gives 5).

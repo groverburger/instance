@@ -592,3 +592,66 @@ up in runtime.md §3.2a. gm-runner now matches all 48 bb_rooms keys.
   drawing its frame, then the new room is entered at once (also before the first
   step). The new room's entry events still see the input edges of the step in which
   the change was requested (they are cleared after the transition).
+
+## [RESOLVED-LANG] GML semantics verified in GM 8.1 (bb_lang, bb_args0, bb_random, bb_restart, bb_optional file.*, bb_clash; 2026-10-08)
+
+Evidence: `gm81_blackbox_tests/gm/results_*.txt`. The rules are written up in
+gml-language.md ("Language and library details — VERIFIED") and in runtime.md
+§3.3 and §19. gm-runner now matches every non-informational key of bb_lang
+(except `ref.other_in_driver_create`, see GML-10), bb_args0, bb_random,
+bb_restart, bb_clash and bb_optional `file.*`.
+- GML-1: RESOLVED. Reals are true when >= 0.5. A string condition is the
+  run-time error "Expression expected".
+- GML-2: RESOLVED. Mixed string/real comparison is "Cannot compare arguments.";
+  arithmetic, logical and bitwise operators on mixed operands are errors.
+- GML-3: RESOLVED. Comparison uses `SameValue`-style tolerance (1e-12, relative
+  for large values). Open detail: relative vs absolute above 1, which would need
+  `1e6 == 1e6 + 1e-7`.
+- GML-4: RESOLVED. Conversion rounds half to even. Bitwise operations are 64-bit;
+  `>>` is logical; shift counts follow Delphi's rule. `floor`/`ceil` wrap to 32
+  bits.
+- GML-5 / G-11: RESOLVED. Non-integral values print with 2 decimals and at most
+  10 significant digits, otherwise in scientific form. Integral values outside
+  the int64 range print "ERROR". `string_format` uses 18 digits.
+- GML-6: RESOLVED. `/` and `div` by 0 give "Division by 0."; `mod` gives
+  "Modulo by 0.". The error aborts the action.
+- GML-11 / G-2 / FF-18 / IDE-12: RESOLVED.
+  - Settings flag bit 1 is the "Throw an error when arguments aren't initialised
+    correctly." option. With it set, the argument count is checked; with it
+    clear, missing arguments are 0.
+  - `argument_count` is read-only, checked at run time.
+  - Arguments live in a global array.
+  - gm-format exposes the bit as `Settings::argument_errors`.
+- GML-12: RESOLVED. `var` is lexical, and a built-in name can't be redeclared.
+- GML-14: RESOLVED. `%` is not an operator; `:=` in an expression compares; `.5`,
+  `12.` and `1.2.3` are accepted; `1e3` is not.
+- GML-15: RESOLVED. `continue`/`break` outside a loop act like exit (the value
+  stays as set); a bare `return;` is a compile error.
+- GML-16: RESOLVED. Wrong-type assignments to built-ins store 0. Reads through a
+  missing owner give "Unknown variable x"; writes through `noone` give "Cannot
+  assign to the variable"; other writes with no instance are no-ops.
+- GML-17: RESOLVED. Code errors abandon the action. Built-in function errors and
+  errors inside `execute_string` don't.
+- GML-18: RESOLVED (format). Positions match GM's in the observed cases, except
+  compile-time argument-count errors (GM reports them at the end of the call).
+- GML-20: RESOLVED. Script beats built-in function; resource name beats user
+  constant; user constant beats built-in constant.
+- GML-10: PARTLY. `other` in a Create event run by `instance_create` is the new
+  instance itself (`ref.other_in_driver_create = t275`). This is handled with
+  bb_instances / bb_events (runner).
+- G-1: CORRECTED. `choose/min/max/mean/median` accept 0 arguments, result 0.
+- G-20: CORRECTED. Function errors are non-aborting and read "Error in function
+  f()." (`sqrt(-1)`: "Cannot apply sqrt to negative number.").
+- G-21: CONFIRMED (`round` ties to even, `sign(0)` = 0, `frac(-3.25)` = -0.25).
+- G-22: CORRECTED. `real()` is strict (see gml-language.md); a real argument is
+  returned unchanged.
+- G-23: CORRECTED. `string_delete` with an index < 1 deletes nothing. A real
+  passed for a string is "".
+- G-24: CORRECTED. `string_lower/upper` return Latin-1 letters UTF-8-encoded.
+  Open: confirm with `string_length(string_lower(chr(192)))` (expected 2).
+- G-25: CORRECTED. `min/max` skip arguments of the other type.
+- RT-04: PARTLY (runtime.md §3.3). `game_restart` clears globals, resets
+  score/lives and keeps health. Whether Game End runs, and the id counter, still
+  need a test that carries the results through a file.
+- R-26: CORRECTED. `file_text_write_real` wraps integers to 32 bits;
+  `file_text_open_read` of a missing file returns -1.
