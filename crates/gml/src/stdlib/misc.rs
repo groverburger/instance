@@ -184,12 +184,15 @@ pub(super) fn register(t: &mut Vec<(&'static str, NativeFn)>) {
                 argument_relative: false,
                 ..*c
             };
-            h.call_script(
+            vm.via_script_execute = true;
+            let r = h.call_script(
                 vm,
                 &ctx,
                 idx.clamp(i32::MIN as i64, i32::MAX as i64) as i32,
                 &a.vals[1..],
-            )
+            );
+            vm.via_script_execute = false;
+            r
         }),
         n("execute_string", |vm, h, c, a| {
             let src = a.str(0)?;

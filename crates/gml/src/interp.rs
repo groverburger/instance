@@ -25,8 +25,9 @@ pub(crate) struct Frame<'p> {
     pub locals: Vec<Option<Var>>,
     pub ctx: Ctx,
     pub ret: Value,
-    /// Value of the last assignment: the result of a program that ends without
-    /// `return` (VERIFIED black-box, bb_lang args.noreturn / args.exit).
+    /// Value of the last assignment or call statement: the result of a program that
+    /// ends without `return` (VERIFIED black-box, bb_lang args.noreturn / args.exit,
+    /// bb_lang2 ret.*).
     pub last: Value,
 }
 
@@ -223,7 +224,9 @@ impl Vm {
             St::AssignLocal(slot, op, e, pos) => self.assign_local(h, f, *slot, *op, e, *pos)?,
             St::Assign(p, op, e) => self.assign(h, f, p, *op, e)?,
             St::Expr(e) => {
-                self.eval(h, f, e)?;
+                // A call statement's value also becomes the implicit result
+                // (VERIFIED black-box, bb_lang2 ret.call_last: `abs(5);` last -> 5).
+                f.last = self.eval(h, f, e)?;
             }
             St::If(c, t, e) => {
                 if self.cond(h, f, c)? {

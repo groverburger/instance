@@ -392,15 +392,23 @@ fn shr(a: i64, n: i64) -> i64 {
     (((hi as u64) << 32) | lo as u64) as i64
 }
 
-/// GM 8.1's real equality (Delphi `SameValue`): `|a - b| <= max(min(|a|, |b|) *
-/// 1e-12, 1e-12)`. VERIFIED black-box (bb_lang eq.*: `0.1 + 0.2 == 0.3`,
-/// `sin(pi) == 0` are true; `0 == 0.000000000001`, `1 == 1.0000000001` false).
+/// Tolerance of GM 8.1's real equality, see [`same_real`].
+pub const REAL_EPS: f64 = 1e-14;
+
+/// GM 8.1's real equality: `|a - b| <= max(min(|a|, |b|), 1) * 1e-14`.
+///
+/// VERIFIED black-box bounds (bb_lang eq.*, math.sin_pi_is0,
+/// math.lengthdir_x_90_is0; bb_lang2 eq2.*): `sin(pi) == 0` (1.2e-16) and
+/// `lengthdir_x(10, 90) == 0` (6.1e-16) are true; `0 == 1e-13`, `1 == 1 + 5e-13`,
+/// `1 == 1.0000000001` and `1000000 == 1000000 + 1e-7` are false (so the tolerance
+/// is below 1e-13 near 0 and 1, and a relative factor is below 1e-13). The
+/// constant 1e-14 is chosen inside those bounds; the bb_lang3 eq3.* keys pin it.
 #[inline]
 pub fn same_real(a: f64, b: f64) -> bool {
     if a == b {
         return true;
     }
-    let eps = (a.abs().min(b.abs()) * 1e-12).max(1e-12);
+    let eps = a.abs().min(b.abs()).max(1.0) * REAL_EPS;
     (a - b).abs() <= eps
 }
 
@@ -561,6 +569,13 @@ mod tests {
         assert_eq!(binary(BinOp::Eq, &r(std::f64::consts::PI.sin()), &r(0.0)).unwrap(), r(1.0));
         assert_eq!(binary(BinOp::Eq, &r(1.0), &r(1.0000000001)).unwrap(), r(0.0));
         assert_eq!(binary(BinOp::Eq, &r(0.0), &r(1.0000000000000002e-12)).unwrap(), r(0.0));
+        // VERIFIED black-box (bb_lang2 eq2.*): the tolerance is below 1e-13
+        assert_eq!(binary(BinOp::Eq, &r(0.0), &r(1e-13)).unwrap(), r(0.0));
+        assert_eq!(binary(BinOp::Eq, &r(0.0), &r(5e-13)).unwrap(), r(0.0));
+        assert_eq!(binary(BinOp::Eq, &r(1.0), &r(1.0 + 5e-13)).unwrap(), r(0.0));
+        assert_eq!(binary(BinOp::Eq, &r(1e6), &r(1e6 + 1e-7)).unwrap(), r(0.0));
+        assert_eq!(binary(BinOp::Lt, &r(1e6), &r(1e6 + 1e-7)).unwrap(), r(1.0));
+        assert_eq!(binary(BinOp::Eq, &r(10.0 * (std::f64::consts::PI / 2.0).cos()), &r(0.0)).unwrap(), r(1.0));
         assert!(unary(UnOp::Neg, &s("x")).is_err());
         assert_eq!(unary(UnOp::BitNot, &r(0.0)).unwrap(), r(-1.0));
     }

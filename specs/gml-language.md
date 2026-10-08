@@ -939,10 +939,18 @@ take priority. Implemented in `crates/gml` (regression tests in
 - `%` is not an operator. It is a compile error, "Unexpected symbol." [syn.percent]
 
 **Comparison** [eq.*, math.sin_pi_is0, math.lengthdir_x_90_is0]
-- Reals are equal when `|a-b| <= max(min(|a|,|b|) * 1e-12, 1e-12)`, the same
-  rule as Delphi's `SameValue`.
-- Examples: `0.1+0.2 == 0.3`, `sin(pi) == 0` and `lengthdir_x(10,90) == 0`
-  are true; `0 == 0.000000000001` and `1 == 1.0000000001` are false.
+- Reals are equal when `|a-b| <= max(min(|a|,|b|), 1) * 1e-14`.
+  VERIFIED bounds [eq.*, eq2.*, math.sin_pi_is0, math.lengthdir_x_90_is0]:
+  - `sin(pi) == 0` (difference 1.2e-16) and `lengthdir_x(10,90) == 0` (6.1e-16)
+    are true, so values that close to 0 compare equal.
+  - `0 == 1e-13`, `0 == 5e-13`, `0 == 2e-12`, `1 == 1 + 5e-13`,
+    `1 == 1.0000000001` and `1000000 == 1000000 + 1e-7` are all false. The
+    tolerance is below 1e-13 near 0 and 1, and a relative tolerance would have
+    to be below 1e-13 (the `1e6` case). Delphi's `SameValue` default (1e-12) is
+    ruled out.
+  - The constant 1e-14 (relative above 1) is a choice inside these bounds;
+    bb_lang3 `eq3.*` narrows it.
+- Examples: `0.1+0.2 == 0.3` is true (exactly equal, see the literal rule above).
 - `<` means "less and not equal", `<=` means "less or equal", and so on.
   So `0.3 < 0.1+0.2` is false and `0.3 >= 0.1+0.2` is true.
 - `switch` cases use the same equality. A case of the other type simply doesn't
@@ -1010,7 +1018,13 @@ take priority. Implemented in `crates/gml` (regression tests in
     `Script requires N arguments, M have been supplied.`.
   - `argument[i]` with `i >= argument_count` gives "Unknown variable argument or
     array index out of bounds".
-  - `script_execute` is checked the same way (assumed).
+  - The message says `Script requires at least N arguments, ...` when the script
+    also uses `argument[i]` [bb_lang2 args.mixed_fewer].
+  - `script_execute` is checked the same way. Too few arguments: the error is
+    reported and the call yields 0. Too many: the error is reported as a
+    non-aborting error and the script still runs with all the arguments
+    [bb_lang2 args.script_execute_more = 1 with err = 1]. A direct call with too
+    many arguments is an ordinary (aborting) error.
 - With bit 1 clear, any count is accepted, `argument_count` is the supplied
   count, and missing arguments read 0.
 - Arguments live in **one global array**:
@@ -1024,7 +1038,10 @@ take priority. Implemented in `crates/gml` (regression tests in
   *not* restored: the next code actions read `argument0 = 16`,
   `argument_count = 1` [args.code_action_*].
 - A script that ends without `return` (or with `exit`) returns the value of the
-  last assignment it ran [args.noreturn = 1, args.exit = 2].
+  last assignment or call statement it ran [args.noreturn = 1, args.exit = 2;
+  bb_lang2 ret.call_last: `global.q = 1; abs(5);` returns 5, ret.var_last:
+  `var a; a = 6;` returns 6]. An `if` condition doesn't count
+  [ret.if_last: `global.q = 3; if (global.q == 0) ...` returns 3].
 - Writing `argument_count` (or any read-only built-in, such as `id`) compiles,
   but at run time it is the error "Cannot assign to the variable"
   [args.write_count, type.readonly_id].
@@ -1032,6 +1049,8 @@ take priority. Implemented in `crates/gml` (regression tests in
   function or script.".
 - `min()`, `max()`, `choose()`, `mean()` and `median()` accept no arguments and
   return 0 [math.*_none].
+- `mean()` counts a string argument as 0, with no error
+  [bb_lang2 mm.mean_str: `mean(1, 'a')` = 0.5].
 
 **Errors and recovery** [errcont.*, math.*, real.*, misc.*, type.readonly_id, var.shadow_x]
 - An error raised by an operator, a variable access or a script call abandons
@@ -1076,9 +1095,16 @@ take priority. Implemented in `crates/gml` (regression tests in
 - String functions given a real treat it as "" and raise no error:
   `string_length(12.5)` is 0, `string_upper(5)` is "".
 - `string_delete` with an index below 1 deletes nothing.
-- `string_lower`/`string_upper` return non-ASCII (Latin-1) letters UTF-8-encoded:
-  `ord(string_lower(chr(192)))` = 195. Open: confirm with
-  `string_length(string_lower(chr(192)))`.
+- Strings hold one byte per character [bb_lang2 case.*]:
+  `string_length(chr(192))` = 1, `string_length(string_lower(chr(192)))` = 1,
+  `string_length(string_upper('a' + chr(233)))` = 2,
+  `string_length(string_lower(chr(195) + chr(137)))` = 2.
+- `ord(s)` returns the first byte of the UTF-8 encoding of the first character:
+  `ord(chr(192))` = 195, `ord(string_upper(chr(233)))` = 195. gm-runner takes
+  bytes 0x80-0xFF as Latin-1 code points (0xC2 / 0xC3). Unverified: bytes
+  0x80-0x9F (code page 1252 maps them elsewhere) and whether `string_lower/upper`
+  map Latin-1 letters (gm-runner maps 0xC0-0xDE <-> 0xE0-0xFE except 0xD7/0xF7).
+  This corrects the earlier reading that the case functions return UTF-8.
 - `real(str)` ignores surrounding whitespace. The rest must be a complete
   `[+-]digits[.digits][e[+-]digits]`; `""` and `"."` give 0. Anything else
   (`"12abc"`, `"0x10"`, `"$10"`, `"1,5"`, `"inf"`, `"-"`) is the function error

@@ -112,21 +112,27 @@ pub(crate) fn real_strict(s: &[u8]) -> Option<f64> {
     Some(parse_real(t))
 }
 
-/// GM 8.1's `string_lower`/`string_upper` result for a non-ASCII byte: the
-/// Latin-1 character, case-mapped, encoded as UTF-8 (VERIFIED black-box: bb_lang
-/// sf.lower_latin1 / sf.upper_latin1 give ord() = 195 for chr(192) / chr(233)).
+/// `string_lower/upper` keep one character per character (VERIFIED black-box,
+/// bb_lang2 case.*: `string_length(string_lower(chr(192)))` = 1,
+/// `string_length(string_upper('a' + chr(233)))` = 2). Whether Latin-1 letters
+/// are mapped is not observable through `ord` (see [`ord_byte`]); they are mapped
+/// in the Latin-1 ranges (unverified).
 fn case_map(s: &[u8], f: fn(u8) -> u8) -> Vec<u8> {
-    let mut v = Vec::with_capacity(s.len());
-    for &b in s {
-        let c = f(b);
-        if c < 0x80 {
-            v.push(c);
-        } else {
-            v.push(0xC0 | (c >> 6));
-            v.push(0x80 | (c & 0x3F));
-        }
+    s.iter().map(|&b| f(b)).collect()
+}
+
+/// `ord` returns the first byte of the UTF-8 encoding of the first character
+/// (VERIFIED black-box, bb_lang2 case.ord_192: `ord(chr(192))` = 195 while
+/// `string_length(chr(192))` = 1; bb_lang sf.lower_latin1 / sf.upper_latin1 = 195).
+/// Characters 0x80-0xFF are taken as Latin-1 code points, so they give 0xC2 / 0xC3
+/// (the 0x80-0x9F range is unverified: under code page 1252 those characters are
+/// other code points).
+pub(crate) fn ord_byte(s: &[u8]) -> u8 {
+    match s.first() {
+        None => 0,
+        Some(&b) if b < 0x80 => b,
+        Some(&b) => 0xC0 | (b >> 6),
     }
-    v
 }
 
 fn pos1(i: i64) -> usize {
@@ -213,7 +219,7 @@ pub(super) fn register(t: &mut Vec<(&'static str, NativeFn)>) {
             Ok(Value::bytes(&[a.int(0)?.rem_euclid(256) as u8]))
         }),
         n("ord", |_, _, _, a| {
-            Ok(Value::Real(a.str(0)?.first().copied().unwrap_or(0) as f64))
+            Ok(Value::Real(ord_byte(a.str(0)?) as f64))
         }),
         n("string_length", |_, _, _, a| {
             Ok(Value::Real(a.str(0)?.len() as f64))

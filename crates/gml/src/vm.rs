@@ -107,6 +107,8 @@ pub struct Vm {
     /// arguments and restores it afterwards; code actions see whatever it holds.
     pub(crate) args: [Value; 16],
     pub(crate) argc: usize,
+    /// Set by `script_execute` for the script call it makes (see [`Vm::run_script`]).
+    pub(crate) via_script_execute: bool,
 }
 
 impl Default for Vm {
@@ -145,6 +147,7 @@ impl Vm {
             clock: Box::new(crate::stdlib::date::system_now),
             args: Default::default(),
             argc: 0,
+            via_script_execute: false,
         };
         vm.set_seed(0.0);
         vm
@@ -209,8 +212,13 @@ impl Vm {
 
     /// Runs a script called from code (`scr(...)`, `script_execute`) after GM
     /// 8.1's argument-count check, done only with [`Settings::check_script_args`]
-    /// (VERIFIED black-box, bb_lang args.*, bb_clash): a script needs exactly 1 + its highest `argumentN` index arguments (0 if it uses
-    /// none); a script that also uses the `argument[i]` form accepts more.
+    /// (VERIFIED black-box, bb_lang args.*, bb_clash, bb_lang2 args.*): a script
+    /// needs exactly 1 + its highest `argumentN` index arguments (0 if it uses
+    /// none); a script that also uses the `argument[i]` form accepts more, and its
+    /// message then reads "requires at least N arguments". Through
+    /// `script_execute`, too many arguments is a non-aborting error: it is reported
+    /// and the script still runs with all of them (bb_lang2 args.script_execute_more
+    /// = 1 with err = 1).
     pub fn run_script(
         &mut self,
         host: &mut dyn Host,
@@ -218,14 +226,23 @@ impl Vm {
         ctx: Ctx,
         args: &[Value],
     ) -> Result<Value, Error> {
+        let via_execute = std::mem::take(&mut self.via_script_execute);
         let need = prog.arg_required as usize;
         if self.settings.check_script_args
             && (args.len() < need || (args.len() > need && !prog.arg_array))
         {
-            return Err(Error::new(format!(
-                "Illegal argument count calling script \"{}\".\nScript requires {} arguments, {} have been supplied.",
-                prog.name, need, args.len()
-            )));
+            let e = Error::new(format!(
+                "Illegal argument count calling script \"{}\".\nScript requires {}{} arguments, {} have been supplied.",
+                prog.name,
+                if prog.arg_array { "at least " } else { "" },
+                need,
+                args.len()
+            ));
+            if via_execute && args.len() > need {
+                host.soft_error(e)?;
+            } else {
+                return Err(e);
+            }
         }
         self.run_program(host, prog, ctx, ArgMode::Set(args))
     }

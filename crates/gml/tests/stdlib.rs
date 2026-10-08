@@ -218,10 +218,19 @@ fn string_functions() {
     assert_eq!(real("return string_length(5)"), 0.0);
     // byte strings: chr(200) is a single character
     assert_eq!(real("return string_length(chr(200) + chr(0))"), 2.0);
-    // case mapping returns UTF-8 for Latin-1 letters (VERIFIED black-box, bb_lang
-    // sf.upper_latin1): É = C3 89
+    // case mapping keeps one byte per character; ord() gives the first UTF-8 byte
+    // of a Latin-1 character (VERIFIED black-box, bb_lang sf.upper_latin1,
+    // bb_lang2 case.*)
     assert_eq!(real("return ord(string_upper(chr(233)))"), 195.0);
-    assert_eq!(real("return ord(string_char_at(string_upper(chr(233)), 2))"), 137.0);
+    assert_eq!(real("return ord(chr(192))"), 195.0);
+    assert_eq!(real("return ord(chr(160))"), 194.0);
+    assert_eq!(real("return string_length(chr(192))"), 1.0);
+    assert_eq!(real("return string_length(string_lower(chr(192)))"), 1.0);
+    assert_eq!(real("return ord(string_char_at(string_lower(chr(192)), 2))"), 0.0);
+    assert_eq!(real("return string_length(string_upper('a' + chr(233)))"), 2.0);
+    assert_eq!(real("return string_length(string_lower(chr(195) + chr(137)))"), 2.0);
+    // mean() counts a string argument as 0 (VERIFIED black-box, bb_lang2 mm.mean_str)
+    assert_eq!(real("return mean(1, 'a')"), 0.5);
     assert_eq!(string("return string_lower('AbC')"), "abc");
 }
 

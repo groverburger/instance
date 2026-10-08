@@ -157,11 +157,18 @@ pub(super) fn register(t: &mut Vec<(&'static str, NativeFn)>) {
         n("min", |_, _, _, a| min_max(&a, Ordering::Less)),
         n("max", |_, _, _, a| min_max(&a, Ordering::Greater)),
         n("mean", |_, _, _, a| {
-            let v = reals(&a)?;
-            if v.is_empty() {
+            // VERIFIED black-box (bb_lang2 mm.mean_str: mean(1, 'a') = 0.5, no
+            // error): a string argument counts as 0.
+            if a.len() == 0 {
                 return Ok(Value::Real(0.0));
             }
-            Ok(Value::Real(v.iter().sum::<f64>() / v.len() as f64))
+            let sum: f64 = (0..a.len())
+                .map(|i| match a.val(i) {
+                    Value::Real(x) => *x,
+                    _ => 0.0,
+                })
+                .sum();
+            Ok(Value::Real(sum / a.len() as f64))
         }),
         n("median", |_, _, _, a| {
             let mut v = reals(&a)?;

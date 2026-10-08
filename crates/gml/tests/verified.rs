@@ -19,6 +19,10 @@ fn scripts(check: bool) -> (Vm, Mock) {
             ("sc_argarr_i", "return argument[argument0];"),
             ("sc_noreturn", "global.q = 1;"),
             ("sc_exit", "global.q = 2; exit; global.q = 3;"),
+            ("sc_call_last", "global.q = 1; abs(5);"),
+            ("sc_if_last", "global.q = 3; if (global.q == 0) global.q = 4;"),
+            ("sc_var_last", "var a; a = 6;"),
+            ("sc_mixed", "return argument1 + argument[0];"),
         ],
     );
     (vm, h)
@@ -65,6 +69,33 @@ fn implicit_script_result() {
     let (mut vm, mut h) = scripts(true);
     assert_eq!(go(&mut vm, &mut h, "return sc_noreturn()").unwrap(), Value::Real(1.0));
     assert_eq!(go(&mut vm, &mut h, "return sc_exit()").unwrap(), Value::Real(2.0));
+    // bb_lang2 ret.*: a call statement's value counts as well; an if condition doesn't
+    assert_eq!(go(&mut vm, &mut h, "return sc_call_last()").unwrap(), Value::Real(5.0));
+    assert_eq!(go(&mut vm, &mut h, "return sc_if_last()").unwrap(), Value::Real(3.0));
+    assert_eq!(go(&mut vm, &mut h, "return sc_var_last()").unwrap(), Value::Real(6.0));
+}
+
+/// bb_lang2 args.*: "at least" wording for argument[] users; script_execute with
+/// too many arguments reports a non-aborting error and still runs the script.
+#[test]
+fn script_argument_check_lang2() {
+    let (mut vm, mut h) = scripts(true);
+    assert_eq!(
+        go(&mut vm, &mut h, "return sc_mixed(5)").unwrap_err().message,
+        "Illegal argument count calling script \"sc_mixed\".\nScript requires at least 2 arguments, 1 have been supplied."
+    );
+    assert_eq!(go(&mut vm, &mut h, "return sc_mixed(5, 6, 7)").unwrap(), Value::Real(11.0));
+    h.soft_errors = Some(Vec::new());
+    assert_eq!(go(&mut vm, &mut h, "return script_execute(sc_arg0, 1, 2)").unwrap(), Value::Real(1.0));
+    assert_eq!(
+        h.soft_errors.as_ref().unwrap().as_slice(),
+        ["Illegal argument count calling script \"sc_arg0\".\nScript requires 1 arguments, 2 have been supplied."]
+    );
+    // too few through script_execute: reported, the call yields 0
+    assert_eq!(go(&mut vm, &mut h, "return script_execute(sc_arg0)").unwrap(), Value::Real(0.0));
+    assert_eq!(h.soft_errors.as_ref().unwrap().len(), 2);
+    // a later direct call with too many arguments is still an aborting error
+    assert!(go(&mut vm, &mut h, "return sc_count(1)").is_err());
 }
 
 /// bb_lang args.arr_index_16 / code_action_arg0: argument[16] abandons the event and
