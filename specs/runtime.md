@@ -292,8 +292,12 @@ The full recommended sequence (bold items are fixed by the manual; the rest is
    instance gets **Close Button** (`ev_close_button`) `[111]`, `[302_03]`.
 3. For every instance: `xprevious = x`, `yprevious = y`,
    `path_positionprevious = path_position`.
-4. Timelines advance for every instance (§10.2).
+4. (moved: timelines run after Begin Step, see 5b.)
 5. **Begin-step triggers**, then **Begin Step** events.
+5b. Timelines advance for every instance (§10.2). **VERIFIED black-box (bb_motion
+   mo.tl.\*):** a timeline started in Create runs moment 0 in the first step, after
+   that step's Begin Step events. Its position relative to alarms / keyboard /
+   mouse / Step is not verified (proposed test: bb_events a.TL0 vs alarm/step tags).
 6. **Alarm events** (§5.3).
 7. **Keyboard events** (held keys), then **Key Press**, then **Key Release**
    (§11.3). (The manual lists these three together; the press/release relative
@@ -326,7 +330,17 @@ least certain (see OPEN_QUESTIONS).
 ### 4.3 Iteration rules for an event phase
 For an event phase "deliver event E to all instances":
 
-* Instances are visited in instance-list (creation) order.
+* Instances are visited in instance-list (creation) order — except the **step
+  events** (begin, normal, end), which are delivered **object-major**: objects in
+  ascending index order, each object's instances in instance order. **VERIFIED
+  black-box (bb_motion mo.seq):** movers placed r1..r5 (r1, r4, r5 of object
+  `mo_mover`, r2, r3 of the later `mo_mover_solid`) step as `r1 r4 r5 r2 r3`.
+  Room Start / Room End stay in instance-list order (bb_rooms `pp.RE tq.RE k.RE`
+  with `k` of a lower object index). Alarm, keyboard and mouse order across
+  objects is not verified (still instance order; bb_instances will tell).
+  Instances created during a step phase: visited when their object's turn comes;
+  those of objects whose turn has passed are visited at the end of the phase
+  (unverified).
 * Only instances whose object has an *effective* handler for E (own or inherited,
   §6) receive it. Others are skipped (no cost).
 * Deactivated instances and instances already marked destroyed are skipped.
@@ -541,9 +555,10 @@ instance; writing assigns to all of them `[401_06]`.
 * Changing `sprite_index` does **not** reset `image_index` `[405_01]`.
 * Each step (§4.2 step 18): `image_index += image_speed`. If it becomes
   `≥ image_number`, subtract `image_number` (wrap) and fire **Animation End**
-  `[111]`. **UNSPECIFIED – recommended:** with negative `image_speed`, if it becomes
-  `< 0`, add `image_number` and fire Animation End; with `image_number = 0` do not
-  advance; the wrap subtracts once (not a modulo).
+  `[111]`. **VERIFIED black-box (bb_motion mo.an3, mo.an1):** a negative
+  `image_speed` is never wrapped (`image_index` goes −1, −2, −3, …) and fires no
+  Animation End; 0.4 per step on 3 frames gives 2.8 → 0.2 with Animation End.
+  With `image_number = 0` do not advance; the wrap subtracts once (not a modulo).
 
 ### 7.4 Per-step motion update
 For every active instance, in instance order (**UNSPECIFIED – recommended**
@@ -593,6 +608,17 @@ Per sprite (`[202]`, `[409_01]`):
 The collision sprite is `mask_index` if ≥ 0, else `sprite_index`. If neither
 exists, the instance has no box and never collides.
 
+**VERIFIED black-box (bb_motion bbox.origin8.\*, bb_optional xform.\*, 27 cases;
+supersedes the recommendation below):** with local box `[l..r]×[t..b]`, origin
+`(ox,oy)`, scales `xs, ys`, the local corner coordinates are
+`u ∈ {xs·(l − ox), xs·(r + 1 − ox) − 1}`, `v ∈ {ys·(t − oy), ys·(b + 1 − oy) − 1}`
+(the −1 is applied after scaling, also for negative scales); the four corners are
+rotated by `image_angle` (`x' = u·cos a + v·sin a`, `y' = −u·sin a + v·cos a`),
+translated by (x, y), and `bbox_left/top/right/bottom` = min/max of the corners
+**rounded half to even**. Examples: origin (8,8) at x = 10.5 → left 2, right 18;
+x = 11.5 → 4, 18; image_xscale = −1 at x = 100 (origin 0) → 83..100; angle 45 →
+100,89,121,111.
+
 **UNSPECIFIED – recommended computation** (well-known GM8 convention; integer,
 inclusive edges):
 * Without rotation: with `xs = image_xscale`, `ys = image_yscale`, sprite origin
@@ -605,6 +631,12 @@ inclusive edges):
   separate masks), scale or angle change.
 
 ### 8.3 Instance–instance test
+**VERIFIED black-box (bb_motion coll.place_meeting_x\*):** the bounding box is only
+a pre-filter; even for rectangle masks a room pixel belongs to an instance only if
+it is inside its bbox *and* its centre maps into the local mask box. A 16-px box
+at x = −15.5 (bbox_right rounds to 0) does not touch a box at 0; at −15.4 it does;
+at 15.5 (bbox_left 16) it does not touch 0..15.
+
 Two instances collide iff their boxes overlap and:
 * if both masks are non-precise rectangles (kind 1) and there is no rotation: box
   overlap suffices;
@@ -650,8 +682,22 @@ Manual rules `[111]`, `[212]`:
 * 8.0 fixed a bug where mutual collision events ran twice `[new]`: each pair runs
   each side's event once per step.
 
-**UNSPECIFIED – recommended algorithm** (each ordered pair handled by the event
-owner, matching "one event for each instance"):
+**VERIFIED black-box (bb_motion mo.seq, mo.sol; rows: non-solid/solid mover ×
+non-solid/solid wall, all objects having collision events both ways):**
+* Order: objects in ascending index order; for each object its collision events in
+  ascending order of the event's target object; for each event the object's
+  instances in instance order, each against the colliding instances of the target
+  (instance order). Observed: `r4m r4w r1m r1w r5m r5w1 r3m r3w r2m r2w`.
+* A colliding pair is handled once per step: the first instance's event, then
+  immediately the partner's event for the first instance's object (if it has one);
+  the pair is not handled again when the partner's object comes up.
+* The put-back applies when **either** instance is solid (solid mover vs non-solid
+  wall is stopped too): both are put back before the events; afterwards both are
+  moved to their new positions and put back again if they still collide.
+  The mover's speed is kept (it stays at 112 with hspeed 6 every step while
+  touching the wall at 130).
+
+Superseded recommendation (kept for reference):
 ```
 for each active instance A in instance order:
     for each active instance B != A in instance order:
@@ -728,8 +774,10 @@ Notes / open points:
 * Sets `path_index`, `path_speed = speed`, `path_endaction`, `path_position = 0`
   (or 1 when speed < 0). Sets `speed = 0` (normal motion is ignored on a path).
 * absolute: the path's own coordinates are used, the instance jumps to the start
-  (end if speed < 0). Relative: the path is translated so its start (end for
-  negative speed) lies on the current position.
+  (end if speed < 0). Relative: the path is translated so its **first point**
+  lies on the current position, also for a negative speed (the instance does not
+  move at path_start). **VERIFIED black-box (bb_motion mo.pa4):** path (0,0)→(20,0),
+  speed −3 from x = 600: x 600 at start, 617 at position 0.85.
 * Each path point has a speed factor (percent); the effective speed is
   interpolated between points.
 * Each step (§4.2 step 10): `path_position += path_speed × factor(pos) /
@@ -738,7 +786,12 @@ Notes / open points:
   pivot:** the path's start point (absolute or relative anchor). `direction` is set
   to the direction of travel each step `[212]`.
 * When the end is reached (`path_position ≥ 1`, or `≤ 0` for negative speed):
-  * 0 stop: clamp, `path_index = -1` (end path);
+  * 0 stop: `path_position = 1` (also when the end reached was 0 with a
+    negative speed: x jumps to the last point), `path_index = -1`, `path_speed`
+    unchanged. **VERIFIED black-box (bb_motion mo.pa0/pa4 PE: `620,1`).**
+    Verified for 1/2/3 as well (mo.pa1..3): overshoot carried (0.05), continue
+    re-anchors at the end point, reverse gives 1 − overshoot and negates the speed;
+    the End of Path event sees the adjusted position.
   * 1 restart: jump back to the start position (for an unclosed path) and
     continue, carrying any overshoot;
   * 2 continue from current position: re-anchor the path at the current position
@@ -759,7 +812,9 @@ Variables `[403_07]`: `timeline_index` (−1 = none; assignment does not start i
 immediately?, loop?), position, speed, start, pause, stop (= pause and position 0)
 `[206_02]`.
 
-**UNSPECIFIED – recommended per-step algorithm** (step 4 of §4.2):
+**Per-step algorithm** (step 5b of §4.2; VERIFIED black-box bb_motion mo.tl.\*
+for speeds 1, 2, 0.5, −1, a fractional start and looping — moments run with the
+position already advanced to p1):
 ```
 if timeline_running and timeline_index valid:
     p0 = timeline_position; p1 = p0 + timeline_speed

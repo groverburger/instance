@@ -149,7 +149,8 @@ fn objects_with_tags(b: &mut B, names: &[&str]) -> Vec<i32> {
 #[test]
 fn goto_finishes_action_skips_rest_of_event_and_step() {
     let mut b = B::new();
-    let tags = objects_with_tags(&mut b, &["y", "x"]);
+    // objects y, go, x in this index order (step events are delivered object-major)
+    let mut tags = objects_with_tags(&mut b, &["y"]);
     let go = b.object(
         "go",
         vec![
@@ -157,6 +158,7 @@ fn goto_finishes_action_skips_rest_of_event_and_step() {
             ev(OTHER, ROOM_END, &["l('go.RE');"]),
         ],
     );
+    tags.extend(objects_with_tags(&mut b, &["x"]));
     let n = b.object("n", vec![ev(CREATE, 0, &["l('n.CR');"]), ev(OTHER, ROOM_START, &["l('n.RS');"]), ev(DRAW, 0, &["l('n.DR');"])]);
     b.room("", &[(tags[0], ""), (go, ""), (tags[1], "")]);
     b.room("l('r1.CC');", &[(n, "")]);
@@ -281,7 +283,8 @@ fn goto_in_alarm_timeline_collision_and_draw() {
     let (mut g, mut vm) = b.start();
     take(&mut vm);
     step(&mut g, &mut vm);
-    assert_eq!(take(&mut vm), "tl1 r1.CC");
+    // timelines advance after Begin Step (bb_motion mo.tl.*)
+    assert_eq!(take(&mut vm), "t.BS tl1 r1.CC");
 
     // collision
     let mut b = B::new();
