@@ -134,7 +134,7 @@ impl Editor for FontEditor {
         ui.text_edit_singleline(&mut self.sample);
         let mut t = RichText::new(&self.sample).size(f.size.clamp(4, 96) as f32 * 4.0 / 3.0);
         if f.bold {
-            t = t.strong();
+            t = t.family(crate::theme::bold()).strong();
         }
         if f.italic {
             t = t.italics();

@@ -1,5 +1,6 @@
 //! Classic light Windows look: grey chrome, white lists, blue selection, Segoe UI /
-//! Tahoma and Consolas (loaded from the system when present).
+//! Tahoma and Consolas (loaded from the system when present; otherwise the bundled
+//! Roboto and egui's monospace font).
 //!
 //! Hover never changes a widget's size: every interactive state has the same frame
 //! stroke width and expansion (see [`apply`]), so nothing reflows when the pointer
@@ -29,15 +30,12 @@ pub const ERROR_TEXT: Color32 = Color32::from_rgb(190, 0, 0);
 /// Frame stroke width of interactive widgets, and their expansion (see [`apply`]).
 const EXPANSION: f32 = 1.0;
 
-/// UI fonts in order of preference: Windows, macOS, Linux. TrueType collections
-/// (.ttc) are avoided. On the web nothing is found and egui's built-in fonts are used.
-const UI_FONTS: &[&str] = &[
-    "segoeui.ttf",
-    "tahoma.ttf",
-    "Arial.ttf",
-    "DejaVuSans.ttf",
-    "LiberationSans-Regular.ttf",
-    "NotoSans-Regular.ttf",
+/// System UI fonts in order of preference, each with its bold face (Windows; Tahoma
+/// also ships with some macOS versions). TrueType collections (.ttc) are avoided.
+/// Without them the bundled Roboto is used (web, most macOS and Linux systems).
+const UI_FONTS: &[(&str, &str)] = &[
+    ("segoeui.ttf", "segoeuib.ttf"),
+    ("tahoma.ttf", "tahomabd.ttf"),
 ];
 const MONO_FONTS: &[&str] = &[
     "consola.ttf",
@@ -48,43 +46,82 @@ const MONO_FONTS: &[&str] = &[
     "NotoSansMono-Regular.ttf",
 ];
 
+/// Roboto (Apache License 2.0, see `fonts/LICENSE.txt`), from the google/fonts
+/// repository: the UI font where no system UI font is found.
+const ROBOTO_REGULAR: &[u8] = include_bytes!("../fonts/Roboto-Regular.ttf");
+const ROBOTO_BOLD: &[u8] = include_bytes!("../fonts/Roboto-Bold.ttf");
+
+/// Font family of bold UI text (the bold face of the UI font), e.g.
+/// `RichText::new(..).family(theme::bold())`.
+pub fn bold() -> FontFamily {
+    FontFamily::Name("bold".into())
+}
+
 fn system_font(names: &[&str]) -> Option<Vec<u8>> {
     crate::fonts::find_font(names)
 }
 
-/// The UI and monospace system fonts, read once per process.
-fn system_fonts() -> &'static (Option<Vec<u8>>, Option<Vec<u8>>) {
-    static FONTS: std::sync::OnceLock<(Option<Vec<u8>>, Option<Vec<u8>>)> =
+/// A system UI font: regular face and, when found, its bold face.
+type UiFont = (Vec<u8>, Option<Vec<u8>>);
+
+/// The UI regular / bold faces and the monospace font found on the system, read
+/// once per process. `INSTANCE_UI_FONT=roboto` skips the system UI font (to check
+/// the look of other platforms).
+fn system_fonts() -> &'static (Option<UiFont>, Option<Vec<u8>>) {
+    static FONTS: std::sync::OnceLock<(Option<UiFont>, Option<Vec<u8>>)> =
         std::sync::OnceLock::new();
-    FONTS.get_or_init(|| (system_font(UI_FONTS), system_font(MONO_FONTS)))
+    FONTS.get_or_init(|| {
+        let builtin =
+            std::env::var("INSTANCE_UI_FONT").is_ok_and(|v| v.eq_ignore_ascii_case("roboto"));
+        let ui = UI_FONTS
+            .iter()
+            .filter(|_| !builtin)
+            .find_map(|(regular, bold)| {
+                let r = system_font(&[regular])?;
+                Some((r, system_font(&[bold])))
+            });
+        (ui, system_font(MONO_FONTS))
+    })
 }
 
-/// Install fonts and visuals on `ctx`.
-pub fn apply(ctx: &egui::Context) {
-    let mut fonts = FontDefinitions::default();
+/// The font definitions of the theme: the system UI font (Segoe UI / Tahoma) or the
+/// bundled Roboto first, egui's fonts after it for missing glyphs (symbols, emoji).
+pub fn font_definitions() -> FontDefinitions {
     let (ui_font, mono_font) = system_fonts();
-    if let Some(bytes) = ui_font.clone() {
-        fonts.font_data.insert(
-            "system-ui".into(),
-            std::sync::Arc::new(FontData::from_owned(bytes)),
-        );
-        fonts
-            .families
-            .entry(FontFamily::Proportional)
-            .or_default()
-            .insert(0, "system-ui".into());
-    }
-    if let Some(bytes) = mono_font.clone() {
-        fonts.font_data.insert(
-            "system-mono".into(),
-            std::sync::Arc::new(FontData::from_owned(bytes)),
-        );
+    definitions(ui_font.as_ref(), mono_font.as_deref())
+}
+
+fn definitions(ui_font: Option<&UiFont>, mono_font: Option<&[u8]>) -> FontDefinitions {
+    let mut fonts = FontDefinitions::default();
+    let font = |b: &[u8]| std::sync::Arc::new(FontData::from_owned(b.to_vec()));
+    let (regular, bold_face) = match ui_font {
+        Some((r, b)) => (font(r), font(b.as_deref().unwrap_or(ROBOTO_BOLD))),
+        None => (
+            std::sync::Arc::new(FontData::from_static(ROBOTO_REGULAR)),
+            std::sync::Arc::new(FontData::from_static(ROBOTO_BOLD)),
+        ),
+    };
+    fonts.font_data.insert("ui".into(), regular);
+    fonts.font_data.insert("ui-bold".into(), bold_face);
+    let proportional = fonts.families.entry(FontFamily::Proportional).or_default();
+    proportional.insert(0, "ui".into());
+    let mut bold_family = proportional.clone();
+    bold_family[0] = "ui-bold".into();
+    fonts.families.insert(bold(), bold_family);
+    if let Some(bytes) = mono_font {
+        fonts.font_data.insert("system-mono".into(), font(bytes));
         fonts
             .families
             .entry(FontFamily::Monospace)
             .or_default()
             .insert(0, "system-mono".into());
     }
+    fonts
+}
+
+/// Install fonts and visuals on `ctx`.
+pub fn apply(ctx: &egui::Context) {
+    let fonts = font_definitions();
     ctx.set_fonts(fonts);
 
     ctx.set_theme(egui::Theme::Light);
@@ -181,6 +218,36 @@ pub fn apply(ctx: &egui::Context) {
 mod tests {
     use egui_kittest::kittest::{by, NodeT, Queryable};
 
+    /// Without system fonts the bundled Roboto is the UI font (regular and bold) and
+    /// egui's fonts stay as fallbacks.
+    #[test]
+    fn roboto_fallback() {
+        use egui::{Color32, FontFamily, FontId};
+        let defs = super::definitions(None, None);
+        let prop = &defs.families[&FontFamily::Proportional];
+        assert_eq!(prop[0], "ui");
+        assert!(prop.len() > 1, "egui fallbacks kept");
+        assert_eq!(defs.families[&super::bold()][0], "ui-bold");
+        assert_eq!(defs.font_data["ui"].font.len(), super::ROBOTO_REGULAR.len());
+        assert_eq!(
+            defs.font_data["ui-bold"].font.len(),
+            super::ROBOTO_BOLD.len()
+        );
+        // the faces load and lay out text
+        let ctx = egui::Context::default();
+        ctx.set_fonts(defs);
+        let mut out = ctx.run_ui(Default::default(), |ui| {
+            ui.ctx().fonts_mut(|f| {
+                let text = "Instance".to_string();
+                let g = f.layout_no_wrap(text.clone(), FontId::proportional(13.0), Color32::BLACK);
+                let b = f.layout_no_wrap(text, FontId::new(13.0, super::bold()), Color32::BLACK);
+                assert!(g.size().x > 30.0);
+                assert!(b.size().x > g.size().x, "bold is wider");
+            });
+        });
+        out.textures_delta.clear();
+    }
+
     /// With the theme, every kind of button keeps its size when hovered (egui drops
     /// the frame of unselected selectable buttons at rest, so the frame stroke must
     /// not add to their size).
@@ -204,6 +271,8 @@ mod tests {
                     ui.menu_button("menu", |ui| ui.label("x"));
                     ui.add(egui::Button::new("frameless").frame(false));
                     crate::icons::tool_button(ui, crate::icons::Glyph::Play, "tool", true);
+                    let size = egui::vec2(80.0, 24.0);
+                    crate::icons::glyph_button(ui, crate::icons::Glyph::Check, "OK", "ok", size);
                     let _ = ui.button("last");
                 });
             });
@@ -219,7 +288,7 @@ mod tests {
         h.hover_at(egui::pos2(750.0, 110.0));
         h.run_steps(2);
         let before = rects(&h);
-        assert!(before.len() >= 9, "{before:?}");
+        assert!(before.len() >= 10, "{before:?}");
         for (label, r) in &before {
             h.hover_at(r.center());
             h.run_steps(2);

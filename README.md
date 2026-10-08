@@ -98,6 +98,9 @@ browser, the per-game `/config/gm81-runner` folder and the IDE's settings and au
 carried over the same way. Fonts are looked up in the
 system font folders; when a font is missing the bundled Liberation Sans
 (`crates/instance-runner/fonts`, SIL Open Font License) is used.
+The IDE and the runner's own windows use Segoe UI (or Tahoma) when the system has it,
+otherwise the bundled Roboto (`crates/instance-ui/fonts`, Apache License 2.0; e.g. in the
+browser, on macOS and Linux); `INSTANCE_UI_FONT=roboto` forces it.
 
 macOS app bundles: `scripts/macos-bundle.sh` (on a Mac) builds `Instance.app` (the IDE, with
 the runner inside, so Run works) and `Instance Runner.app` in `dist/macos`, with the
@@ -126,7 +129,9 @@ HTTP, not opened as files).
   file onto the page; a page can also embed a game (`<script id="instance-game" data-src=URL>`
   or `window.INSTANCE_GAME_BASE64`). The game starts after a click (browsers only allow audio
   after a user gesture). `?renderer=software` forces the CPU renderer; `?autostart`
-  skips the button. Rendering uses WebGL2; input comes from the canvas and keyboard.
+  skips the button. The game window is scaled to fit the page (keeping its aspect ratio,
+  by whole factors when it fits, letterboxed) and refitted when the page or the game's
+  window size changes. Rendering uses WebGL2; input comes from the canvas and keyboard.
   `show_message`/`show_question`/`get_string` use the browser's `alert`/`confirm`/`prompt`.
   Files written by the game (`file_*`, `ini_*`, saves, highscores, registry) live in a
   virtual file system stored in `localStorage` per game id.
