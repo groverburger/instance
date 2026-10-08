@@ -537,8 +537,9 @@ impl<'a> Compiler<'a> {
             ExprKind::Unary(op, x) => {
                 let x = self.expr(x)?;
                 if let Ex::Const(v) = &x {
-                    if let Ok(r) = unary(*op, v) {
-                        return Ok(Ex::Const(r));
+                    match unary(*op, v) {
+                        Ok(r) => return Ok(Ex::Const(r)),
+                        Err(m) => return err(m, e.span),
                     }
                 }
                 Ex::Unary(*op, Box::new(x), pos)
@@ -549,11 +550,10 @@ impl<'a> Compiler<'a> {
                 if let (Ex::Const(x), Ex::Const(y)) = (&a, &b) {
                     match binary(*op, x, y) {
                         Ok(r) => return Ok(Ex::Const(r)),
-                        // GM 8.1 folds constants while compiling, so a literal type mix
-                        // like `'a' + 1` is a compile error (gml-language.md §3 note 13,
-                        // verified black-box). Other errors (division by 0) stay runtime.
-                        Err(m) if m.starts_with("Wrong type") => return err(m, e.span),
-                        Err(_) => {}
+                        // GM 8.1 folds constants while compiling, so any error while
+                        // folding (`'a' + 1`, `1 / 0`) is a compile error
+                        // (gml-language.md §3 note 13, verified black-box).
+                        Err(m) => return err(m, e.span),
                     }
                 }
                 Ex::Binary(*op, Box::new(a), Box::new(b), pos)

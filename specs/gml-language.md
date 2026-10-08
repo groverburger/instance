@@ -224,7 +224,9 @@ Notes:
 
 13. **Constant folding type errors.** GM 8.1 evaluates operations on literal
     constants while compiling, so a literal type mix such as `'a' + 1` is a
-    *compile* error ("Wrong type of arguments to +."). VERIFIED black-box: a script
+    *compile* error ("Wrong type of arguments to +."), and so is a literal division
+    by zero (`1 / 0`: "Division by 0."). Function calls are not folded
+    (`chr(97) + 1` compiles and fails at run time). VERIFIED black-box: a script
     containing it makes the game fail at startup (with "Display errors" off it just
     closes). The same operation through variables or function results is a runtime
     error. Scripts are compiled at game start; code actions are compiled when first

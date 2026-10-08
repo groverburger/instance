@@ -70,9 +70,9 @@ fn type_errors() {
     assert!(err("return -'a'").message.contains("Wrong type"));
     assert!(err("a = 1 a += 'x'").message.contains("Wrong type"));
     assert!(err("return 'a' * 2").message.contains("Wrong type"));
-    assert_eq!(err("return 1 / 0").message, "Division by 0.");
-    assert_eq!(err("return 1 div 0").message, "Division by 0.");
-    assert_eq!(err("return 1 mod 0").message, "Division by 0.");
+    assert_eq!(err("z = 0 return 1 / z").message, "Division by 0.");
+    assert_eq!(err("z = 0 return 1 div z").message, "Division by 0.");
+    assert_eq!(err("z = 0 return 1 mod z").message, "Division by 0.");
     assert_eq!(real("return !'a'"), 1.0);
     assert_eq!(real("return 'a' && 1"), 0.0);
 }
@@ -879,6 +879,8 @@ fn constant_type_mix_is_a_compile_error() {
     // "Wrong type of arguments to +."
     assert_eq!(compile_err("x = 'a' + 1").message, "Wrong type of arguments to +.");
     assert!(compile_err("x = 2 * 'b'").message.starts_with("Wrong type of arguments"));
+    // division by a literal zero is folded too (bb_lang: "Division by 0.")
+    assert_eq!(compile_err("x = (1 / 0)").message, "Division by 0.");
     // through variables it is a runtime error, not a compile error
     let mut vm = Vm::new();
     let h = Mock::new();

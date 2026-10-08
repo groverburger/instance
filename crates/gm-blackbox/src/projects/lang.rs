@@ -390,17 +390,17 @@ fn build_with(name: &'static str, id: i32, consts: bool, part: Option<(usize, us
 
     // ---- division by zero (GML-6)
     t.extend(errs(&[
-        ("div0.1_0", "(1 / 0)"),
-        ("div0.0_0", "(0 / 0)"),
-        ("div0.m1_0", "(-1 / 0)"),
-        ("div0.div", "(5 div 0)"),
-        ("div0.mod", "(5 mod 0)"),
-        ("div0.mod_frac", "(5.5 mod 0)"),
+        ("div0.1_0", "(1 / floor(0))"),
+        ("div0.0_0", "(0 / floor(0))"),
+        ("div0.m1_0", "(-1 / floor(0))"),
+        ("div0.div", "(5 div floor(0))"),
+        ("div0.mod", "(5 mod floor(0))"),
+        ("div0.mod_frac", "(5.5 mod floor(0))"),
         ("div0.tiny", "(1 / 0.0000001)"),
     ]));
     t.push(err_stmt(
         "div0.inf_str",
-        "var v; v = 1 / 0; global.bb_r = string(v) + '|' + string(v * 0) + '|' + string(-v);",
+        "var v; v = 1 / floor(0); global.bb_r = string(v) + '|' + string(v * 0) + '|' + string(-v);",
     ));
 
     // ---- arrays (GML-7)
