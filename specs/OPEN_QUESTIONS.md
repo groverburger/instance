@@ -628,5 +628,5 @@ bb_optional `xform.*` keys.
   objects remains instance order until bb_instances / bb_events results arrive
   (bb_instances `in.s*` already logs step order of objects created out of index
   order; bb_events logs timeline vs alarm vs step tags).
-- R-26 (animation, §7.5): negative image_speed never wraps and fires no Animation
+- Animation (§7.5): negative image_speed never wraps and fires no Animation
   End (mo.an3: −1, −2, −3, ...).
