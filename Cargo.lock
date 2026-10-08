@@ -1743,6 +1743,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gm-blackbox"
+version = "0.1.0"
+dependencies = [
+ "gm-format",
+ "serde_json",
+]
+
+[[package]]
 name = "gm-brand"
 version = "0.1.0"
 dependencies = [

@@ -187,6 +187,77 @@ fn ui_smoke_all_forms() {
     }
 }
 
+/// The black-box test projects written by `gm-blackbox generate` (directory from
+/// `GM81_BLACKBOX_DIR`, default `%USERPROFILE%\Downloads\gm81_blackbox_tests`;
+/// skipped when absent) open in every form without changes, and the IDE renders
+/// them with a few forms open.
+#[test]
+fn blackbox_projects_open() {
+    use egui_kittest::Harness;
+    let dir = std::env::var_os("GM81_BLACKBOX_DIR")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("USERPROFILE")
+                .map(|h| PathBuf::from(h).join("Downloads").join("gm81_blackbox_tests"))
+        });
+    let Some(dir) = dir.filter(|d| d.is_dir()) else {
+        eprintln!("skipping: no black-box test directory");
+        return;
+    };
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "gm81"))
+        .collect();
+    files.sort();
+    for path in files {
+        let name = path.display().to_string();
+        let mut p = ops::load_project(&path).unwrap();
+        let before = p.clone();
+        let mut keys = vec![
+            ResKey::GameInfo,
+            ResKey::Settings,
+            ResKey::Constants,
+            ResKey::Triggers,
+        ];
+        for (k, _, _) in LIST_KINDS {
+            for i in 0..ops::slot_count(&p, k) {
+                if ops::res_exists(&p, k, i) {
+                    keys.push(ResKey::Res(k, i));
+                }
+            }
+        }
+        for key in &keys {
+            let mut ed =
+                open_editor(*key, &p, 1).unwrap_or_else(|| panic!("{name}: cannot open {key:?}"));
+            assert!(!ed.is_dirty(&p), "{name}: {key:?} dirty right after opening");
+            assert!(!ed.commit(&mut p), "{name}: {key:?} commit changed the project");
+        }
+        assert!(p == before, "{name}: project changed");
+        let mut h = Harness::builder()
+            .with_size(eframe::egui::Vec2::new(1600.0, 1000.0))
+            .build_eframe(|cc| crate::app::IdeApp::new(cc, None));
+        h.state_mut().test_set_project(p.clone());
+        h.run_steps(2);
+        let few: Vec<ResKey> = keys
+            .iter()
+            .copied()
+            .filter(|k| !matches!(k, ResKey::Res(ResourceKind::Object, i) if *i > 3))
+            .collect();
+        let n = few.len();
+        for k in few {
+            h.state_mut().open_form(k);
+            h.run_steps(1);
+        }
+        h.run_steps(2);
+        let (q, modified, forms, msgs) = h.state().test_state();
+        assert_eq!(forms, n, "{name}");
+        assert_eq!(msgs, 0, "{name}");
+        assert!(!modified, "{name}");
+        assert!(*q == p, "{name}: project changed by displaying forms");
+    }
+}
+
 /// Drive the menus like a user: create one resource of each kind.
 #[test]
 fn ui_create_via_menu() {
