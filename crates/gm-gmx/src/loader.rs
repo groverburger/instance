@@ -1053,12 +1053,9 @@ fn load_config(ctx: &mut Ctx, rel: &str, p: &mut Project, name: &mut String, sc:
     s.product = text(o, "option_version_product");
     s.copyright = text(o, "option_version_copyright");
     s.description = text(o, "option_version_description");
-    let icon = text(o, "option_windows_game_icon");
-    if !icon.trim().is_empty() {
-        if let Some(ico) = ctx.read(icon.trim()) {
-            s.icon = ico;
-        }
-    }
+    // The Studio project's game icon is deliberately not carried over: converted
+    // projects get gm81-clean's own icon (16-48 px) instead.
+    s.icon = gm_brand::ico_file(&[16, 32, 48]);
     p.game_id = int(o, "option_gameid", 0);
     p.guid = parse_guid(&text(o, "option_gameguid"));
     let dn = text(o, "option_display_name");

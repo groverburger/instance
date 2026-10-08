@@ -1764,6 +1764,7 @@ dependencies = [
 name = "gm-gmx"
 version = "0.1.0"
 dependencies = [
+ "gm-brand",
  "gm-format",
  "png",
  "roxmltree",

@@ -7,6 +7,7 @@ description = "Convert GameMaker: Studio 1.x projects (.gmx folders, .gmz archiv
 
 [dependencies]
 gm-format = { path = "../gm-format" }
+gm-brand = { path = "../gm-brand" }
 png = "0.18.1"
 roxmltree = "0.20"
 sevenz-rust = "0.6"

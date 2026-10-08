@@ -238,7 +238,7 @@ Create. (`--gm8-create-order` disables this.)
 | `variableerrors`, `argumenterrors` | uninitialised-variable flags (see below) |
 | `author`, `version`, `information`, `version_major/minor/release/build`, `version_company/product/copyright/description` | information |
 | `gameid`, `gameguid` | game id, GUID |
-| `windows_game_icon` (path to `.ico`) | icon |
+| `windows_game_icon` (path to `.ico`) | not carried over: converted projects get gm81-clean's own icon |
 | `display_name` | game name (window caption fallback) |
 | `shortcircuit` | GML translation, §12 |
 | `audioGroupCount`, `textureGroup*`, `use_new_audio` | ignored |
