@@ -118,6 +118,27 @@ fn string_escapes_optional() {
 }
 
 #[test]
+fn short_circuit() {
+    let t = Translator {
+        short_circuit: true,
+        ..Default::default()
+    };
+    // Field read of another instance on the right: guarded.
+    assert_eq!(
+        t.translate("if (instance_exists(o) && o.hp > 0) x = 1;").code,
+        "{ var __gmx_t0; __gmx_t0 = false; if (instance_exists(o)) { if (o.hp > 0) __gmx_t0 = true; } if (__gmx_t0) x = 1 };"
+    );
+    assert_eq!(
+        t.translate("ok = a or f().b;").code,
+        "{ var __gmx_t0; __gmx_t0 = true; if (!(a)) { if (!(f().b)) __gmx_t0 = false; } ok = __gmx_t0 };"
+    );
+    // Harmless right operands and global/self/other fields stay as they are.
+    for src in ["if (a && b) c = 1;", "if (a and global.b) c = 1;", "if (a || other.x) c = 1;"] {
+        assert!(!t.translate(src).changed, "{src}");
+    }
+}
+
+#[test]
 fn renames() {
     let mut t = Translator::default();
     t.var_renames.insert("browser_width".into(), "window_get_width()".into());

@@ -59,6 +59,34 @@ pub struct Translator {
     pub call_renames: HashMap<String, String>,
     /// Treat `\` in strings as an escape character (GMS2 behaviour; off for GMS1).
     pub string_escapes: bool,
+    /// Emulate Studio's short-circuit `&&` / `||` where the right operand could fail
+    /// when evaluated unconditionally (it reads a field of another instance).
+    pub short_circuit: bool,
+}
+
+/// Whether evaluating `e` may raise a runtime error depending on state: it reads a
+/// variable of another instance (`inst.x`, `obj.x`, `f().x`).
+fn risky(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Field(o, _) => {
+            !matches!(&o.kind, ExprKind::Ident(n) if n == "global" || n == "self" || n == "other")
+                || risky(o)
+        }
+        ExprKind::Num(_) | ExprKind::Hex(..) | ExprKind::Str(_) | ExprKind::Ident(_) => false,
+        ExprKind::Paren(x) | ExprKind::Unary(_, x) => risky(x),
+        ExprKind::Binary(_, a, b) => risky(a) || risky(b),
+        ExprKind::Call(_, args) => args.iter().any(risky),
+        ExprKind::Index(o, idx) | ExprKind::Access(_, o, idx) => risky(o) || idx.iter().any(risky),
+        ExprKind::Ternary(a, b, c) => risky(a) || risky(b) || risky(c),
+        ExprKind::IncDec { target, .. } => risky(target),
+    }
+}
+
+fn is_and(op: &str) -> bool {
+    op == "&&" || op == "and"
+}
+fn is_or(op: &str) -> bool {
+    op == "||" || op == "or"
 }
 
 /// Split a script file into `(name, code)` pieces at `#define name` lines. The first
@@ -479,9 +507,18 @@ fn splice(src: &str, span: Span, mut repl: Vec<(Span, String)>) -> String {
     repl.sort_by_key(|r| r.0 .0);
     let mut out = String::new();
     let mut last = span.0;
+    let word = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
     for ((a, b), t) in repl {
         out.push_str(&src[last..a]);
+        // Keep tokens apart when a replacement starts/ends with a word character
+        // (e.g. `if cond` → `if __gmx_t0`).
+        if word(out.chars().last()) && word(t.chars().next()) {
+            out.push(' ');
+        }
         out.push_str(&t);
+        if word(t.chars().last()) && word(src[b..].chars().next()) {
+            out.push(' ');
+        }
         last = b;
     }
     out.push_str(&src[last..span.1]);
@@ -537,7 +574,11 @@ impl Ctx<'_> {
             ExprKind::Str(s) => self.tr.string_escapes && s.contains('\\'),
             ExprKind::Ident(n) => self.tr.var_renames.contains_key(n),
             ExprKind::Paren(x) | ExprKind::Unary(_, x) => self.needs_expr(x),
-            ExprKind::Binary(_, a, b) => self.needs_expr(a) || self.needs_expr(b),
+            ExprKind::Binary(op, a, b) => {
+                self.needs_expr(a)
+                    || self.needs_expr(b)
+                    || (self.tr.short_circuit && (is_and(op) || is_or(op)) && risky(b))
+            }
             ExprKind::Call(n, args) => {
                 self.tr.call_renames.contains_key(n) || args.iter().any(|a| self.needs_expr(a))
             }
@@ -629,6 +670,24 @@ impl Ctx<'_> {
             ExprKind::Paren(x) | ExprKind::Unary(_, x) => {
                 let t = self.expr(x);
                 splice(self.src, e.span, vec![(x.span, t)])
+            }
+            ExprKind::Binary(op, a, b)
+                if self.tr.short_circuit && (is_and(op) || is_or(op)) && risky(b) =>
+            {
+                // Studio short-circuits; GM 8.1 evaluates both operands.
+                let at = self.expr(a);
+                let t = self.new_tmp();
+                let (bt, bpre) = self.sub(|s| s.expr(b));
+                if is_and(op) {
+                    self.pre.push(format!(
+                        "var {t}; {t} = false; if ({at}) {{ {bpre}if ({bt}) {t} = true; }}"
+                    ));
+                } else {
+                    self.pre.push(format!(
+                        "var {t}; {t} = true; if (!({at})) {{ {bpre}if (!({bt})) {t} = false; }}"
+                    ));
+                }
+                t
             }
             ExprKind::Binary(_, a, b) => {
                 let ta = self.expr(a);

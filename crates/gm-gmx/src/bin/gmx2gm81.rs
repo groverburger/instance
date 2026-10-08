@@ -9,7 +9,8 @@ fn usage() -> ExitCode {
     eprintln!(
         "usage: gmx2gm81 <input.gmx-dir | file.project.gmx | file.gmz> [-o out.gm81]\n\
          \x20      [--quiet] [--no-compat] [--gm8-create-order] [--string-escapes]\n\
-         \x20      [--uninit-zero | --uninit-error]"
+         \x20      [--uninit-zero (default) | --uninit-error | --uninit-studio]\n\
+         \x20      [--dump-code DIR]"
     );
     ExitCode::from(2)
 }
@@ -75,6 +76,7 @@ fn main() -> ExitCode {
             "--string-escapes" => opts.string_escapes = true,
             "--uninit-zero" => opts.uninit_as_zero = Some(true),
             "--uninit-error" => opts.uninit_as_zero = Some(false),
+            "--uninit-studio" => opts.uninit_as_zero = None,
             "-h" | "--help" => return usage(),
             s if s.starts_with('-') => {
                 eprintln!("unknown option {s}");

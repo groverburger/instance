@@ -17,6 +17,8 @@ pub struct Options {
     /// GMS2-style backslash escapes in strings (off: GMS1 has none).
     pub string_escapes: bool,
     /// Override "treat uninitialised variables as 0" (None: take the Studio setting).
+    /// Defaults to `Some(true)`: Studio code relies on short-circuit evaluation and
+    /// lenient reads that GM 8.1 would turn into runtime errors.
     pub uninit_as_zero: Option<bool>,
     /// Inject compatibility scripts/constants.
     pub compat: bool,
@@ -28,7 +30,7 @@ impl Default for Options {
     fn default() -> Self {
         Options {
             string_escapes: false,
-            uninit_as_zero: None,
+            uninit_as_zero: Some(true),
             compat: true,
             studio_create_order: true,
         }
@@ -166,6 +168,7 @@ pub fn convert(mut l: Loaded, opts: &Options) -> (Project, Vec<Warning>) {
     let mut macros: Vec<(String, String)> = Vec::new();
     let mut tr = Translator {
         string_escapes: opts.string_escapes,
+        short_circuit: l.short_circuit,
         ..Default::default()
     };
     visit_code(&mut p, &mut extra, &mut |_, code, kind| {
@@ -403,6 +406,19 @@ pub fn convert(mut l: Loaded, opts: &Options) -> (Project, Vec<Warning>) {
     // 8. Instance creation code order.
     finish_creation_code(&mut p, opts, &mut free_user, &mut warnings);
 
+    // Window caption: Studio shows the room caption, else the game name, and has no
+    // score display.
+    for r in p.rooms.iter_mut().flatten() {
+        if r.caption.is_empty() {
+            r.caption = l.game_name.clone();
+        }
+    }
+    if let Some(first) = p.room_order.first().and_then(|&i| p.rooms.get_mut(i as usize)).and_then(|r| r.as_mut()) {
+        first.creation_code = format!(
+            "show_score = false; // gmx2gm81: Studio has no score in the caption\n{}",
+            first.creation_code
+        );
+    }
     if let Some(v) = opts.uninit_as_zero {
         p.settings.treat_uninitialized_as_zero = v;
     }

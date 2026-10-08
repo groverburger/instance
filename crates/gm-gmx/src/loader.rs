@@ -123,6 +123,10 @@ pub struct Loaded {
     pub extra_events: Vec<(usize, i32, i32, Vec<Action>)>,
     /// Number of scripts each script file produced (`#define` splitting).
     pub split_counts: HashMap<String, usize>,
+    /// Game name: Studio display name, or the project file name.
+    pub game_name: String,
+    /// Studio short-circuit evaluation setting.
+    pub short_circuit: bool,
     pub warnings: Vec<Warning>,
 }
 
@@ -557,11 +561,12 @@ fn load_object(ctx: &mut Ctx, rel: &str, name: &str, index: usize, extra: &mut V
     o.depth = float(r, "depth", 0.0) as i32;
     o.persistent = boolean(r, "persistent", false);
     let parent = text(r, "parentName");
-    o.parent = if xml::is_none_name(&parent) {
+    o.parent = if xml::is_none_name(&parent) || parent == "self" {
+        // Old Studio versions could store "self" for no parent.
         NO_PARENT
     } else {
         let i = ctx.index(Kind::Object, &parent);
-        if i < 0 {
+        if i < 0 || i as usize == index {
             ctx.warn(&owner, format!("unknown parent '{parent}'"));
             NO_PARENT
         } else {
@@ -886,7 +891,7 @@ fn parse_guid(s: &str) -> [u8; 16] {
     g
 }
 
-fn load_config(ctx: &mut Ctx, rel: &str, p: &mut Project) {
+fn load_config(ctx: &mut Ctx, rel: &str, p: &mut Project, name: &mut String, sc: &mut bool) {
     let file = format!("{}.config.gmx", rel.replace('\\', "/"));
     let Some(src) = ctx.read_string(&file) else {
         ctx.warn("settings", format!("missing {file}; using defaults"));
@@ -958,6 +963,16 @@ fn load_config(ctx: &mut Ctx, rel: &str, p: &mut Project) {
     }
     p.game_id = int(o, "option_gameid", 0);
     p.guid = parse_guid(&text(o, "option_gameguid"));
+    let dn = text(o, "option_display_name");
+    if !dn.trim().is_empty() && dn.trim() != "GameMaker: Studio" {
+        *name = dn.trim().to_string();
+    }
+    *sc = boolean(o, "option_shortcircuit", true);
+    let dn = text(o, "option_display_name");
+    if !dn.trim().is_empty() && dn.trim() != "GameMaker: Studio" {
+        *name = dn.trim().to_string();
+    }
+    *sc = boolean(o, "option_shortcircuit", true);
     if let Some(cc) = child(r, "ConfigConstants").and_then(|c| child(c, "constants")) {
         for c in children(cc, "constant") {
             p.constants.push(Constant {
@@ -1049,6 +1064,8 @@ fn load_extensions(ctx: &mut Ctx, n: roxmltree::Node, scripts: &mut Vec<(String,
 /// Read the whole project (`proj_rel` = path of the .project.gmx inside `src`).
 pub fn load(src: &Source, proj_rel: &str) -> Result<Loaded, String> {
     let base = dir_of(&proj_rel.replace('\\', "/")).to_string();
+    let mut game_name = leaf_name(proj_rel).trim_end_matches(".project.gmx").to_string();
+    let mut short_circuit = true;
     let text_src = src
         .read_string(proj_rel)
         .ok_or_else(|| format!("cannot read {proj_rel}"))?;
@@ -1202,7 +1219,7 @@ pub fn load(src: &Source, proj_rel: &str) -> Result<Loaded, String> {
             .find(|c| c.trim().ends_with("Default"))
             .or_else(|| children(cfgs, "Config").map(text_of).next());
         if let Some(cfg) = cfg {
-            load_config(&mut ctx, cfg.trim(), &mut p);
+            load_config(&mut ctx, cfg.trim(), &mut p, &mut game_name, &mut short_circuit);
         }
     }
     if let Some(h) = child(root, "help") {
@@ -1234,6 +1251,8 @@ pub fn load(src: &Source, proj_rel: &str) -> Result<Loaded, String> {
         instance_names: inst_names,
         extra_events: extra,
         split_counts,
+        game_name,
+        short_circuit,
         warnings: ctx.warnings,
     })
 }
