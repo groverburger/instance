@@ -234,8 +234,8 @@ fn var_locals() {
     assert_eq!(h.var(&mut vm, 100000, "u"), Some(Value::Real(3.0)));
     // locals are fresh each run
     assert!(run_in(&mut vm, &mut h, "var t; return t").is_err());
-    // var shadows built-in variables
-    assert_eq!(string("var x; x = 'local'; return x"), "local");
+    // var cannot shadow built-in variables (verified in GM 8.1)
+    assert_eq!(compile_err("var x; x = 'local'; return x").message, "Cannot redeclare a builtin variable.");
     // lexical scope: uses before the declaration refer to the instance variable
     let (mut vm, mut h) = (Vm::new(), Mock::new());
     run_in(&mut vm, &mut h, "q = 1; var q; q = 2;").unwrap();
@@ -885,4 +885,13 @@ fn constant_type_mix_is_a_compile_error() {
     let mut vm = Vm::new();
     let h = Mock::new();
     assert!(vm.compile("t", b"s = 'a'; x = s + 1", &h).is_ok());
+}
+
+#[test]
+fn var_cannot_redeclare_builtin() {
+    // GM 8.1 (bb_perf): `var i, t, n, x` fails at x with this message
+    let e = compile_err("var i, t, n, x, y;");
+    assert_eq!(e.message, "Cannot redeclare a builtin variable.");
+    assert_eq!(e.col, 14);
+    assert_eq!(compile_err("globalvar speed;").message, "Cannot redeclare a builtin variable.");
 }

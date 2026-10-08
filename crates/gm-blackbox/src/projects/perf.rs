@@ -13,9 +13,9 @@ fn bench(key: &str, n: u32, setup: &str, body: &str) -> Test {
     raw(
         key,
         &[&format!(
-            r#"var i, t, n, x, y, s, a;
+            r#"var i, t, n, v, w, s, a;
 n = {n};
-x = 0; y = 0; s = ''; a = 0;
+v = 0; w = 0; s = ''; a = 0;
 {setup}
 t = current_time;
 for (i = 0; i < n; i += 1) {{ {body} }}
@@ -37,18 +37,18 @@ pub fn build() -> Spec {
     g.obj(wall).solid = true;
     let t = vec![
         bench("empty_loop", 1_000_000, "", ""),
-        bench("arith", 500_000, "", "x = x * 0.5 + i mod 7 - (i div 3);"),
-        bench("local_var", 500_000, "", "x += 1; y = x;"),
+        bench("arith", 500_000, "", "v = v * 0.5 + i mod 7 - (i div 3);"),
+        bench("local_var", 500_000, "", "v += 1; w = v;"),
         bench("instance_var", 500_000, "pf_v = 0;", "pf_v += 1; pf_w = pf_v;"),
         bench("global_var", 500_000, "global.pf_g = 0;", "global.pf_g += 1;"),
-        bench("array", 300_000, "for (x = 0; x < 1000; x += 1) pf_arr[x] = 0; x = 0;", "pf_arr[i mod 1000] = i; x = pf_arr[(i * 7) mod 1000];"),
-        bench("if_compare", 500_000, "", "if (i mod 3 == 0 && i > 10) x += 1; else y += 1;"),
+        bench("array", 300_000, "for (v = 0; v < 1000; v += 1) pf_arr[v] = 0; v = 0;", "pf_arr[i mod 1000] = i; v = pf_arr[(i * 7) mod 1000];"),
+        bench("if_compare", 500_000, "", "if (i mod 3 == 0 && i > 10) v += 1; else w += 1;"),
         bench("string_concat", 20_000, "", "s += 'ab';"),
-        bench("string_funcs", 100_000, "s = 'hello world, this is a string';", "x = string_pos('this', s) + string_length(string_copy(s, 3, 5));"),
+        bench("string_funcs", 100_000, "s = 'hello world, this is a string';", "v = string_pos('this', s) + string_length(string_copy(s, 3, 5));"),
         bench("real_to_string", 100_000, "", "s = string(i * 0.25);"),
-        bench("math_funcs", 300_000, "", "x = sin(i) + sqrt(i) + abs(-i) + point_distance(0, 0, i, 3);"),
-        bench("script_call", 200_000, "", "x = pf_add(i, 1);"),
-        bench("repeat_nested", 1, "", "repeat (1000) repeat (500) x += 1;"),
+        bench("math_funcs", 300_000, "", "v = sin(i) + sqrt(i) + abs(-i) + point_distance(0, 0, i, 3);"),
+        bench("script_call", 200_000, "", "v = pf_add(i, 1);"),
+        bench("repeat_nested", 1, "", "repeat (1000) repeat (500) v += 1;"),
         bench(
             "instance_create_destroy",
             20_000,
@@ -65,14 +65,14 @@ pub fn build() -> Spec {
             "place_free",
             20_000,
             "with (pf_inst) instance_destroy(); repeat (500) instance_create(floor(random(64)) * 16, floor(random(48)) * 16, pf_wall);",
-            "x += place_free(random(1000), random(700));",
+            "v += place_free(random(1000), random(700));",
         ),
-        bench("instance_nearest", 5_000, "", "x = instance_nearest(random(1000), random(700), pf_wall);"),
+        bench("instance_nearest", 5_000, "", "v = instance_nearest(random(1000), random(700), pf_wall);"),
         bench(
             "ds_list",
             100_000,
             "a = ds_list_create();",
-            "ds_list_add(a, i); x = ds_list_find_value(a, i div 2);",
+            "ds_list_add(a, i); v = ds_list_find_value(a, i div 2);",
         ),
         bench("execute_string", 5_000, "", "execute_string('global.pf_e = 1 + 2;');"),
         vals("perf.done", &[("perf.done", "1")]),

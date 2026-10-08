@@ -216,12 +216,22 @@ impl<'a> Compiler<'a> {
                 }
             }
             StmtKind::Var(names) => {
-                for (n, _) in names {
+                for (n, span) in names {
+                    // GM 8.1: `var x` fails with "Cannot redeclare a builtin variable."
+                    // (gml-language.md §3 note 7, verified black-box with bb_perf)
+                    if builtins::variable_id(n).is_some() {
+                        return err("Cannot redeclare a builtin variable.", *span);
+                    }
                     self.declare_local(n);
                 }
                 St::Nop
             }
             StmtKind::GlobalVar(names) => {
+                for (n, span) in names {
+                    if builtins::variable_id(n).is_some() {
+                        return err("Cannot redeclare a builtin variable.", *span);
+                    }
+                }
                 St::GlobalVar(names.iter().map(|(n, _)| self.interner.intern(n)).collect())
             }
             StmtKind::If(c, t, e) => {

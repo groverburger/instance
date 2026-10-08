@@ -905,3 +905,9 @@ resources are inaccessible from code (the built-in meaning wins).
 - OPEN (answered by `bb_lang`'s script tests): whether fewer arguments than required
   is also an error; how `argument[i]` and `argument_count` affect the required count;
   whether `script_execute` is checked too. Do not implement the check until known.
+
+## `var` / `globalvar` of a built-in name — VERIFIED black-box (GM 8.1 Lite, `bb_perf`)
+
+`var i, t, n, x, ...` fails to compile at `x` with "Cannot redeclare a builtin
+variable." Locals (and, by the same rule, globalvars) cannot use the name of a
+built-in variable; they never shadow built-ins.
