@@ -425,7 +425,7 @@ impl Audio {
                             Err(e) => eprintln!("audio: cannot load SoundFont {}: {}", p.display(), e),
                         },
                         None => crate::warn(if cfg!(target_arch = "wasm32") {
-                            "audio: no SoundFont was loaded (see "Web" in README.md); MIDI music is silent"
+                            "audio: no SoundFont was loaded (see 'Web' in README.md); MIDI music is silent"
                         } else {
                             "audio: no MIDI synthesiser (set GM81_SOUNDFONT to a .sf2 file); MIDI music is silent"
                         }),
