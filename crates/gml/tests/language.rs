@@ -65,6 +65,22 @@ fn strings() {
 }
 
 #[test]
+fn string_appends_keep_value_semantics() {
+    // in-place appends must not change other holders of the same string
+    assert_eq!(string("var s, t; s = 'a'; t = s; s += 'b'; return t + '/' + s"), "a/ab");
+    assert_eq!(string("var s, t; s = 'a'; t = s; s = s + 'b'; return t + '/' + s"), "a/ab");
+    assert_eq!(string("var s; s = 'ab'; s += s; s = s + s; return s"), "abababab");
+    assert_eq!(string("a = 'x'; b = a; a += 'y'; return b + '/' + a"), "x/xy");
+    assert_eq!(string("global.g = 'x'; b = global.g; global.g += 'y'; return b + '/' + global.g"), "x/xy");
+    assert_eq!(real("var s, k; s = ''; k = 'ab'; repeat (1000) s += k; return string_length(s)"), 2000.0);
+    // the implicit result of a script ending in an append
+    assert_eq!(string("var s; s = 'a'; s += 'b';"), "ab");
+    // mixed operands still fail
+    assert_eq!(err("var s; s = 'a'; s += 1").message, "Wrong type of arguments to +.");
+    assert_eq!(err("var s; s = 1; s = s + 'a'").message, "Wrong type of arguments to +.");
+}
+
+#[test]
 fn type_errors() {
     assert!(err("return 'a' + 1").message.contains("Wrong type"));
     assert!(err("return 'a' - 'b'").message.contains("Wrong type"));

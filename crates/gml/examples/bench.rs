@@ -75,6 +75,10 @@ fn main() {
         ("script calls", "var i, s; s = 0; for (i = 0; i < 300000; i += 1) s += scr(i); return s"),
         ("with self", "var i; for (i = 0; i < 300000; i += 1) with (self) n = i; return n"),
         ("string concat", "var i, s; s = ''; for (i = 0; i < 100000; i += 1) s = 'x' + string(i mod 10); return s"),
+        ("string append local", "var i, s; s = ''; for (i = 0; i < 20000; i += 1) s += 'ab'; return string_length(s)"),
+        ("string append inst", "var i; ss = ''; for (i = 0; i < 20000; i += 1) ss += 'ab'; return string_length(ss)"),
+        ("string append global", "var i; global.gs = ''; for (i = 0; i < 20000; i += 1) global.gs += 'ab'; return string_length(global.gs)"),
+        ("instance var rw", "var i; pf_v = 0; for (i = 0; i < 500000; i += 1) { pf_v += 1; pf_w = pf_v; } return pf_w"),
     ];
     for (name, src) in cases {
         let mut w = World {

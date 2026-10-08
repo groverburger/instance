@@ -268,7 +268,15 @@ impl Vm {
         pos: Pos,
     ) -> R<()> {
         let v = match op {
-            None => self.eval(h, f, e)?,
+            None => {
+                // `s = s + t` on a string local appends like `s += t`
+                if let Ex::Binary(BinOp::Add, a, b, _) = e {
+                    if matches!(**a, Ex::Local(sa, _) if sa == slot) && self.append_local(h, f, slot, b)? {
+                        return Ok(());
+                    }
+                }
+                self.eval(h, f, e)?
+            }
             Some(op) => {
                 let r = self.eval(h, f, e)?;
                 // Fast path: real op= real on a scalar local, updated in place.
@@ -287,6 +295,13 @@ impl Vm {
                         return Ok(());
                     }
                 }
+                // Fast path: string += string on a scalar local, appended in place
+                // when the local holds the only reference.
+                if let (BinOp::Add, Value::Str(rs)) = (op, &r) {
+                    if Self::append_to(&mut f.last, f.locals[slot as usize].as_mut(), rs) {
+                        return Ok(());
+                    }
+                }
                 let cur = self.read_local(f, slot, 0, 0, pos)?;
                 self.bin(f, pos, op, &cur, &r)?
             }
@@ -300,6 +315,32 @@ impl Vm {
             none => *none = Some(Var::Scalar(v)),
         }
         Ok(())
+    }
+
+    /// `s = s + b` (see assign_local): appends the value of `b`, a constant or a local,
+    /// to the scalar string local `slot`. Returns false if `b` or the local is not a
+    /// string (the general path then runs).
+    #[inline(never)]
+    fn append_local(&mut self, h: &mut dyn Host, f: &mut Frame, slot: u16, b: &Ex) -> R<bool> {
+        if !matches!(b, Ex::Const(Value::Str(_)) | Ex::Local(..)) {
+            return Ok(false);
+        }
+        let Value::Str(rs) = self.eval(h, f, b)? else { return Ok(false) };
+        Ok(Self::append_to(&mut f.last, f.locals[slot as usize].as_mut(), &rs))
+    }
+
+    /// Appends `rs` to `var` if it is a scalar string, in place when nothing else
+    /// holds the string, and records the result in `last`.
+    #[inline]
+    fn append_to(last: &mut Value, var: Option<&mut Var>, rs: &[u8]) -> bool {
+        if let Some(Var::Scalar(Value::Str(cur))) = var {
+            *last = Value::Real(0.0); // may share the old string
+            cur.push_bytes(rs);
+            *last = Value::Str(cur.clone());
+            true
+        } else {
+            false
+        }
     }
 
     #[inline(never)]
@@ -474,9 +515,12 @@ impl Vm {
             Ex::Const(v) => Ok(v.clone()),
             Ex::Local(s, pos) => self.read_local(f, *s, 0, 0, *pos),
             Ex::User(v, pos) => self.read_user(h, f, *v, 0, 0, *pos),
-            Ex::Builtin(b, pos) => h
-                .get_builtin(&f.ctx, f.ctx.self_id, *b, 0)
-                .map_err(|e| self.loc(f, *pos, e)),
+            Ex::Builtin(b, pos) => match h.builtin_real(f.ctx.self_id, *b) {
+                Some(x) => Ok(Value::Real(x)),
+                None => h
+                    .get_builtin(&f.ctx, f.ctx.self_id, *b, 0)
+                    .map_err(|e| self.loc(f, *pos, e)),
+            },
             Ex::Arg(n) => Ok(self.args[*n as usize].clone()),
             Ex::Place(p) => self.read_place(h, f, p),
             Ex::Unary(op, x, pos) => {
@@ -802,6 +846,9 @@ impl Vm {
             PlaceKind::SelfUser(v) => self.read_inst(h, f, f.ctx.self_id, *v, i, j, pos),
             PlaceKind::Global(v) => self.read_global(f, *v, i, j, pos),
             PlaceKind::Builtin(b) => {
+                if let Some(x) = h.builtin_real(f.ctx.self_id, *b) {
+                    return Ok(Value::Real(x));
+                }
                 let idx = self.builtin_index(f, *b, i, j, pos)?;
                 h.get_builtin(&f.ctx, f.ctx.self_id, *b, idx)
                     .map_err(|e| self.loc(f, pos, e))
@@ -900,6 +947,34 @@ impl Vm {
                 }
             }
         }
+        // Fast path: `name += string` on a scalar string variable (instance or
+        // global), appended in place when the variable holds the only reference.
+        if let (Some(BinOp::Add), Idx::None, Ex::Const(Value::Str(_)) | Ex::Local(..)) = (op, &p.idx, rhs) {
+            if self.append_var(h, f, p, rhs)? {
+                return Ok(());
+            }
+        }
+        // Fast path: `x op= real` on a plain real built-in of self (the operand is
+        // a constant or a local, so evaluating it first changes nothing).
+        if let (
+            Some(op @ (BinOp::Add | BinOp::Sub | BinOp::Mul)),
+            PlaceKind::Builtin(b),
+            Idx::None,
+            Ex::Const(_) | Ex::Local(..),
+        ) = (op, &p.kind, &p.idx, rhs)
+        {
+            if let Value::Real(rv) = self.eval(h, f, rhs)? {
+                if let Some(cur) = h.builtin_real_mut(f.ctx.self_id, *b) {
+                    *cur = match op {
+                        BinOp::Add => *cur + rv,
+                        BinOp::Sub => *cur - rv,
+                        _ => *cur * rv,
+                    };
+                    f.last = Value::Real(*cur);
+                    return Ok(());
+                }
+            }
+        }
         let (i, j) = self.eval_idx(h, f, &p.idx, p.pos)?;
         let v = match op {
             None => self.eval(h, f, rhs)?,
@@ -911,6 +986,26 @@ impl Vm {
         };
         f.last = v.clone();
         self.write_resolved(h, f, &p.kind, i, j, v, p.pos)
+    }
+
+    /// See [`assign`](Self::assign): `name += t` for a string variable `name` and a
+    /// constant or local `t` (evaluating it first changes nothing). Returns false
+    /// when the general path must be taken.
+    #[inline(never)]
+    fn append_var(&mut self, h: &mut dyn Host, f: &mut Frame, p: &Place, rhs: &Ex) -> R<bool> {
+        let (var, global) = match p.kind {
+            PlaceKind::User(v) if !self.is_globalvar(v) => (v, false),
+            PlaceKind::User(v) | PlaceKind::Global(v) => (v, true),
+            PlaceKind::SelfUser(v) => (v, false),
+            _ => return Ok(false),
+        };
+        let Value::Str(rs) = self.eval(h, f, rhs)? else { return Ok(false) };
+        let slot = if global {
+            self.globals.get_mut(var)
+        } else {
+            h.instance_vars(f.ctx.self_id).and_then(|t| t.get_mut(var))
+        };
+        Ok(Self::append_to(&mut f.last, slot, &rs))
     }
 
     fn write_local(

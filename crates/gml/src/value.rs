@@ -3,40 +3,188 @@
 use std::cmp::Ordering;
 use std::fmt;
 use std::ops::Deref;
-use std::rc::Rc;
 
-/// An immutable, reference-counted GML string.
+/// A reference-counted GML string (copy on write).
 ///
 /// GML strings are sequences of 8-bit characters in the game's ANSI code page, so the
 /// content is stored as raw bytes. Converting to/from Rust strings copies bytes as-is
 /// (ASCII is unaffected); decoding the code page for display is the host's concern.
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
-pub struct GmlStr(Rc<[u8]>);
+///
+/// One allocation holds the reference count, length, capacity and bytes, behind a
+/// thin pointer (so a [`Value`] is 16 bytes). Appending to a string nobody else holds
+/// (`s += 'ab'`) grows it in place with spare capacity; other holders never see a
+/// change.
+pub struct GmlStr(std::ptr::NonNull<StrHeader>);
+
+#[repr(C)]
+#[doc(hidden)]
+pub struct StrHeader {
+    rc: std::cell::Cell<usize>,
+    len: usize,
+    cap: usize,
+}
 
 impl GmlStr {
+    fn layout(cap: usize) -> std::alloc::Layout {
+        std::alloc::Layout::from_size_align(std::mem::size_of::<StrHeader>() + cap, std::mem::align_of::<StrHeader>())
+            .expect("string too long")
+    }
+
+    /// A new unshared string with room for `cap` bytes holding `b` (`b.len() <= cap`).
+    fn with_capacity(b: &[u8], cap: usize) -> Self {
+        debug_assert!(b.len() <= cap);
+        let layout = Self::layout(cap);
+        // SAFETY: the layout has a non-zero size (the header); the header is
+        // written before use and `b.len() <= cap` bytes are copied after it.
+        unsafe {
+            let p = std::alloc::alloc(layout) as *mut StrHeader;
+            let Some(nn) = std::ptr::NonNull::new(p) else { std::alloc::handle_alloc_error(layout) };
+            p.write(StrHeader {
+                rc: std::cell::Cell::new(1),
+                len: b.len(),
+                cap,
+            });
+            std::ptr::copy_nonoverlapping(b.as_ptr(), Self::data(p), b.len());
+            GmlStr(nn)
+        }
+    }
+
+    /// Start of the bytes after the header.
+    #[inline]
+    fn data(p: *mut StrHeader) -> *mut u8 {
+        // SAFETY (callers): `p` points to a live allocation of at least the header
+        unsafe { (p as *mut u8).add(std::mem::size_of::<StrHeader>()) }
+    }
+
+    #[inline]
+    fn header(&self) -> &StrHeader {
+        // SAFETY: the pointer stays valid while any GmlStr refers to it
+        unsafe { self.0.as_ref() }
+    }
+
     /// Creates a string from raw bytes.
     pub fn from_bytes(b: &[u8]) -> Self {
-        GmlStr(Rc::from(b))
+        Self::with_capacity(b, b.len())
     }
+
+    /// Appends bytes: in place if this is the only reference and there is room,
+    /// otherwise into a new allocation with spare capacity (other holders keep the
+    /// old value).
+    pub fn push_bytes(&mut self, b: &[u8]) {
+        let h = self.header();
+        let (len, cap, unique) = (h.len, h.cap, h.rc.get() == 1);
+        if unique && cap - len >= b.len() {
+            // SAFETY: unique, so nobody else can observe the bytes or the length;
+            // there is room for `b` after the current bytes.
+            unsafe {
+                let p = self.0.as_ptr();
+                std::ptr::copy_nonoverlapping(b.as_ptr(), Self::data(p).add(len), b.len());
+                (*p).len = len + b.len();
+            }
+            return;
+        }
+        let new_len = len.checked_add(b.len()).expect("string too long");
+        // grow geometrically: repeated appends stay linear overall
+        let mut n = Self::with_capacity(self.as_bytes(), new_len.max(2 * len).max(16));
+        // SAFETY: `n` is new and unique with room for `new_len` bytes
+        unsafe {
+            let p = n.0.as_ptr();
+            std::ptr::copy_nonoverlapping(b.as_ptr(), Self::data(p).add(len), b.len());
+            (*p).len = new_len;
+        }
+        std::mem::swap(self, &mut n);
+    }
+
     /// The raw bytes.
+    #[inline]
     pub fn as_bytes(&self) -> &[u8] {
-        &self.0
+        let h = self.header();
+        // SAFETY: `len` initialised bytes follow the header
+        unsafe { std::slice::from_raw_parts(Self::data(self.0.as_ptr()), h.len) }
     }
+
     /// Lossy conversion for display/debugging (bytes ≥ 0x80 are mapped as Latin-1).
     pub fn to_string_lossy(&self) -> String {
-        if let Ok(s) = std::str::from_utf8(&self.0) {
-            if s.is_ascii() {
-                return s.to_owned();
-            }
+        let b = self.as_bytes();
+        if b.is_ascii() {
+            // SAFETY-free: ASCII is valid UTF-8
+            return String::from_utf8_lossy(b).into_owned();
         }
-        self.0.iter().map(|&b| b as char).collect()
+        b.iter().map(|&c| c as char).collect()
+    }
+}
+
+impl Clone for GmlStr {
+    #[inline]
+    fn clone(&self) -> Self {
+        let rc = &self.header().rc;
+        rc.set(rc.get() + 1);
+        GmlStr(self.0)
+    }
+}
+
+impl Drop for GmlStr {
+    #[inline]
+    fn drop(&mut self) {
+        let rc = &self.header().rc;
+        let n = rc.get() - 1;
+        rc.set(n);
+        if n == 0 {
+            // SAFETY: that was the last reference
+            unsafe { Self::free(self.0) }
+        }
+    }
+}
+
+impl GmlStr {
+    /// Frees the allocation (kept out of line so that `Value` drops stay small).
+    ///
+    /// # Safety
+    /// No `GmlStr` may refer to `p` any more.
+    #[inline(never)]
+    unsafe fn free(p: std::ptr::NonNull<StrHeader>) {
+        // SAFETY: `p` was allocated by `with_capacity` with the layout for `cap`
+        unsafe {
+            let cap = (*p.as_ptr()).cap;
+            std::alloc::dealloc(p.as_ptr() as *mut u8, Self::layout(cap));
+        }
+    }
+}
+
+impl Default for GmlStr {
+    fn default() -> Self {
+        GmlStr::from_bytes(b"")
+    }
+}
+
+impl PartialEq for GmlStr {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0 || self.as_bytes() == other.as_bytes()
+    }
+}
+impl Eq for GmlStr {}
+impl PartialOrd for GmlStr {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for GmlStr {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.as_bytes().cmp(other.as_bytes())
+    }
+}
+impl std::hash::Hash for GmlStr {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.as_bytes().hash(state)
     }
 }
 
 impl Deref for GmlStr {
     type Target = [u8];
+    #[inline]
     fn deref(&self) -> &[u8] {
-        &self.0
+        self.as_bytes()
     }
 }
 
@@ -52,7 +200,7 @@ impl From<&[u8]> for GmlStr {
 }
 impl From<Vec<u8>> for GmlStr {
     fn from(s: Vec<u8>) -> Self {
-        GmlStr(Rc::from(s))
+        GmlStr::from_bytes(&s)
     }
 }
 impl From<String> for GmlStr {
@@ -516,6 +664,38 @@ pub fn unary(op: UnOp, v: &Value) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gml_str_copy_on_write() {
+        assert_eq!(std::mem::size_of::<Value>(), 16);
+        let mut a = GmlStr::from("ab");
+        let b = a.clone();
+        a.push_bytes(b"cd");
+        assert_eq!(a.as_bytes(), b"abcd");
+        assert_eq!(b.as_bytes(), b"ab");
+        // unique: grows in place (same allocation while capacity lasts)
+        let p = a.as_bytes().as_ptr();
+        a.push_bytes(b"e");
+        assert_eq!(a.as_bytes().as_ptr(), p);
+        for _ in 0..1000 {
+            a.push_bytes(b"xy");
+        }
+        assert_eq!(a.len(), 2005);
+        assert_eq!(&a[..5], b"abcde");
+        let c = a.clone();
+        assert_eq!(a, c);
+        drop(a);
+        assert_eq!(c.len(), 2005);
+        let mut e = GmlStr::default();
+        assert!(e.is_empty());
+        e.push_bytes(b"");
+        e.push_bytes(b"z");
+        assert_eq!(e, GmlStr::from("z"));
+        assert!(GmlStr::from("a") < GmlStr::from("b"));
+        use std::collections::HashSet;
+        let set: HashSet<GmlStr> = [GmlStr::from("q"), GmlStr::from(vec![b'q'])].into_iter().collect();
+        assert_eq!(set.len(), 1);
+    }
 
     #[test]
     fn string_conversion() {

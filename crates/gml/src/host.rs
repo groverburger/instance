@@ -97,6 +97,21 @@ pub trait Host {
     /// (spec §10.3); that is the host's choice.
     fn instance_vars(&mut self, id: i32) -> Option<&mut VarTable>;
 
+    /// Direct access to a plain real built-in instance variable (one whose write
+    /// has no effect beyond storing the value, such as `x`), for `x += 1` style
+    /// updates. `None` (the default) makes the interpreter use
+    /// [`get_builtin`](Host::get_builtin) / [`set_builtin`](Host::set_builtin).
+    fn builtin_real_mut(&mut self, _inst: i32, _var: VariableId) -> Option<&mut f64> {
+        None
+    }
+
+    /// The value of a real, non-array built-in instance variable of `inst` (such
+    /// as `x`) when the host can read it directly; `None` (the default) makes the
+    /// interpreter use [`get_builtin`](Host::get_builtin).
+    fn builtin_real(&mut self, _inst: i32, _var: VariableId) -> Option<f64> {
+        None
+    }
+
     /// Whether instance `id` still exists and is active (used to skip instances
     /// destroyed or deactivated during a `with` loop).
     fn instance_exists(&mut self, id: i32) -> bool;
