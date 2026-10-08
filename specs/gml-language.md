@@ -882,3 +882,16 @@ resources are inaccessible from code (the built-in meaning wins).
 - The seed at game start differs per run (the game is randomized at start).
 - Open: values >= 2^31 printed via `floor(...)` + `string_format` came out negative;
   whether `floor()` or `string_format` wraps to 32 bits is answered by `bb_lang`.
+
+## Script argument count and name priority — VERIFIED black-box (GM 8.1 Lite, `bb_clash`)
+
+- A user script whose name equals a built-in function (`abs`) takes priority:
+  `abs(-3)` called the script.
+- GM 8.1 checks script argument counts at run time. A script whose body is
+  `return 42;` (no `argumentN` used) called with one argument raised the non-fatal
+  error: `Illegal argument count calling script "abs".` / `Script requires 0
+  arguments, 1 have been supplied.` So a script has a *required* argument count
+  derived from its body (presumably the highest `argumentN` used + 1).
+- OPEN (answered by `bb_lang`'s script tests): whether fewer arguments than required
+  is also an error; how `argument[i]` and `argument_count` affect the required count;
+  whether `script_execute` is checked too. Do not implement the check until known.
