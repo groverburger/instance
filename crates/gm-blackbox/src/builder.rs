@@ -85,7 +85,7 @@ impl Gen {
         // bb_lang/bb_args0 raise errors on purpose and record them in
         // error_occurred/error_last, so they don't show dialogs; every other project
         // shows errors so an unexpected failure is visible instead of a silent exit.
-        s.display_errors = !matches!(name, "bb_lang" | "bb_args0");
+        s.display_errors = !(name.starts_with("bb_lang") || name == "bb_args0");
         s.write_errors_to_log = true;
         s.abort_on_all_errors = false;
         s.treat_uninitialized_as_zero = false;
