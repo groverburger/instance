@@ -176,6 +176,47 @@ take effect immediately `[403_08]`, `[112_03]`:
 Room start applies to all instances present (including carried-over persistent
 ones). Game Start happens after Create and before Room Start `[111]`.
 
+### 3.2a VERIFIED room-transition rules (black-box, GM 8.1 Lite, `bb_rooms`)
+These override anything above that disagrees.
+
+1. **Room change inside an event.** When code calls `room_goto` (or `room_goto_next`
+   etc.), the current *action* runs to completion (statements after the call in the
+   same code action still execute). Then the remaining actions of that event are
+   skipped, and the rest of the step is abandoned: no further events for later
+   instances in that phase, no later phases (end step, draw, ...). The transition is
+   performed immediately: Room End for every instance in instance-list order, then
+   the new room is entered (step 2).
+   Observed: `go.ST go.after_goto k.RE gy.RE go.RE gx.RE pi.IC ...` — `go`'s second
+   action and `gx`'s Step never ran.
+2. **Entering a room — instance list and Create order.**
+   a. All instances placed in the room are first added to the instance list, in
+      placement order, *before any creation code or Create event runs*
+      (`instance_count` read in the second placed instance's Create was 5 = all
+      placed instances).
+   b. A placed instance whose id already exists (a persistent instance carried over
+      from an earlier visit) is NOT created again (no duplicate, no creation code, no
+      Create event).
+   c. Persistent instances carried over from the previous room come AFTER the room's
+      placed instances in the instance list, keeping their relative order.
+      Re-entering a persistent room: its restored instances first, then the carried
+      persistent instances.
+   d. Then, for each newly placed instance in placement order: its instance creation
+      code, then its Create event. Instances created during these (instance_create)
+      are appended to the end of the list.
+   e. Then Game Start (first room of the game only), then the room creation code,
+      then Room Start for every instance in instance-list order.
+   Observed orders: r1 first visit `pi, k, pc` (placed, carried, created-by-pi);
+   r2 `pp, tq, k`; r1 re-entry `pi, pc, pp, k`; r2 re-entry `tq, pp, k` with no second
+   `pp`. Room End uses the same list order.
+3. **A frame is drawn right after entering a room**, after Room Start and before
+   the first Begin Step in that room (Draw events logged between Room Start and the
+   first step's Begin Step at game start).
+4. Defaults observed at game start: score 0, lives -1, health 100, show_score 1,
+   show_lives 0, show_health 0, captions "Score: ", "Lives: ", "Health: ",
+   room_caption "" (when empty in the room), transition_kind 0, cursor_sprite -1.
+   Caption with room_caption 'Cap' and all three shown: `Cap Score: 12 Lives: 3
+   Health: 50` (single spaces between parts).
+
 ### 3.3 Game end and restart
 * `game_end()`: every instance receives **Game End** `[111]`; then included files
   flagged "remove at game end" are deleted, the temp folder is removed, the display
