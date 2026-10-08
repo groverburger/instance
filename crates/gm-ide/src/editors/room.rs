@@ -1859,6 +1859,18 @@ mod tests {
         h.run_steps(3);
         h.get_by_label("Maximise").click();
         h.run_steps(3);
+        if let Some(obj) = parts.get(5) {
+            // pick the object to add (shown in the large preview)
+            h.get_by_label("Select the object to add").click();
+            h.run_steps(3);
+            h.get(
+                egui_kittest::kittest::by()
+                    .label_contains(obj)
+                    .role(eframe::egui::accesskit::Role::Button),
+            )
+            .click();
+            h.run_steps(3);
+        }
         let frac = |i: usize| -> Option<eframe::egui::Vec2> {
             let v: Vec<f32> = parts
                 .get(i)?
