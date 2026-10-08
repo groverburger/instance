@@ -655,3 +655,41 @@ bb_restart, bb_clash and bb_optional `file.*`.
   need a test that carries the results through a file.
 - R-26: CORRECTED. `file_text_write_real` wraps integers to 32 bits;
   `file_text_open_read` of a missing file returns -1.
+
+## [RESOLVED-MOTION] Motion / collision / bbox verified in GM 8.1 (bb_motion, bb_optional, 2026-10-08)
+
+Evidence: `gm81_blackbox_tests/gm/results_bb_motion.txt`, `results_bb_optional.txt`
+(GM 8.1 Lite); rules written up in runtime.md §4.2 (5b), §4.3, §7.5, §8.2, §8.3,
+§8.6, §10.1, §10.2. gm-runner now matches all 472 bb_motion keys and all 22
+bb_optional `xform.*` keys.
+- RT-01: PARTLY RESOLVED. Timelines advance after Begin Step (mo.tl.*: moment 0 of a
+  timeline started in Create logs step 1, after the clock's Begin Step), not before
+  it. Order relative to alarms/keyboard/mouse/Step still open. Animation advances
+  after Draw (Draw sees the pre-advance image_index, mo.an*.dr) — unchanged.
+- RT-06 / R-14: RESOLVED (§8.6). The put-back happens when either instance is solid
+  (solid mover vs non-solid wall stops too: mo.sol.r3m stays at 112). A colliding
+  pair is handled once per step, the partner's event right after the first one.
+  Collision events are processed object-major (objects ascending, then the event's
+  target object ascending, then instance order): `r4m r4w r1m r1w r5m r5w1 r3m ...`.
+  Not verified: whether both instances are moved back (only static walls tested).
+- RT-08: (alarms) not covered by bb_motion.
+- RT-11 / R-11: RESOLVED (§8.2). bbox corners are `xs·(l−ox)` and `xs·(r+1−ox) − 1`
+  (−1 after scaling, also for negative scales), rotated, min/max rounded half to
+  even (27 cases incl. origin 8,8 at .5 positions, scales −1/0.3/0.5/1.5/2, angles
+  30/45/90/180). The bbox is only a pre-filter: a pixel belongs to an instance only
+  if its centre maps into the local mask box, also for rectangle masks
+  (coll.place_meeting_xm15_5 = 0 although bbox_right = 0 touches column 0).
+- RT-17: RESOLVED for open paths (§10.1). Relative paths are anchored at their first
+  point even when a negative speed starts them at position 1; end action stop sets
+  position 1 (also when running backwards); restart/continue carry the overshoot,
+  reverse mirrors it; path_speed is never changed by stop. Timelines: moments run
+  with the position already advanced; speed 2/0.5/−1, fractional start, looping
+  (position 0 after passing the last moment) as recommended.
+- New (VERIFIED, §4.3): step events (begin/normal/end) are delivered object-major
+  (objects ascending, then instance order): mo.seq `r1m r4m r5m r2m r3m`. Room
+  Start/End stay in instance order (bb_rooms). Alarm/keyboard/mouse order across
+  objects remains instance order until bb_instances / bb_events results arrive
+  (bb_instances `in.s*` already logs step order of objects created out of index
+  order; bb_events logs timeline vs alarm vs step tags).
+- Animation (§7.5): negative image_speed never wraps and fires no Animation
+  End (mo.an3: −1, −2, −3, ...).

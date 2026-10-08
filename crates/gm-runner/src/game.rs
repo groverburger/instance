@@ -149,8 +149,11 @@ pub struct Game {
     pub script_names: HashMap<String, i32>,
     /// Effective event tables (own + inherited): object → (type,num) → (owner, list).
     pub effective: Vec<HashMap<(i32, i32), (i32, Rc<ActionList>)>>,
-    /// Collision handler per (object, other object): (owner object, list).
-    pub collision_table: HashMap<(i32, i32), (i32, Rc<ActionList>)>,
+    /// Collision handler per (object, other object): (owner object, list, the
+    /// event's target object, i.e. the other object or the ancestor it names).
+    pub collision_table: HashMap<(i32, i32), (i32, Rc<ActionList>, i32)>,
+    /// Per object: the distinct targets of its effective collision events, ascending.
+    pub collision_targets: Vec<Vec<i32>>,
     /// Ancestor chains, self first.
     pub ancestors: Vec<Vec<i32>>,
     /// Objects that have a collision handler at all (fast skip).
@@ -384,6 +387,7 @@ impl Game {
             has_collision: Vec::new(),
             event_objs: HashMap::new(),
             collision_partners: Vec::new(),
+            collision_targets: Vec::new(),
             has_mouse: Vec::new(),
             has_boundary: Vec::new(),
             instances: Vec::new(),
@@ -708,6 +712,7 @@ impl Game {
             .collect();
         self.collision_table.clear();
         self.collision_partners = vec![Vec::new(); n];
+        self.collision_targets = vec![Vec::new(); n];
         self.has_collision = vec![false; n];
         for a in 0..n {
             if self.objects[a].is_none() {
@@ -728,13 +733,17 @@ impl Game {
                     let o = self.objects[owner as usize].as_ref().unwrap();
                     for &target in &self.ancestors[b] {
                         if let Some(l) = o.events.get(&(ev::COLLISION, target)) {
-                            self.collision_table.insert((a as i32, b as i32), (owner, l.clone()));
+                            self.collision_table.insert((a as i32, b as i32), (owner, l.clone(), target));
                             self.collision_partners[a].push(b as i32);
+                            if !self.collision_targets[a].contains(&target) {
+                                self.collision_targets[a].push(target);
+                            }
                             break 'outer;
                         }
                     }
                 }
             }
+            self.collision_targets[a].sort_unstable();
         }
     }
 
@@ -1170,17 +1179,20 @@ impl Game {
                     i.path_positionprevious = i.path_position;
                 }
             }
-            // 4. timelines
-            phase!(self, "timelines", self.advance_timelines(vm));
-            if self.pending.is_some() {
-                break 'phases;
-            }
             // 5. begin step
             self.run_triggers(vm, 1)?;
             if self.pending.is_some() {
                 break 'phases;
             }
             phase!(self, "begin step", self.broadcast(vm, ev::STEP, crate::events::step::BEGIN));
+            if self.pending.is_some() {
+                break 'phases;
+            }
+            // 5b. timelines. VERIFIED black-box (bb_motion mo.tl.*): moments run
+            // after Begin Step (moment 0 of a timeline started in Create runs in
+            // the first step, after the Begin Step events). The order relative to
+            // alarms / keyboard / mouse / Step is not verified.
+            phase!(self, "timelines", self.advance_timelines(vm));
             if self.pending.is_some() {
                 break 'phases;
             }
