@@ -4,6 +4,6 @@ edition.workspace = true
 license.workspace = true
 version.workspace = true
 
-[dependencies]
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 if-addrs = "0.15.0"
 socket2 = { version = "0.6.5", features = ["all"] }

@@ -176,11 +176,7 @@ pub(crate) fn system_now() -> f64 {
     }
     #[cfg(not(windows))]
     {
-        // Without a time-zone database we use UTC.
-        let secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs_f64())
-            .unwrap_or(0.0);
+        let secs = crate::clock::unix_seconds() + crate::clock::local_offset_seconds();
         EPOCH_OFFSET as f64 + secs / 86400.0
     }
 }

@@ -301,10 +301,7 @@ impl Vm {
 
     /// Seeds the generator from the system clock (`randomize`).
     pub fn randomize(&mut self) {
-        let t = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos() as u64)
-            .unwrap_or(0);
+        let t = crate::clock::seed_nanos();
         self.set_seed((t % 2_147_483_647) as f64);
     }
 

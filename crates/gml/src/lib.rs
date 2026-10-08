@@ -48,6 +48,7 @@
 
 pub mod ast;
 pub mod builtins;
+pub mod clock;
 mod compile;
 pub mod ds;
 mod error;
