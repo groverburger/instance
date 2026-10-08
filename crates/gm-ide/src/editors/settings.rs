@@ -302,6 +302,10 @@ impl Editor for SettingsEditor {
                         &mut s.treat_uninitialized_as_zero,
                         "Treat uninitialized variables as value 0",
                     );
+                    ui.checkbox(
+                        &mut s.argument_errors,
+                        "Throw an error when arguments aren't initialised correctly.",
+                    );
                 }
                 Tab::Info => {
                     egui::Grid::new("info").num_columns(2).show(ui, |ui| {

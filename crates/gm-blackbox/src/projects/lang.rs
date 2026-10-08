@@ -835,7 +835,7 @@ pub fn lang_keys() -> Vec<KeyDoc> {
 
 pub fn build_args0() -> Spec {
     let mut g = Gen::new("bb_args0", 81004);
-    g.p.settings.uninitialized_extra_bits = 0;
+    g.p.settings.argument_errors = false;
     let fw = install(&mut g);
     arg_scripts(&mut g);
     let mut t = arg_tests();

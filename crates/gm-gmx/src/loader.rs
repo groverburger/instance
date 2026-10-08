@@ -1038,7 +1038,7 @@ fn load_config(ctx: &mut Ctx, rel: &str, p: &mut Project, name: &mut String, sc:
     s.write_errors_to_log = b("option_writeerrors", false);
     s.abort_on_all_errors = b("option_aborterrors", false);
     s.treat_uninitialized_as_zero = b("option_variableerrors", false);
-    s.uninitialized_extra_bits = if b("option_argumenterrors", false) { 2 } else { 0 };
+    s.argument_errors = b("option_argumenterrors", false);
     s.author = text(o, "option_author");
     s.version_text = text(o, "option_version");
     s.information = text(o, "option_information");

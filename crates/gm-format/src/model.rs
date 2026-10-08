@@ -185,9 +185,14 @@ pub struct Settings {
     pub abort_on_all_errors: bool,
     /// Bit 0 of the stored "uninitialized" flags word (spec §2 addendum).
     pub treat_uninitialized_as_zero: bool,
-    /// The other bits of that flags word, preserved verbatim. GM 8.1 projects commonly
-    /// store bit 1 (value 2); its meaning is not verified (assumed to be the 8.1
-    /// "error on uninitialized arguments" option). 0 when absent.
+    /// Bit 1 of that flags word: GM 8.1's "throw an error when arguments are not
+    /// initialized correctly" option (VERIFIED black-box, bb_lang vs bb_args0: set →
+    /// script argument counts are checked; cleared → any count, missing arguments
+    /// read as 0). Stored by the 8.1 IDE in most projects.
+    #[serde(default)]
+    pub argument_errors: bool,
+    /// The remaining bits (2 and up) of that flags word, preserved verbatim. 0 when
+    /// absent.
     #[serde(default)]
     pub uninitialized_extra_bits: i32,
     pub author: String,
@@ -246,6 +251,7 @@ impl Default for Settings {
             write_errors_to_log: false,
             abort_on_all_errors: false,
             treat_uninitialized_as_zero: false,
+            argument_errors: false,
             uninitialized_extra_bits: 0,
             author: String::new(),
             version_text: "100".into(),
