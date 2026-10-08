@@ -369,7 +369,8 @@ fn read_settings(r: &mut Reader<'_>, v8: bool) -> Result<(Settings, Vec<Constant
     // An i32 bit set, not a plain bool: GM 8.1 stores e.g. 2 here (spec §2 addendum).
     let flags = r.i32()?;
     s.treat_uninitialized_as_zero = flags & 1 != 0;
-    s.uninitialized_extra_bits = flags & !1;
+    s.argument_errors = flags & 2 != 0;
+    s.uninitialized_extra_bits = flags & !3;
     s.author = r.string()?;
     s.version_text = r.string()?;
     s.info_last_changed = r.f64()?;
@@ -1120,7 +1121,11 @@ fn write_settings(b: &mut Writer, s: &Settings) -> Result<()> {
     b.bool(s.display_errors);
     b.bool(s.write_errors_to_log);
     b.bool(s.abort_on_all_errors);
-    b.i32(s.treat_uninitialized_as_zero as i32 | (s.uninitialized_extra_bits & !1));
+    b.i32(
+        s.treat_uninitialized_as_zero as i32
+            | (s.argument_errors as i32) << 1
+            | (s.uninitialized_extra_bits & !3),
+    );
     b.string(&s.author);
     b.string(&s.version_text);
     b.f64(s.info_last_changed);

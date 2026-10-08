@@ -170,6 +170,16 @@ pub trait Host {
         args: &[Value],
     ) -> Result<Value, Error>;
 
+    /// Reports an error that does not abandon the running code: GM 8.1 continues
+    /// after errors raised by built-in functions (the function returns 0) and after
+    /// errors inside `execute_string` (VERIFIED black-box, bb_lang math.*, real.*,
+    /// type.readonly_id). The host records/shows the error like any other; it
+    /// returns `Err` only to stop all GML (e.g. the user chose to abort the game).
+    /// The default returns the error, which abandons the code as an ordinary error.
+    fn soft_error(&mut self, e: Error) -> Result<(), Error> {
+        Err(e)
+    }
+
     /// Reads a file for `execute_file`. The default reads it from the file system
     /// relative to the current directory.
     fn read_file(&mut self, path: &str) -> Result<Vec<u8>, Error> {

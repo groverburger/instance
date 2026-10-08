@@ -55,6 +55,7 @@ mod error;
 mod host;
 mod interp;
 pub mod lexer;
+mod numfmt;
 pub mod parser;
 mod stdlib;
 mod value;
@@ -63,9 +64,12 @@ mod vm;
 
 pub use builtins::{FunctionId, VariableId};
 pub use compile::Program;
-pub use error::{CompileError, Error, ErrorKind, Location};
+pub use error::{code_error_text, source_line, CompileError, Error, ErrorKind, Location};
 pub use host::{special, Ctx, Host};
 pub use stdlib::is_native;
-pub use value::{binary, format_fixed, real_to_string, to_int, unary, BinOp, GmlStr, UnOp, Value};
+pub use numfmt::{format_gm, string_format};
+pub use value::{
+    binary, format_fixed, real_to_string, same_real, to_i64_x87, to_int, unary, wrap_i32, BinOp, GmlStr, UnOp, Value,
+};
 pub use vars::{Array2, IdBuildHasher, IdHasher, Var, VarId, VarTable, MAX_ELEMENTS, MAX_INDEX};
 pub use vm::{Clock, Interner, Settings, Vm};

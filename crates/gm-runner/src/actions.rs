@@ -275,6 +275,8 @@ pub fn execute(g: &mut Game, vm: &mut Vm, list: &ActionList, self_id: i32, other
         match exec_node(g, vm, n, self_id, other) {
             Ok(Flow::Next) => {}
             Ok(Flow::Exit) => break,
+            // GM 8.1 abandons the rest of the event silently (bb_lang args.arr_index_16)
+            Err(e) if e.kind == ErrorKind::AbortEvent => break,
             Err(e) => {
                 r = Err(e);
                 break;
@@ -396,9 +398,11 @@ fn run_act(g: &mut Game, vm: &mut Vm, a: &Act, self_id: i32, other: i32) -> Resu
                 args.push(eval_arg(g, vm, x, Ctx::new(s, o))?);
             }
             match &a.kind {
+                // code actions leave the global argument array alone (GM 8.1: they see
+                // whatever it holds, bb_lang args.code_action_*)
                 ActKind::Code(p) => {
                     let p = p.clone();
-                    vm.run(g, &p, ctx, &args)
+                    vm.run_code(g, &p, ctx)
                 }
                 ActKind::Func(f) => f(g, vm, &ctx, &args, a.relative),
                 ActKind::Builtin(fid) => vm.call_function(g, &ctx, *fid, &args),
@@ -428,7 +432,7 @@ fn run_act(g: &mut Game, vm: &mut Vm, a: &Act, self_id: i32, other: i32) -> Resu
                 }
             }
             Err(e) => {
-                if e.kind == ErrorKind::Halt {
+                if e.kind == ErrorKind::Halt || e.kind == ErrorKind::AbortEvent {
                     return Err(e);
                 }
                 g.report_error(e, a.idx)?;

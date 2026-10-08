@@ -89,7 +89,7 @@ impl Gen {
         s.write_errors_to_log = true;
         s.abort_on_all_errors = false;
         s.treat_uninitialized_as_zero = false;
-        s.uninitialized_extra_bits = 2;
+        s.argument_errors = true;
         s.icon = make_ico();
         s.author = "gm81-clean black-box generator".into();
         s.information = format!("Black-box test project {name}");

@@ -51,8 +51,9 @@ pub(crate) enum FieldName {
 #[derive(Debug)]
 pub(crate) enum Idx {
     None,
-    One(Ex),
-    Two(Ex, Ex),
+    /// Index expressions with their source positions (error positions).
+    One(Ex, Pos),
+    Two(Ex, Pos, Ex, Pos),
 }
 
 #[derive(Debug)]
@@ -90,6 +91,8 @@ pub(crate) enum Ex {
     Binary(BinOp, Box<Ex>, Box<Ex>, Pos),
     Call(FunctionId, Vec<Ex>, Pos),
     Script(i32, Vec<Ex>, Pos),
+    /// A condition (if/while/until/for) with the position for "Expression expected".
+    At(Box<Ex>, Pos),
 }
 
 #[derive(Debug)]
@@ -126,8 +129,14 @@ pub(crate) enum St {
 #[derive(Debug)]
 pub struct Program {
     pub(crate) name: Rc<str>,
+    pub(crate) source: Rc<[u8]>,
     pub(crate) body: Vec<St>,
     pub(crate) local_names: Vec<VarId>,
+    /// 1 + the highest `argumentN` index used (0 if none): the argument count a
+    /// script call must supply.
+    pub(crate) arg_required: u8,
+    /// Whether the `argument[i]` form is used (then more arguments are accepted).
+    pub(crate) arg_array: bool,
 }
 
 impl Program {
@@ -139,6 +148,15 @@ impl Program {
     pub fn local_count(&self) -> usize {
         self.local_names.len()
     }
+    /// The number of arguments a call of this program as a script must supply
+    /// (1 + the highest `argumentN` index it uses).
+    pub fn arg_required(&self) -> usize {
+        self.arg_required as usize
+    }
+    /// Whether the program uses the `argument[i]` array form.
+    pub fn uses_argument_array(&self) -> bool {
+        self.arg_array
+    }
 }
 
 pub(crate) struct Compiler<'a> {
@@ -146,9 +164,19 @@ pub(crate) struct Compiler<'a> {
     pub host: &'a dyn Host,
     locals: HashMap<String, u16>,
     local_names: Vec<VarId>,
+    arg_required: u8,
+    arg_array: bool,
 }
 
 const MAX_ARGS: usize = 16;
+
+/// The span of an expression without its enclosing parentheses (GM 8.1 positions).
+fn inner_span(e: &Expr) -> Span {
+    match &e.kind {
+        ExprKind::Paren(x) => inner_span(x),
+        _ => e.span,
+    }
+}
 
 fn err<T>(msg: impl Into<String>, span: Span) -> Result<T, CompileError> {
     Err(CompileError::new(msg, span))
@@ -161,14 +189,29 @@ impl<'a> Compiler<'a> {
             host,
             locals: HashMap::new(),
             local_names: Vec::new(),
+            arg_required: 0,
+            arg_array: false,
         }
     }
 
-    pub fn finish(self, name: &str, body: Vec<St>) -> Program {
+    /// Records the use of an argument variable (for the script argument check).
+    fn note_arg(&mut self, a: ArgVar) -> ArgVar {
+        match a {
+            ArgVar::Slot(n) => self.arg_required = self.arg_required.max(n + 1),
+            ArgVar::Array => self.arg_array = true,
+            _ => {}
+        }
+        a
+    }
+
+    pub fn finish(self, name: &str, source: &[u8], body: Vec<St>) -> Program {
         Program {
             name: Rc::from(name),
+            source: Rc::from(source),
             body,
             local_names: self.local_names,
+            arg_required: self.arg_required,
+            arg_array: self.arg_array,
         }
     }
 
@@ -235,7 +278,7 @@ impl<'a> Compiler<'a> {
                 St::GlobalVar(names.iter().map(|(n, _)| self.interner.intern(n)).collect())
             }
             StmtKind::If(c, t, e) => {
-                let c = self.expr(c)?;
+                let c = self.cond(c)?;
                 let t = self.boxed(t)?;
                 let e = match e {
                     Some(e) => Some(self.boxed(e)?),
@@ -243,15 +286,17 @@ impl<'a> Compiler<'a> {
                 };
                 St::If(c, t, e)
             }
-            StmtKind::Repeat(c, b) => St::Repeat(self.expr(c)?, self.boxed(b)?, c.span.into()),
-            StmtKind::While(c, b) => St::While(self.expr(c)?, self.boxed(b)?),
+            StmtKind::Repeat(c, b) => {
+                St::Repeat(self.expr(c)?, self.boxed(b)?, inner_span(c).into())
+            }
+            StmtKind::While(c, b) => St::While(self.cond(c)?, self.boxed(b)?),
             StmtKind::DoUntil(b, c) => {
                 let b = self.boxed(b)?;
-                St::Do(b, self.expr(c)?)
+                St::Do(b, self.cond(c)?)
             }
             StmtKind::For(i, c, st, b) => {
                 let i = self.boxed(i)?;
-                let c = self.expr(c)?;
+                let c = self.cond(c)?;
                 let st = self.boxed(st)?;
                 let b = self.boxed(b)?;
                 St::For(i, c, st, b)
@@ -305,13 +350,18 @@ impl<'a> Compiler<'a> {
         })
     }
 
+    /// A condition expression, tagged with its position (inside parentheses).
+    fn cond(&mut self, c: &Expr) -> Result<Ex, CompileError> {
+        Ok(Ex::At(Box::new(self.expr(c)?), inner_span(c).into()))
+    }
+
     // ------------------------------------------------------------- places
 
     fn idx(&mut self, idx: &[Expr]) -> Result<Idx, CompileError> {
         Ok(match idx {
             [] => Idx::None,
-            [a] => Idx::One(self.expr(a)?),
-            [a, b] => Idx::Two(self.expr(a)?, self.expr(b)?),
+            [a] => Idx::One(self.expr(a)?, a.span.into()),
+            [a, b] => Idx::Two(self.expr(a)?, a.span.into(), self.expr(b)?, b.span.into()),
             _ => unreachable!("parser allows at most two indices"),
         })
     }
@@ -344,16 +394,6 @@ impl<'a> Compiler<'a> {
         FieldName::User(self.interner.intern(name))
     }
 
-    fn check_writable_builtin(id: VariableId, name: &str, span: Span) -> Result<(), CompileError> {
-        if id.info().readonly || name == "argument_count" {
-            return err(
-                format!("Cannot assign to the read-only variable {}.", name),
-                span,
-            );
-        }
-        Ok(())
-    }
-
     /// Compiles a variable reference (an `Ident`, `Field` or `Index` node).
     fn place(&mut self, e: &Expr, write: bool) -> Result<Place, CompileError> {
         let (target, idx) = match &e.kind {
@@ -366,12 +406,11 @@ impl<'a> Compiler<'a> {
                 if let Some(&slot) = self.locals.get(name.as_str()) {
                     PlaceKind::Local(slot)
                 } else if let Some(id) = builtins::variable_id(name) {
-                    if write {
-                        Self::check_writable_builtin(id, name, target.span)?;
-                    }
+                    let _ = write;
                     match id.info().scope {
                         VarScope::Script => {
-                            PlaceKind::Arg(Self::arg_var(name).expect("argument family"))
+                            let a = Self::arg_var(name).expect("argument family");
+                            PlaceKind::Arg(self.note_arg(a))
                         }
                         _ => PlaceKind::Builtin(id),
                     }
@@ -408,18 +447,11 @@ impl<'a> Compiler<'a> {
                 {
                     return err("Variable name expected.", *nspan);
                 }
-                if write {
-                    if let FieldName::Builtin(id) = fname {
-                        Self::check_writable_builtin(id, name, *nspan)?;
-                    }
-                    if let FieldName::Arg(_) = fname {
-                        if name == "argument_count" || name == "argument_relative" {
-                            return err(
-                                format!("Cannot assign to the read-only variable {}.", name),
-                                *nspan,
-                            );
-                        }
-                    }
+                // (read-only built-ins are checked when the assignment runs: GM 8.1
+                // reports "Cannot assign to the variable" at run time, VERIFIED
+                // black-box bb_lang type.readonly_id, args.write_count)
+                if let FieldName::Arg(a) = fname {
+                    self.note_arg(a);
                 }
                 let owner_ex = self.expr(owner)?;
                 let pos: Pos = (*nspan).into();
@@ -496,7 +528,7 @@ impl<'a> Compiler<'a> {
                     Ex::Local(slot, pos)
                 } else if let Some(id) = builtins::variable_id(name) {
                     match id.info().scope {
-                        VarScope::Script => match Self::arg_var(name).expect("argument family") {
+                        VarScope::Script => match self.note_arg(Self::arg_var(name).expect("argument family")) {
                             ArgVar::Slot(n) => Ex::Arg(n),
                             a => Ex::Place(Box::new(Place {
                                 kind: PlaceKind::Arg(a),
@@ -506,10 +538,12 @@ impl<'a> Compiler<'a> {
                         },
                         _ => Ex::Builtin(id, pos),
                     }
+                } else if let Some(v) = self.host.resolve_constant(name) {
+                    // user constants and resource names win over built-in constants
+                    // (VERIFIED black-box, bb_clash clash.const_vs_builtin_const)
+                    Ex::Const(v)
                 } else if let Some(v) = builtins::constant_value(name) {
                     Ex::Const(Value::Real(v))
-                } else if let Some(v) = self.host.resolve_constant(name) {
-                    Ex::Const(v)
                 } else if builtins::function_id(name).is_some() {
                     return err(format!("Function {} used without brackets.", name), e.span);
                 } else {
@@ -519,16 +553,18 @@ impl<'a> Compiler<'a> {
             ExprKind::Field(..) | ExprKind::Index(..) => self.place_expr(e)?,
             ExprKind::Call(name, args) => {
                 if args.len() > MAX_ARGS {
-                    return err(
-                        format!("Too many arguments to function or script {}.", name),
-                        e.span,
-                    );
+                    // GM 8.1 wording (bb_lang args.17_args.msg)
+                    return err("Wrong number of arguments to function or script.", e.span);
                 }
                 let cargs = args
                     .iter()
                     .map(|a| self.expr(a))
                     .collect::<Result<Vec<_>, _>>()?;
-                if let Some(fid) = builtins::function_id(name) {
+                // a script named like a built-in function wins (VERIFIED black-box,
+                // bb_clash clash.script_abs)
+                if let Some(idx) = self.host.resolve_script(name) {
+                    Ex::Script(idx, cargs, pos)
+                } else if let Some(fid) = builtins::function_id(name) {
                     let info = fid.info();
                     if cargs.len() < info.min_args as usize || cargs.len() > info.max_args as usize
                     {
@@ -538,13 +574,14 @@ impl<'a> Compiler<'a> {
                         );
                     }
                     Ex::Call(fid, cargs, pos)
-                } else if let Some(idx) = self.host.resolve_script(name) {
-                    Ex::Script(idx, cargs, pos)
                 } else {
                     return err(format!("Unknown function or script: {}", name), e.span);
                 }
             }
             ExprKind::Unary(op, x) => {
+                // GM 8.1 reports operator errors at the (right) operand (VERIFIED
+                // black-box, bb_lang mix.*.msg, div0.*.msg)
+                let operand_pos: Pos = x.span.into();
                 let x = self.expr(x)?;
                 if let Ex::Const(v) = &x {
                     match unary(*op, v) {
@@ -552,9 +589,10 @@ impl<'a> Compiler<'a> {
                         Err(m) => return err(m, e.span),
                     }
                 }
-                Ex::Unary(*op, Box::new(x), pos)
+                Ex::Unary(*op, Box::new(x), operand_pos)
             }
             ExprKind::Binary(op, a, b) => {
+                let right_pos: Pos = b.span.into();
                 let a = self.expr(a)?;
                 let b = self.expr(b)?;
                 if let (Ex::Const(x), Ex::Const(y)) = (&a, &b) {
@@ -566,7 +604,7 @@ impl<'a> Compiler<'a> {
                         Err(m) => return err(m, e.span),
                     }
                 }
-                Ex::Binary(*op, Box::new(a), Box::new(b), pos)
+                Ex::Binary(*op, Box::new(a), Box::new(b), right_pos)
             }
         })
     }

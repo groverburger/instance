@@ -43,11 +43,9 @@ impl<'a> Args<'a> {
             self.func.name()
         ))
     }
+    /// GM 8.1's generic function error (VERIFIED black-box, bb_lang math.*.msg).
     pub fn invalid(&self) -> Error {
-        Error::new(format!(
-            "Invalid argument to function {}.",
-            self.func.name()
-        ))
+        Error::new(format!("Error in function {}().", self.func.name()))
     }
     pub fn real(&self, i: usize) -> Result<f64, Error> {
         match self.val(i) {
@@ -58,10 +56,13 @@ impl<'a> Args<'a> {
     pub fn int(&self, i: usize) -> Result<i64, Error> {
         Ok(to_int(self.real(i)?))
     }
+    /// A string argument. A real passed instead reads as the empty string, without
+    /// an error (VERIFIED black-box: bb_lang sf.length_real, sf.upper_real,
+    /// sf.copy_real).
     pub fn str(&self, i: usize) -> Result<&'a [u8], Error> {
         match self.val(i) {
             Value::Str(s) => Ok(s.as_bytes()),
-            Value::Real(_) => Err(self.type_err()),
+            Value::Real(_) => Ok(b""),
         }
     }
 }

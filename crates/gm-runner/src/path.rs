@@ -160,14 +160,18 @@ impl Game {
         i.speed = 0.0;
         i.hspeed = 0.0;
         i.vspeed = 0.0;
-        let (ax, ay, _) = p.at(i.path_position);
+        // VERIFIED black-box (bb_motion mo.pa4.*): a relative path is anchored at
+        // its first point (position 0) even when a negative speed starts it at
+        // position 1; the instance does not move at path_start.
+        let (ax, ay, _) = p.at(0.0);
         i.path_anchor_x = ax;
         i.path_anchor_y = ay;
         if absolute {
+            let (px, py, _) = p.at(i.path_position);
             i.path_xstart = ax;
             i.path_ystart = ay;
-            i.x = ax;
-            i.y = ay;
+            i.x = px;
+            i.y = py;
         } else {
             i.path_xstart = i.x;
             i.path_ystart = i.y;
@@ -264,6 +268,12 @@ impl Game {
                 3 => {
                     np = if spd >= 0.0 { 1.0 - (np - 1.0) } else { -np };
                     self.inst_mut(id).unwrap().path_speed = -spd;
+                }
+                0 => {
+                    // VERIFIED black-box (bb_motion mo.pa0/pa4 PE): stop puts the
+                    // instance at position 1 (also when it ran backwards to 0);
+                    // path_speed keeps its value.
+                    np = 1.0;
                 }
                 _ => {
                     np = np.clamp(0.0, 1.0);

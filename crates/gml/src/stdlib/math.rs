@@ -39,14 +39,15 @@ pub(crate) fn point_direction(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
     }
 }
 
+/// VERIFIED black-box (bb_lang math.max_mixed = "a" for max('a', 1), no error):
+/// an argument of the other type than the first is skipped.
 fn min_max(a: &Args, want: Ordering) -> NResult {
     let first = a.val(0);
-    let all_real = first.is_real();
     let mut best = first;
     for i in 1..a.len() {
         let v = a.val(i);
-        if v.is_real() != all_real {
-            return Err(a.type_err());
+        if v.is_real() != first.is_real() {
+            continue;
         }
         if v.total_cmp(best) == want {
             best = v;
@@ -92,8 +93,18 @@ pub(super) fn register(t: &mut Vec<(&'static str, NativeFn)>) {
         }),
         n("abs", |_, _, _, a| r1(&a, f64::abs)),
         n("round", |_, _, _, a| r1(&a, f64::round_ties_even)),
-        n("floor", |_, _, _, a| r1(&a, f64::floor)),
-        n("ceil", |_, _, _, a| r1(&a, f64::ceil)),
+        // VERIFIED black-box (bb_random raw values): floor/ceil return a 32-bit
+        // integer (Delphi Floor/Ceil), so values >= 2^31 wrap.
+        n("floor", |_, _, _, a| {
+            let x = a.real(0)?;
+            let t = crate::value::wrap_i32(x);
+            Ok(Value::Real(if x.fract() < 0.0 { t.wrapping_sub(1) } else { t } as f64))
+        }),
+        n("ceil", |_, _, _, a| {
+            let x = a.real(0)?;
+            let t = crate::value::wrap_i32(x);
+            Ok(Value::Real(if x.fract() > 0.0 { t.wrapping_add(1) } else { t } as f64))
+        }),
         n("sign", |_, _, _, a| {
             r1(&a, |x| {
                 if x > 0.0 {
@@ -109,7 +120,7 @@ pub(super) fn register(t: &mut Vec<(&'static str, NativeFn)>) {
         n("sqrt", |_, _, _, a| {
             let x = a.real(0)?;
             if x < 0.0 {
-                return Err(a.invalid());
+                return Err(crate::Error::new("Cannot apply sqrt to negative number."));
             }
             Ok(Value::Real(x.sqrt()))
         }),
@@ -147,10 +158,16 @@ pub(super) fn register(t: &mut Vec<(&'static str, NativeFn)>) {
         n("max", |_, _, _, a| min_max(&a, Ordering::Greater)),
         n("mean", |_, _, _, a| {
             let v = reals(&a)?;
+            if v.is_empty() {
+                return Ok(Value::Real(0.0));
+            }
             Ok(Value::Real(v.iter().sum::<f64>() / v.len() as f64))
         }),
         n("median", |_, _, _, a| {
             let mut v = reals(&a)?;
+            if v.is_empty() {
+                return Ok(Value::Real(0.0));
+            }
             v.sort_by(|x, y| x.total_cmp(y));
             Ok(Value::Real(v[(v.len() - 1) / 2]))
         }),

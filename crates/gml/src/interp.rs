@@ -6,7 +6,7 @@ use crate::compile::{ArgVar, Ex, FieldName, Idx, Place, PlaceKind, Pos, St};
 use crate::error::{Error, ErrorKind, Location};
 use crate::host::{special, Ctx, Host};
 use crate::stdlib::{self as natives, Args};
-use crate::value::{binary, to_int, unary, BinOp, Value};
+use crate::value::{binary, cmp_real, to_int, unary, BinOp, Value};
 use crate::vars::{Var, VarId, MAX_INDEX};
 use crate::vm::Vm;
 use crate::Program;
@@ -23,13 +23,44 @@ pub(crate) enum Flow {
 pub(crate) struct Frame<'p> {
     pub prog: &'p Program,
     pub locals: Vec<Option<Var>>,
-    pub args: [Value; 16],
-    pub argc: usize,
     pub ctx: Ctx,
     pub ret: Value,
+    /// Value of the last assignment: the result of a program that ends without
+    /// `return` (VERIFIED black-box, bb_lang args.noreturn / args.exit).
+    pub last: Value,
+}
+
+/// How a run treats the global argument array.
+pub(crate) enum ArgMode<'a> {
+    /// Install these arguments (and `argument_count`), restore the old ones after.
+    Set(&'a [Value]),
+    /// Leave the array alone (code actions).
+    Keep,
+    /// Overwrite the first slots only, restore them after (`execute_string`).
+    Slots(&'a [Value]),
 }
 
 type R<T> = Result<T, Box<Error>>;
+
+/// A source position for errors about expression `e` (default if it has none).
+fn ex_pos(e: &Ex) -> Pos {
+    match e {
+        Ex::Local(_, p)
+        | Ex::User(_, p)
+        | Ex::Builtin(_, p)
+        | Ex::Unary(_, _, p)
+        | Ex::Binary(_, _, _, p)
+        | Ex::Call(_, _, p)
+        | Ex::Script(_, _, p) => *p,
+        Ex::Place(pl) => pl.pos,
+        Ex::At(_, p) => *p,
+        Ex::Const(_) | Ex::Arg(_) => Pos::default(),
+    }
+}
+
+/// "Cannot assign to the variable" (GM 8.1 wording for read-only targets, VERIFIED
+/// black-box bb_lang type.readonly_id, args.write_count, ref.noone_write).
+const CANNOT_ASSIGN: &str = "Cannot assign to the variable";
 
 enum ReadOwner {
     Inst(i32),
@@ -43,36 +74,71 @@ impl Vm {
         h: &mut dyn Host,
         prog: &Program,
         ctx: Ctx,
-        args: &[Value],
+        mode: ArgMode,
     ) -> Result<Value, Error> {
         if self.depth >= self.settings.max_call_depth {
             return Err(Error::new(
                 "Too many nested script calls (recursion too deep).",
             ));
         }
+        let saved = match mode {
+            ArgMode::Keep => None,
+            ArgMode::Set(args) => {
+                let mut new: [Value; 16] = Default::default();
+                for (k, a) in args.iter().take(16).enumerate() {
+                    new[k] = a.clone();
+                }
+                let old = std::mem::replace(&mut self.args, new);
+                let oldc = std::mem::replace(&mut self.argc, args.len().min(16));
+                Some((old, oldc))
+            }
+            ArgMode::Slots(args) => {
+                let old = self.args.clone();
+                for (k, a) in args.iter().take(16).enumerate() {
+                    self.args[k] = a.clone();
+                }
+                Some((old, self.argc))
+            }
+        };
         self.depth += 1;
         let mut locals = self.locals_pool.pop().unwrap_or_default();
         locals.resize_with(prog.local_names.len(), || None);
         let mut f = Frame {
             prog,
             locals,
-            args: Default::default(),
-            argc: args.len().min(16),
             ctx,
             ret: Value::Real(0.0),
+            last: Value::Real(0.0),
         };
-        for (k, a) in args.iter().take(16).enumerate() {
-            f.args[k] = a.clone();
-        }
         let r = self.exec_block(h, &mut f, &prog.body);
         self.depth -= 1;
         let mut locals = std::mem::take(&mut f.locals);
         locals.clear();
         self.locals_pool.push(locals);
+        // The argument array is restored, except when an event abort (a crash in GM
+        // 8.1) unwinds through the call: then the callee's arguments stay
+        // (VERIFIED black-box, bb_lang args.code_action_arg0 after args.arr_index_16).
+        if let Some((old, oldc)) = saved {
+            let abort = matches!(&r, Err(e) if e.kind == ErrorKind::AbortEvent);
+            if !abort {
+                self.args = old;
+                self.argc = oldc;
+            }
+        }
         match r {
             Ok(Flow::Return) => Ok(std::mem::take(&mut f.ret)),
-            Ok(_) => Ok(Value::Real(0.0)),
+            Ok(_) => Ok(std::mem::take(&mut f.last)),
             Err(e) => Err(*e),
+        }
+    }
+
+    /// A condition value: strings are an error (VERIFIED black-box, bb_lang
+    /// truth.str_*: `if ('a')` raises "Expression expected").
+    #[inline]
+    fn cond(&mut self, h: &mut dyn Host, f: &Frame, c: &Ex) -> R<bool> {
+        match self.eval(h, f, c)? {
+            Value::Real(x) => Ok(x >= 0.5),
+            Value::Str(_) => self.fail(f, ex_pos(c), "Expression expected"),
         }
     }
 
@@ -85,6 +151,7 @@ impl Vm {
                 program: f.prog.name.clone(),
                 line: pos.line,
                 col: pos.col,
+                source_line: Some(crate::error::source_line(&f.prog.source, pos.line)),
             });
         }
         Box::new(e)
@@ -101,12 +168,11 @@ impl Vm {
             return Ok(Value::Real(0.0));
         }
         let name = self.interner.name(var);
+        // GM 8.1 wording (VERIFIED black-box, bb_lang arr.*.msg)
         let msg = if i == 0 && j == 0 {
             format!("Unknown variable {}", name)
-        } else if i == 0 {
-            format!("Unknown variable {}[{}]", name, j)
         } else {
-            format!("Unknown variable {}[{},{}]", name, i, j)
+            format!("Unknown variable {} or array index out of bounds", name)
         };
         self.fail(f, pos, msg)
     }
@@ -121,12 +187,9 @@ impl Vm {
                 BinOp::Mul => a * b,
                 BinOp::Div if b != 0.0 => a / b,
                 BinOp::Mod if b != 0.0 => a % b,
-                BinOp::Lt => (a < b) as u8 as f64,
-                BinOp::Le => (a <= b) as u8 as f64,
-                BinOp::Gt => (a > b) as u8 as f64,
-                BinOp::Ge => (a >= b) as u8 as f64,
-                BinOp::Eq => (a == b) as u8 as f64,
-                BinOp::Ne => (a != b) as u8 as f64,
+                BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge | BinOp::Eq | BinOp::Ne => {
+                    cmp_real(op, a, b) as u8 as f64
+                }
                 _ => return self.bin_slow(f, pos, op, l, r),
             };
             return Ok(Value::Real(v));
@@ -163,7 +226,7 @@ impl Vm {
                 self.eval(h, f, e)?;
             }
             St::If(c, t, e) => {
-                if self.eval(h, f, c)?.is_true() {
+                if self.cond(h, f, c)? {
                     return self.exec(h, f, t);
                 } else if let Some(e) = e {
                     return self.exec(h, f, e);
@@ -217,6 +280,7 @@ impl Vm {
                     };
                     if let Some(x) = done {
                         *cur = x;
+                        f.last = Value::Real(x);
                         return Ok(());
                     }
                 }
@@ -224,6 +288,7 @@ impl Vm {
                 self.bin(f, pos, op, &cur, &r)?
             }
         };
+        f.last = v.clone();
         match &mut f.locals[slot as usize] {
             Some(Var::Scalar(s)) => *s = v,
             Some(var) => {
@@ -245,7 +310,7 @@ impl Vm {
     ) -> R<Flow> {
         let n = match self.eval(h, f, c)? {
             Value::Real(x) => to_int(x),
-            Value::Str(_) => return self.fail(f, pos, "Repeat count must be a number."),
+            Value::Str(_) => return self.fail(f, pos, "Repeat count must be a number"),
         };
         let mut k = 0;
         while k < n {
@@ -261,7 +326,7 @@ impl Vm {
 
     #[inline(never)]
     fn exec_while(&mut self, h: &mut dyn Host, f: &mut Frame, c: &Ex, body: &St) -> R<Flow> {
-        while self.eval(h, f, c)?.is_true() {
+        while self.cond(h, f, c)? {
             match self.exec(h, f, body)? {
                 Flow::Normal | Flow::Continue => {}
                 Flow::Break => break,
@@ -279,7 +344,7 @@ impl Vm {
                 Flow::Break => break,
                 other => return Ok(other),
             }
-            if self.eval(h, f, c)?.is_true() {
+            if self.cond(h, f, c)? {
                 break;
             }
         }
@@ -300,7 +365,7 @@ impl Vm {
             Flow::Normal => {}
             other => return Ok(other),
         }
-        while self.eval(h, f, c)?.is_true() {
+        while self.cond(h, f, c)? {
             match self.exec(h, f, body)? {
                 Flow::Normal | Flow::Continue => {}
                 Flow::Break => break,
@@ -325,7 +390,12 @@ impl Vm {
         let mut start = None;
         for (ce, target) in &sw.cases {
             let cv = self.eval(h, f, ce)?;
-            if cv == v {
+            let hit = match (&cv, &v) {
+                (Value::Real(a), Value::Real(b)) => cmp_real(BinOp::Eq, *a, *b),
+                (Value::Str(a), Value::Str(b)) => a == b,
+                _ => false,
+            };
+            if hit {
                 start = Some(*target);
                 break;
             }
@@ -404,7 +474,7 @@ impl Vm {
             Ex::Builtin(b, pos) => h
                 .get_builtin(&f.ctx, f.ctx.self_id, *b, 0)
                 .map_err(|e| self.loc(f, *pos, e)),
-            Ex::Arg(n) => Ok(f.args[*n as usize].clone()),
+            Ex::Arg(n) => Ok(self.args[*n as usize].clone()),
             Ex::Place(p) => self.read_place(h, f, p),
             Ex::Unary(op, x, pos) => {
                 let v = self.eval(h, f, x)?;
@@ -423,6 +493,7 @@ impl Vm {
             }
             Ex::Call(fid, args, pos) => self.eval_call(h, f, *fid, args, *pos),
             Ex::Script(idx, args, pos) => self.eval_script(h, f, *idx, args, *pos),
+            Ex::At(x, _) => self.eval(h, f, x),
         }
     }
 
@@ -447,12 +518,30 @@ impl Vm {
                 Some(nf) => nf(self, h, &f.ctx, Args { vals, func: fid }),
                 None => h.call_function(self, &f.ctx, fid, vals),
             };
-            return r.map_err(|e| self.loc(f, pos, e));
+            return self.call_result(h, f, pos, r);
         }
         let buf = self.eval_args(h, f, args)?;
         let r = self.call_function(h, &f.ctx, fid, &buf);
         self.recycle(buf);
-        r.map_err(|e| self.loc(f, pos, e))
+        self.call_result(h, f, pos, r)
+    }
+
+    /// GM 8.1 continues after an error raised by a built-in function itself: the
+    /// error is reported and the call yields 0 (VERIFIED black-box, bb_lang math.*,
+    /// real.*, misc.sound_play_missing). Errors from GML run inside the call (they
+    /// carry a location) and non-runtime errors propagate.
+    #[inline]
+    fn call_result(&mut self, h: &mut dyn Host, f: &Frame, pos: Pos, r: Result<Value, Error>) -> R<Value> {
+        match r {
+            Ok(v) => Ok(v),
+            Err(e) if e.kind == ErrorKind::Runtime && e.location.is_none() => {
+                match h.soft_error(e) {
+                    Ok(()) => Ok(Value::Real(0.0)),
+                    Err(e) => Err(self.loc(f, pos, e)),
+                }
+            }
+            Err(e) => Err(self.loc(f, pos, e)),
+        }
     }
 
     #[inline(never)]
@@ -471,7 +560,10 @@ impl Vm {
         };
         let r = h.call_script(self, &ctx, idx, &buf);
         self.recycle(buf);
-        r.map_err(|e| self.loc(f, pos, e))
+        // Errors of the call itself (argument count) have no code excerpt in GM 8.1
+        // (VERIFIED black-box, bb_lang args.count2.msg).
+        let _ = pos;
+        r.map_err(Box::new)
     }
 
     fn eval_args(&mut self, h: &mut dyn Host, f: &Frame, args: &[Ex]) -> R<Vec<Value>> {
@@ -499,25 +591,26 @@ impl Vm {
         match self.eval(h, f, e)? {
             Value::Real(x) => {
                 let n = to_int(x);
+                // GM 8.1 wording (VERIFIED black-box, bb_lang arr.*.msg)
                 if n < 0 {
-                    self.fail(f, pos, "Negative array index.")
+                    self.fail(f, pos, "Negative array index")
                 } else if n as usize >= MAX_INDEX {
-                    self.fail(f, pos, "Array index must be less than 32000.")
+                    self.fail(f, pos, "Array index >= 32000")
                 } else {
                     Ok(n as usize)
                 }
             }
-            Value::Str(_) => self.fail(f, pos, "Array index must be a number."),
+            Value::Str(_) => self.fail(f, pos, "Wrong type of array index"),
         }
     }
 
-    fn eval_idx(&mut self, h: &mut dyn Host, f: &Frame, idx: &Idx, pos: Pos) -> R<(usize, usize)> {
+    fn eval_idx(&mut self, h: &mut dyn Host, f: &Frame, idx: &Idx, _pos: Pos) -> R<(usize, usize)> {
         match idx {
             Idx::None => Ok((0, 0)),
-            Idx::One(a) => Ok((0, self.index_value(h, f, a, pos)?)),
-            Idx::Two(a, b) => {
-                let i = self.index_value(h, f, a, pos)?;
-                Ok((i, self.index_value(h, f, b, pos)?))
+            Idx::One(a, p) => Ok((0, self.index_value(h, f, a, *p)?)),
+            Idx::Two(a, pa, b, pb) => {
+                let i = self.index_value(h, f, a, *pa)?;
+                Ok((i, self.index_value(h, f, b, *pb)?))
             }
         }
     }
@@ -529,7 +622,10 @@ impl Vm {
         }
     }
 
-    fn read_owner(&mut self, h: &mut dyn Host, f: &Frame, o: i32, pos: Pos) -> R<ReadOwner> {
+    /// Resolves the owner of `o.name` for reading. GM 8.1 reports a missing owner
+    /// as "Unknown variable <name>" (VERIFIED black-box, bb_lang ref.*.msg).
+    fn read_owner(&mut self, h: &mut dyn Host, f: &Frame, o: i32, name: &str, pos: Pos) -> R<ReadOwner> {
+        let unknown = || format!("Unknown variable {}", name);
         Ok(match o {
             special::SELF => ReadOwner::Inst(f.ctx.self_id),
             special::OTHER => {
@@ -540,26 +636,16 @@ impl Vm {
             }
             special::ALL => match h.first_instance(special::ALL) {
                 Some(i) => ReadOwner::Inst(i),
-                None => return self.fail(f, pos, "There are no instances."),
+                None => return self.fail(f, pos, unknown()),
             },
-            special::NOONE => return self.fail(f, pos, "Cannot read a variable of noone."),
             special::GLOBAL => ReadOwner::Global,
             special::LOCAL => ReadOwner::Local,
             x if x >= special::FIRST_INSTANCE_ID => ReadOwner::Inst(x),
             x if x >= 0 => match h.first_instance(x) {
                 Some(i) => ReadOwner::Inst(i),
-                None => {
-                    return self.fail(
-                        f,
-                        pos,
-                        format!(
-                            "Unknown variable access: no instance of object {} exists.",
-                            x
-                        ),
-                    )
-                }
+                None => return self.fail(f, pos, unknown()),
             },
-            x => return self.fail(f, pos, format!("Unknown instance or object {}.", x)),
+            _ => return self.fail(f, pos, unknown()),
         })
     }
 
@@ -589,11 +675,11 @@ impl Vm {
 
     fn builtin_index(&self, f: &Frame, b: VariableId, i: usize, j: usize, pos: Pos) -> R<i32> {
         let info = b.info();
-        let ok = i == 0
-            && match info.array {
-                Some((lo, hi)) => (j as i64) >= lo as i64 && (j as i64) <= hi as i64,
-                None => j == 0,
-            };
+        let ok = match info.array {
+            Some((lo, hi)) => i == 0 && (j as i64) >= lo as i64 && (j as i64) <= hi as i64,
+            // VERIFIED black-box (bb_lang arr.builtin_x_index1): `x[1]` reads x
+            None => return Ok(0),
+        };
         if !ok {
             return self.fail(
                 f,
@@ -638,15 +724,7 @@ impl Vm {
                 Some(v) => Ok(v.clone()),
                 None => self.uninit(f, var, i, j, pos),
             },
-            None => self.fail(
-                f,
-                pos,
-                format!(
-                    "Cannot read variable {}: instance {} does not exist.",
-                    self.interner.name(var),
-                    inst
-                ),
-            ),
+            None => self.fail(f, pos, format!("Unknown variable {}", self.interner.name(var))),
         }
     }
 
@@ -671,19 +749,25 @@ impl Vm {
         match a {
             ArgVar::Slot(n) => {
                 if i == 0 && j == 0 {
-                    Ok(f.args[n as usize].clone())
+                    Ok(self.args[n as usize].clone())
                 } else {
                     self.fail(f, pos, format!("Unknown variable argument{}[{}]", n, j))
                 }
             }
             ArgVar::Array => {
-                if i != 0 || j >= 16 {
-                    self.fail(f, pos, "Argument index out of range (0..15).")
+                // VERIFIED black-box (bb_lang args.arr_index_16): GM 8.1 abandons the
+                // whole event, without a message, for an index beyond 15.
+                if j >= 16 {
+                    return Err(Box::new(Error::abort_event()));
+                }
+                // VERIFIED black-box (bb_lang args.unpassed_arr5, code_action_arr3)
+                if i != 0 || (self.settings.check_script_args && j >= self.argc) {
+                    self.fail(f, pos, "Unknown variable argument or array index out of bounds")
                 } else {
-                    Ok(f.args[j].clone())
+                    Ok(self.args[j].clone())
                 }
             }
-            ArgVar::Count => Ok(Value::Real(f.argc as f64)),
+            ArgVar::Count => Ok(Value::Real(self.argc as f64)),
             ArgVar::Relative => Ok(Value::from(f.ctx.argument_relative)),
         }
     }
@@ -743,13 +827,13 @@ impl Vm {
             }
             FieldName::Builtin(b) => {
                 let idx = self.builtin_index(f, b, i, j, pos)?;
-                match self.read_owner(h, f, o, pos)? {
+                match self.read_owner(h, f, o, b.name(), pos)? {
                     ReadOwner::Inst(inst) => {
                         if inst != f.ctx.self_id
                             && !h.instance_exists(inst)
                             && h.instance_vars(inst).is_none()
                         {
-                            return self.fail(f, pos, format!("Unknown instance {}.", inst));
+                            return self.fail(f, pos, format!("Unknown variable {}", b.name()));
                         }
                         h.get_builtin(&f.ctx, inst, b, idx)
                             .map_err(|e| self.loc(f, pos, e))
@@ -761,7 +845,7 @@ impl Vm {
                     ),
                 }
             }
-            FieldName::User(var) => match self.read_owner(h, f, o, pos)? {
+            FieldName::User(var) => match self.read_owner(h, f, o, self.interner.name(var).to_owned().as_str(), pos)? {
                 ReadOwner::Inst(inst) => self.read_inst(h, f, inst, var, i, j, pos),
                 ReadOwner::Global => self.read_global(f, var, i, j, pos),
                 ReadOwner::Local => match Self::local_slot(f, var) {
@@ -808,6 +892,7 @@ impl Vm {
                         BinOp::Sub => *cur - *rv,
                         _ => *cur * *rv,
                     };
+                    f.last = Value::Real(*cur);
                     return Ok(());
                 }
             }
@@ -821,6 +906,7 @@ impl Vm {
                 self.bin(f, p.pos, op, &cur, &r)?
             }
         };
+        f.last = v.clone();
         self.write_resolved(h, f, &p.kind, i, j, v, p.pos)
     }
 
@@ -886,16 +972,15 @@ impl Vm {
         }
     }
 
-    fn write_arg(&self, f: &mut Frame, a: ArgVar, i: usize, j: usize, v: Value, pos: Pos) -> R<()> {
+    fn write_arg(&mut self, f: &mut Frame, a: ArgVar, i: usize, j: usize, v: Value, pos: Pos) -> R<()> {
         match a {
-            ArgVar::Slot(n) if i == 0 && j == 0 => f.args[n as usize] = v,
-            ArgVar::Array if i == 0 && j < 16 => f.args[j] = v,
+            ArgVar::Slot(n) if i == 0 && j == 0 => self.args[n as usize] = v,
+            ArgVar::Array if i == 0 && j < 16 => self.args[j] = v,
+            ArgVar::Array if j >= 16 => return Err(Box::new(Error::abort_event())),
             ArgVar::Slot(_) | ArgVar::Array => {
-                return self.fail(f, pos, "Argument index out of range (0..15).")
+                return self.fail(f, pos, "Unknown variable argument or array index out of bounds")
             }
-            ArgVar::Count | ArgVar::Relative => {
-                return self.fail(f, pos, "Cannot assign to a read-only variable.")
-            }
+            ArgVar::Count | ArgVar::Relative => return self.fail(f, pos, CANNOT_ASSIGN),
         }
         Ok(())
     }
@@ -925,6 +1010,9 @@ impl Vm {
             }
             PlaceKind::Global(var) => self.write_global(f, *var, i, j, v, pos),
             PlaceKind::Builtin(b) => {
+                if b.info().readonly {
+                    return self.fail(f, pos, CANNOT_ASSIGN);
+                }
                 let idx = self.builtin_index(f, *b, i, j, pos)?;
                 h.set_builtin(&f.ctx, f.ctx.self_id, *b, idx, v)
                     .map_err(|e| self.loc(f, pos, e))
@@ -957,6 +1045,15 @@ impl Vm {
                 self.bin(f, pos, op, &cur, &r)?
             }
         };
+        f.last = v.clone();
+        if let FieldName::Builtin(b) = name {
+            if b.info().readonly {
+                return self.fail(f, pos, CANNOT_ASSIGN);
+            }
+        }
+        if o == special::NOONE {
+            return self.fail(f, pos, CANNOT_ASSIGN);
+        }
         match name {
             FieldName::Arg(a) => return self.write_arg(f, a, i, j, v, pos),
             FieldName::Builtin(b) if b.info().scope == VarScope::Global => {

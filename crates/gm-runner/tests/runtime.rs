@@ -255,10 +255,15 @@ fn create_destroy_semantics() {
     b.room(&[(gun, 0, 0)]);
     let (mut g, mut vm) = b.start();
     run(&mut g, &mut vm, 1);
-    // created during the step phase and visited in the same phase
+    // created during gun's Step: bullet's object (index 0) was already processed,
+    // so the bullet gets no Step in this step (runtime.md 4.3a rule 2)
+    assert_eq!(greal(&mut vm, "bsteps"), 0.0);
+    assert_eq!(g.instances.len(), 2);
+    run(&mut g, &mut vm, 1);
+    // bullet steps first and destroys itself; gun then creates a new one
     assert_eq!(greal(&mut vm, "bsteps"), 1.0);
     assert_eq!(greal(&mut vm, "destroyed"), 1.0);
-    assert_eq!(g.instances.len(), 1);
+    assert_eq!(g.instances.len(), 2);
 }
 
 #[test]
@@ -546,4 +551,100 @@ fn collision_queries_match_brute_force() {
         }
     }
     assert!(checks > 1000);
+}
+
+// ---------------------------------------------------------------------------
+// GM 8.1 black-box results (bb_motion / bb_optional, runtime.md §4.3, §7.5,
+// §8.2, §8.6, §10).
+
+/// Step events are delivered object-major: objects in index order, each
+/// object's instances in instance order (bb_motion mo.seq).
+#[test]
+fn step_events_are_object_major() {
+    let mut b = B::new();
+    let tag = "global.s += object_get_name(object_index) + string(x) + ' ';";
+    let oa = b.object("a", -1, vec![event(3, 0, tag)]);
+    let ob = b.object("b", -1, vec![event(3, 0, tag), event(0, 0, "global.s = '';")]);
+    b.room(&[(ob, 1, 0), (oa, 2, 0), (ob, 3, 0), (oa, 4, 0)]);
+    let (mut g, mut vm) = b.start();
+    run(&mut g, &mut vm, 1);
+    assert_eq!(gstr(&mut vm, "s"), "a2 a4 b1 b3 ");
+}
+
+/// Collision pairs: object-major, target objects ascending; the partner's event
+/// runs right after; either instance being solid puts both back (bb_motion
+/// mo.seq / mo.sol).
+#[test]
+fn collision_pairs_order_and_solid_putback() {
+    let mut b = B::new();
+    let s = b.sprite(square(16, 16));
+    let mv_n = b.object("mv_n", s, vec![]);
+    let mv_s = b.object("mv_s", s, vec![]);
+    let wl_n = b.object("wl_n", s, vec![]);
+    let wl_s = b.object("wl_s", s, vec![]);
+    b.obj_mut(mv_s).solid = true;
+    b.obj_mut(wl_s).solid = true;
+    let log = |k: &str| format!("global.s += 'r' + string(y div 40 + 1) + '{k}' + string(x) + ' ';");
+    for mv in [mv_n, mv_s] {
+        b.obj_mut(mv).events = vec![event(0, 0, "hspeed = 6; global.s = '';"), event(4, wl_n, &log("m")), event(4, wl_s, &log("m"))];
+    }
+    for wl in [wl_n, wl_s] {
+        b.obj_mut(wl).events = vec![event(4, mv_n, &log("w")), event(4, mv_s, &log("w"))];
+    }
+    let mut insts = Vec::new();
+    for (row, (mv, wl)) in [(mv_n, wl_s), (mv_s, wl_s), (mv_s, wl_n), (mv_n, wl_n)].iter().enumerate() {
+        insts.push((*mv, 100, 40 * row as i32));
+        insts.push((*wl, 130, 40 * row as i32));
+    }
+    b.room(&insts);
+    let (mut g, mut vm) = b.start();
+    run(&mut g, &mut vm, 2);
+    assert_eq!(gstr(&mut vm, "s"), "");
+    run(&mut g, &mut vm, 1);
+    assert_eq!(gstr(&mut vm, "s"), "r4m118 r4w130 r1m112 r1w130 r3m112 r3w130 r2m112 r2w130 ");
+    let xs: Vec<f64> = g.instances.iter().filter(|i| i.object_index == mv_n || i.object_index == mv_s).map(|i| i.x).collect();
+    // rows 1..4: put back unless neither is solid
+    assert_eq!(xs, vec![112.0, 112.0, 112.0, 118.0]);
+}
+
+/// A negative image_speed is not wrapped and fires no Animation End (bb_motion mo.an3).
+#[test]
+fn negative_image_speed_does_not_wrap() {
+    let mut b = B::new();
+    let mut spr = square(16, 16);
+    spr.frames = vec![spr.frames[0].clone(), spr.frames[0].clone(), spr.frames[0].clone()];
+    let s = b.sprite(spr);
+    let o = b.object("o", s, vec![event(0, 0, "image_speed = -1; global.ae = 0;"), event(7, 7, "global.ae += 1;")]);
+    b.room(&[(o, 0, 0)]);
+    let (mut g, mut vm) = b.start();
+    run(&mut g, &mut vm, 4);
+    assert_eq!(g.instances[0].image_index, -4.0);
+    assert_eq!(greal(&mut vm, "ae"), 0.0);
+}
+
+/// A relative path started with a negative speed is anchored at its first point;
+/// the stop end action leaves the instance at position 1 (bb_motion mo.pa4).
+#[test]
+fn path_negative_speed_relative_and_stop() {
+    let mut b = B::new();
+    b.p.paths.push(Some(fmt::Path {
+        name: "p".into(),
+        connection_kind: 0,
+        closed: false,
+        precision: 4,
+        points: vec![
+            fmt::PathPoint { x: 0.0, y: 0.0, speed: 100.0 },
+            fmt::PathPoint { x: 20.0, y: 0.0, speed: 100.0 },
+        ],
+        ..Default::default()
+    }));
+    let o = b.object("o", -1, vec![event(0, 0, "path_start(0, -3, 0, false);")]);
+    b.room(&[(o, 600, 150)]);
+    let (mut g, mut vm) = b.start();
+    assert_eq!((g.instances[0].x, g.instances[0].path_position), (600.0, 1.0));
+    run(&mut g, &mut vm, 1);
+    assert!((g.instances[0].x - 617.0).abs() < 1e-9, "x = {}", g.instances[0].x);
+    run(&mut g, &mut vm, 7);
+    let i = &g.instances[0];
+    assert_eq!((i.x, i.path_position, i.path_speed), (620.0, 1.0, -3.0));
 }

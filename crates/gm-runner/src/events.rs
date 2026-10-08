@@ -207,58 +207,90 @@ impl Game {
         Ok(())
     }
 
+    /// The instances (from list position `from` on) whose object is set in `mask`,
+    /// as (object, id) sorted by object index, instance order within an object.
+    fn object_major(&self, mask: &[bool], from: usize) -> Vec<(i32, i32)> {
+        let mut v: Vec<(i32, i32)> = self.instances[from.min(self.instances.len())..]
+            .iter()
+            .filter(|i| i.alive() && i.object_index >= 0 && mask.get(i.object_index as usize).copied().unwrap_or(false))
+            .map(|i| (i.object_index, i.id))
+            .collect();
+        v.sort_by_key(|e| e.0); // stable: instance order within an object
+        v
+    }
+
     /// Delivers an event to all instances having a handler (§4.3).
+    ///
+    /// VERIFIED black-box (bb_events ev.s02/ev.s03, bb_instances in.s01): GM 8.1
+    /// dispatches object by object (ascending object index; within an object in
+    /// instance order). An instance created during the phase is visited in the same
+    /// phase if its object comes after the object being processed (or is the same
+    /// object).
     pub fn broadcast(&mut self, vm: &mut Vm, t: i32, n: i32) -> Result<(), Error> {
         // objects having a handler for this event (none: nothing to do)
         let Some(mask) = self.event_objs.get(&(t, n)).cloned() else { return Ok(()) };
-        let mut k = 0;
-        while k < self.instances.len() {
-            let (id, obj, alive) = {
-                let i = &self.instances[k];
-                (i.id, i.object_index, i.alive())
+        self.broadcast_masked(vm, t, n, &mask)
+    }
+
+    fn broadcast_masked(&mut self, vm: &mut Vm, t: i32, n: i32, mask: &[bool]) -> Result<(), Error> {
+        let mut order = self.object_major(mask, 0);
+        let mut seen = self.instances.len();
+        let mut idx = 0;
+        while idx < order.len() {
+            let (cur_obj, id) = order[idx];
+            idx += 1;
+            let obj = match self.inst(id) {
+                Some(i) if i.alive() => i.object_index,
+                _ => continue,
             };
-            k += 1;
-            if !alive || obj < 0 || !mask.get(obj as usize).copied().unwrap_or(false) {
-                continue;
-            }
             if let Some((owner, list)) = self.handler(obj, t, n) {
                 self.run_handler(vm, id, owner, &list, t, n, id)?;
                 if self.pending.is_some() {
                     return Ok(());
                 }
             }
+            if self.instances.len() > seen {
+                for (o, nid) in self.object_major(mask, seen) {
+                    if o < cur_obj {
+                        continue;
+                    }
+                    let at = idx + order[idx..].partition_point(|e| e.0 <= o);
+                    order.insert(at, (o, nid));
+                }
+                seen = self.instances.len();
+            }
         }
         Ok(())
     }
 
     /// Alarm phase (§5.3).
+    ///
+    /// VERIFIED black-box (bb_events ev.alarms.*, ev.s02+1, ev.s03+1): alarm by
+    /// alarm (0..11), each object by object as in [`Game::broadcast`]. Only
+    /// instances whose object has (or inherits) the alarm event count down: a
+    /// positive alarm is decremented and fires when it reaches 0; the alarm then
+    /// stays 0 (read as 0 in the event) and becomes -1 one step later without
+    /// firing. Alarm values are integers (assignment rounds, see host.rs).
     pub fn run_alarms(&mut self, vm: &mut Vm) -> Result<(), Error> {
-        let mut k = 0;
-        while k < self.instances.len() {
-            let (id, obj) = (self.instances[k].id, self.instances[k].object_index);
-            k += 1;
-            if !self.instances[k - 1].alarm.iter().any(|&a| a > 0.0) {
-                continue;
-            }
-            for a in 0..crate::instance::ALARMS {
-                let Some(i) = self.inst(id) else { break };
-                if !i.alive() {
-                    break;
-                }
-                if i.alarm[a] <= 0.0 {
-                    continue;
-                }
-                let has = self.has_handler(obj, ev::ALARM, a as i32);
-                if !has {
+        for a in 0..crate::instance::ALARMS {
+            let Some(mask) = self.event_objs.get(&(ev::ALARM, a as i32)).cloned() else { continue };
+            for (_, id) in self.object_major(&mask, 0) {
+                let Some(&kk) = self.inst_index.get(&id) else { continue };
+                let i = &mut self.instances[kk];
+                if !i.alive() || !mask.get(i.object_index.max(0) as usize).copied().unwrap_or(false) {
                     continue;
                 }
                 // (alarms do not affect collision geometry: no need to mark the instance)
-                let kk = self.inst_index[&id];
-                let i = &mut self.instances[kk];
+                if i.alarm[a] == 0.0 {
+                    i.alarm[a] = -1.0;
+                    continue;
+                }
+                if i.alarm[a] < 0.0 {
+                    continue;
+                }
                 i.alarm[a] -= 1.0;
                 if i.alarm[a] <= 0.0 {
-                    i.alarm[a] = -1.0;
-                    // object may have changed during an earlier alarm
+                    i.alarm[a] = 0.0;
                     let obj_now = i.object_index;
                     if let Some((owner, list)) = self.handler(obj_now, ev::ALARM, a as i32) {
                         self.run_handler(vm, id, owner, &list, ev::ALARM, a as i32, id)?;
@@ -546,9 +578,14 @@ impl Game {
             }
             let mut fire = Vec::new();
             let (l, t, r, b) = self.bbox_of(id);
+            // VERIFIED black-box (bb_events c.OR / c.IB, 16 px sprite moving right in a
+            // 1024 wide room): Outside fires once bbox_left > room_width (x 1028, not
+            // 1024); Intersect Boundary fires every step the box is not completely
+            // inside — also while completely outside (x 1012 .. 1036). Outside is
+            // dispatched before Intersect Boundary.
             let test = |x0: f64, y0: f64, x1: f64, y1: f64| -> (bool, bool) {
-                let outside = r < x0 || l >= x1 || b < y0 || t >= y1;
-                let boundary = !outside && (l < x0 || r >= x1 || t < y0 || b >= y1);
+                let outside = r < x0 || l > x1 || b < y0 || t > y1;
+                let boundary = l < x0 || r >= x1 || t < y0 || b >= y1;
                 (outside, boundary)
             };
             let (o, bd) = test(0.0, 0.0, rw, rh);
@@ -589,125 +626,177 @@ impl Game {
         Ok(())
     }
 
-    /// Collision event phase (§8.6).
+    /// Collision event phase (§8.6). VERIFIED black-box (bb_motion mo.seq /
+    /// mo.sol): objects in index order; per object its collision events in
+    /// ascending target-object order; per event the object's instances in
+    /// instance order, each against the colliding target instances in instance
+    /// order. A colliding pair is handled once per step: if either instance is
+    /// solid both are put back to their previous positions, then the first
+    /// instance's event runs and right after it the partner's event for the
+    /// first instance's object (if any); then (solid case) both are moved to
+    /// their new positions and put back again if they still collide.
     pub fn collision_events(&mut self, vm: &mut Vm) -> Result<(), Error> {
-        let n = self.instances.len();
-        // objects with at least one live instance (exact object); refreshed after
-        // handlers run, as they may create instances
-        let present_now = |g: &Game| -> Vec<bool> {
-            let mut p = vec![false; g.objects.len()];
-            for i in &g.instances {
-                if i.alive() && i.object_index >= 0 {
-                    if let Some(x) = p.get_mut(i.object_index as usize) {
-                        *x = true;
-                    }
-                }
+        let nobj = self.objects.len();
+        let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); nobj];
+        let mut present = vec![false; nobj];
+        let mut any = false;
+        for (k, i) in self.instances.iter().enumerate() {
+            let o = i.object_index;
+            if !i.alive() || o < 0 || o as usize >= nobj {
+                continue;
             }
-            p
-        };
-        let mut present = present_now(self);
+            present[o as usize] = true;
+            if self.has_collision[o as usize] {
+                buckets[o as usize].push(k);
+                any = true;
+            }
+        }
+        if !any {
+            return Ok(());
+        }
+        let mut done: std::collections::HashSet<(i32, i32)> = std::collections::HashSet::new();
         let mut handlers_ran = false;
-        for ai in 0..n {
-            if ai >= self.instances.len() {
-                break;
-            }
-            let (a, aobj, alive) = {
-                let i = &self.instances[ai];
-                (i.id, i.object_index, i.alive())
-            };
-            if !alive || aobj < 0 || !self.has_collision.get(aobj as usize).copied().unwrap_or(false) {
+        for aobj in 0..nobj {
+            if buckets[aobj].is_empty() {
                 continue;
             }
             if std::mem::take(&mut handlers_ran) {
-                present = present_now(self);
+                present = vec![false; nobj];
+                for i in &self.instances {
+                    if i.alive() && i.object_index >= 0 && (i.object_index as usize) < nobj {
+                        present[i.object_index as usize] = true;
+                    }
+                }
             }
-            if !self.collision_partners[aobj as usize].iter().any(|&b| present.get(b as usize).copied().unwrap_or(false)) {
+            if !self.collision_partners[aobj].iter().any(|&b| present.get(b as usize).copied().unwrap_or(false)) {
                 continue;
             }
-            // Broad phase: the instances (after position `from`) whose boxes overlap
-            // a's box. Recomputed after every handler, since handlers may move
-            // instances or create new ones; this visits the same partners in the
-            // same order as a scan over the whole list.
-            let cands = |g: &Game, from: usize| -> Vec<u32> {
-                let Some(ia) = g.inst(a) else { return Vec::new() };
-                let Some(geo) = g.geo_at(ia, ia.x, ia.y) else { return Vec::new() };
-                let mut c = g.candidates(geo.bbox);
-                c.retain(|&k| k as usize >= from);
-                c
-            };
-            let mut cl = cands(self, 0);
-            let mut li = 0;
-            while li < cl.len() {
-                let bi = cl[li] as usize;
-                li += 1;
-                if bi >= self.instances.len() {
-                    break;
+            let targets = self.collision_targets[aobj].clone();
+            let bucket = std::mem::take(&mut buckets[aobj]);
+            for &target in &targets {
+                for &ai in &bucket {
+                    let (a, alive, o) = match self.instances.get(ai) {
+                        Some(i) => (i.id, i.alive(), i.object_index),
+                        None => continue,
+                    };
+                    if !alive || o != aobj as i32 {
+                        continue;
+                    }
+                    // Broad phase: the instances (after position `from`) whose boxes
+                    // overlap a's box; recomputed after handlers ran (they may move
+                    // or create instances), visiting partners in instance order.
+                    let cands = |g: &Game, from: usize| -> Vec<u32> {
+                        let Some(ia) = g.inst(a) else { return Vec::new() };
+                        let Some(geo) = g.geo_at(ia, ia.x, ia.y) else { return Vec::new() };
+                        let mut c = g.candidates(geo.bbox);
+                        c.retain(|&k| k as usize >= from);
+                        c
+                    };
+                    let mut cl = cands(self, 0);
+                    let mut li = 0;
+                    while li < cl.len() {
+                        let bi = cl[li] as usize;
+                        li += 1;
+                        if bi >= self.instances.len() {
+                            break;
+                        }
+                        let (b, bobj, balive) = {
+                            let i = &self.instances[bi];
+                            (i.id, i.object_index, i.alive())
+                        };
+                        if b == a || !balive {
+                            continue;
+                        }
+                        let aobj_now = match self.inst(a) {
+                            Some(i) if i.alive() => i.object_index,
+                            _ => break,
+                        };
+                        let Some((owner, list, tg)) = self.collision_table.get(&(aobj_now, bobj)).cloned() else {
+                            continue;
+                        };
+                        if tg != target {
+                            continue;
+                        }
+                        let key = (a.min(b), a.max(b));
+                        if done.contains(&key) || !self.instances_collide(a, b) {
+                            continue;
+                        }
+                        done.insert(key);
+                        handlers_ran = true;
+                        self.collision_pair(vm, a, b, owner, &list, bobj)?;
+                        if self.pending.is_some() {
+                            return Ok(());
+                        }
+                        cl = cands(self, bi + 1);
+                        li = 0;
+                    }
                 }
-                let (b, bobj, balive) = {
-                    let i = &self.instances[bi];
-                    (i.id, i.object_index, i.alive())
-                };
-                if b == a || !balive {
-                    continue;
-                }
-                let aobj_now = match self.inst(a) {
-                    Some(i) if i.alive() => i.object_index,
-                    _ => break,
-                };
-                let Some((owner, list)) = self.collision_table.get(&(aobj_now, bobj)).cloned() else {
-                    continue;
-                };
-                if !self.instances_collide(a, b) {
-                    continue;
-                }
-                let other_solid = self.inst(b).map(|i| i.solid).unwrap_or(false);
-                if other_solid {
-                    let i = self.inst_mut(a).unwrap();
+            }
+        }
+        Ok(())
+    }
+
+    /// One colliding pair: `a`'s handler (owner, list) for `b`, then `b`'s
+    /// handler for `a` (if any), with the solid put-back around them.
+    fn collision_pair(
+        &mut self,
+        vm: &mut Vm,
+        a: i32,
+        b: i32,
+        owner: i32,
+        list: &Rc<ActionList>,
+        bobj: i32,
+    ) -> Result<(), Error> {
+        let solid = self.inst(a).map(|i| i.solid).unwrap_or(false) || self.inst(b).map(|i| i.solid).unwrap_or(false);
+        if solid {
+            for id in [a, b] {
+                if let Some(i) = self.inst_mut(id) {
                     i.x = i.xprevious;
                     i.y = i.yprevious;
                 }
-                handlers_ran = true;
-                self.run_handler(vm, a, owner, &list, ev::COLLISION, bobj, b)?;
+            }
+        }
+        self.run_handler(vm, a, owner, list, ev::COLLISION, bobj, b)?;
+        if self.pending.is_some() {
+            return Ok(());
+        }
+        let alive = |g: &Game, id: i32| g.inst(id).map(|i| i.alive()).unwrap_or(false);
+        if alive(self, a) && alive(self, b) {
+            let (ao, bo) = (self.inst(a).unwrap().object_index, self.inst(b).unwrap().object_index);
+            if let Some((owner_b, list_b, _)) = self.collision_table.get(&(bo, ao)).cloned() {
+                self.run_handler(vm, b, owner_b, &list_b, ev::COLLISION, ao, a)?;
                 if self.pending.is_some() {
                     return Ok(());
                 }
-                cl = cands(self, bi + 1);
-                li = 0;
-                if other_solid {
-                    let on_path = match self.inst(a) {
-                        Some(i) if !i.destroyed => i.path_index >= 0,
-                        _ => continue,
-                    };
-                    if on_path {
-                        // move to the new path position; revert if blocked
-                        let pos = self.inst(a).unwrap().path_position;
-                        let (xp, yp) = (self.inst(a).unwrap().x, self.inst(a).unwrap().y);
-                        let (nx, ny) = self.path_point_for(a, pos).unwrap_or((xp, yp));
-                        {
-                            let i = self.inst_mut(a).unwrap();
-                            i.x = nx;
-                            i.y = ny;
-                        }
-                        if self.inst(b).map(|i| i.alive()).unwrap_or(false) && self.instances_collide(a, b) {
-                            let i = self.inst_mut(a).unwrap();
-                            i.x = i.xprevious;
-                            i.y = i.yprevious;
-                            i.path_position = i.path_positionprevious;
-                        }
-                    } else {
-                        {
-                            let i = self.inst_mut(a).unwrap();
-                            i.x += i.hspeed;
-                            i.y += i.vspeed;
-                        }
-                        if self.inst(b).map(|i| i.alive()).unwrap_or(false) && self.instances_collide(a, b) {
-                            let i = self.inst_mut(a).unwrap();
-                            i.x = i.xprevious;
-                            i.y = i.yprevious;
-                        }
+            }
+        }
+        if solid {
+            for id in [a, b] {
+                if !alive(self, id) {
+                    continue;
+                }
+                let on_path = self.inst(id).unwrap().path_index >= 0;
+                if on_path {
+                    let pos = self.inst(id).unwrap().path_position;
+                    let (xp, yp) = (self.inst(id).unwrap().x, self.inst(id).unwrap().y);
+                    let (nx, ny) = self.path_point_for(id, pos).unwrap_or((xp, yp));
+                    let i = self.inst_mut(id).unwrap();
+                    i.x = nx;
+                    i.y = ny;
+                } else {
+                    let i = self.inst_mut(id).unwrap();
+                    i.x += i.hspeed;
+                    i.y += i.vspeed;
+                }
+            }
+            if alive(self, a) && alive(self, b) && self.instances_collide(a, b) {
+                for id in [a, b] {
+                    let i = self.inst_mut(id).unwrap();
+                    i.x = i.xprevious;
+                    i.y = i.yprevious;
+                    if i.path_index >= 0 {
+                        i.path_position = i.path_positionprevious;
                     }
-                    cl = cands(self, bi + 1);
-                    li = 0;
                 }
             }
         }
@@ -737,11 +826,11 @@ impl Game {
                 // the collision box only depends on image_index with per-frame masks
                 let i = if masks > 1 { self.inst_at_mut(k - 1) } else { &mut self.instances[k - 1] };
                 i.image_index += speed;
+                // VERIFIED black-box (bb_motion mo.an3.*): a negative image_speed
+                // is not wrapped (image_index goes -1, -2, ...) and never fires
+                // Animation End.
                 if i.image_index >= n {
                     i.image_index -= n;
-                    ended = true;
-                } else if i.image_index < 0.0 && speed < 0.0 {
-                    i.image_index += n;
                     ended = true;
                 }
             }
@@ -778,6 +867,8 @@ impl Game {
 
     /// Broadcast that does not stop at a pending room change (used for events
     /// raised synchronously from code).
+    /// Instance order (VERIFIED black-box for Room Start, bb_events ev.s10+1: the
+    /// placed instances of the new room before the carried persistent ones).
     pub fn broadcast_now(&mut self, vm: &mut Vm, t: i32, n: i32) -> Result<(), Error> {
         let mut k = 0;
         while k < self.instances.len() {

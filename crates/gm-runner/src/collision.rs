@@ -32,9 +32,6 @@ impl Geo<'_> {
         {
             return false;
         }
-        if !self.precise && !self.rotated {
-            return true;
-        }
         let (dx, dy) = (px - self.x, py - self.y);
         let (rx, ry) = if self.rotated {
             (dx * self.cos - dy * self.sin, dx * self.sin + dy * self.cos)
@@ -44,13 +41,34 @@ impl Geo<'_> {
         if self.xs == 0.0 || self.ys == 0.0 {
             return false;
         }
-        let lx = rx / self.xs + self.ox;
-        let ly = ry / self.ys + self.oy;
-        self.mask.get(lx.floor() as i32, ly.floor() as i32)
+        let lx = (rx / self.xs + self.ox).floor() as i32;
+        let ly = (ry / self.ys + self.oy).floor() as i32;
+        if !self.precise {
+            // rectangle mask: the local box (VERIFIED black-box: a pixel collides
+            // only if its centre maps into the box, bb_motion coll.place_meeting_*)
+            let m = self.mask;
+            return lx >= m.left && lx <= m.right && ly >= m.top && ly <= m.bottom;
+        }
+        self.mask.get(lx, ly)
+    }
+
+    /// For non-rotated geometry: the inclusive room-pixel box whose pixel centres
+    /// lie in the (scaled) local mask box, clipped to the bounding box (a pixel
+    /// collides only if it is inside both).
+    pub fn pixel_box(&self) -> [i32; 4] {
+        let m = self.mask;
+        let (a, b) = pixel_span(self.x, self.xs, self.ox, m.left, m.right);
+        let (c, d) = pixel_span(self.y, self.ys, self.oy, m.top, m.bottom);
+        [a.max(self.bbox[0]), c.max(self.bbox[1]), b.min(self.bbox[2]), d.min(self.bbox[3])]
     }
 }
 
 /// Computes the instance bounding box from a sprite-local box (§8.2).
+///
+/// VERIFIED black-box (bb_motion bbox.origin8.*, bb_optional xform.*): the local
+/// corners are `(l - ox)·xs` and `(r + 1 - ox)·xs - 1` (same vertically), rotated
+/// around the origin, translated by (x, y); each edge is the min/max rounded half
+/// to even.
 pub fn compute_bbox(
     x: f64,
     y: f64,
@@ -65,9 +83,9 @@ pub fn compute_bbox(
     b: i32,
 ) -> [i32; 4] {
     let lx0 = (l as f64 - ox) * xs;
-    let lx1 = (r as f64 + 1.0 - ox) * xs;
+    let lx1 = (r as f64 + 1.0 - ox) * xs - 1.0;
     let ly0 = (t as f64 - oy) * ys;
-    let ly1 = (b as f64 + 1.0 - oy) * ys;
+    let ly1 = (b as f64 + 1.0 - oy) * ys - 1.0;
     let (minx, maxx, miny, maxy) = if angle.rem_euclid(360.0) == 0.0 {
         (x + lx0.min(lx1), x + lx0.max(lx1), y + ly0.min(ly1), y + ly0.max(ly1))
     } else {
@@ -87,11 +105,25 @@ pub fn compute_bbox(
         )
     };
     [
-        minx.round() as i32,
-        miny.round() as i32,
-        (maxx.round() as i32 - 1).max(minx.round() as i32),
-        (maxy.round() as i32 - 1).max(miny.round() as i32),
+        minx.round_ties_even() as i32,
+        miny.round_ties_even() as i32,
+        maxx.round_ties_even() as i32,
+        maxy.round_ties_even() as i32,
     ]
+}
+
+/// Room pixel columns `[a, b]` whose centres map into the local range
+/// `[l, r + 1)` under `x + (local - o)·s` (non-rotated geometry).
+fn pixel_span(x: f64, s: f64, o: f64, l: i32, r: i32) -> (i32, i32) {
+    let e0 = x + (l as f64 - o) * s;
+    let e1 = x + (r as f64 + 1.0 - o) * s;
+    if s > 0.0 {
+        ((e0 - 0.5).ceil() as i32, (e1 - 0.5).ceil() as i32 - 1)
+    } else if s < 0.0 {
+        ((e1 - 0.5).floor() as i32 + 1, (e0 - 0.5).floor() as i32)
+    } else {
+        (1, 0)
+    }
 }
 
 /// A resolved object argument of a query function.
@@ -218,7 +250,8 @@ impl Game {
             return false;
         }
         if !a.precise && !b.precise && !a.rotated && !b.rotated {
-            return true;
+            let (pa, pb) = (a.pixel_box(), b.pixel_box());
+            return pa[0].max(pb[0]) <= pa[2].min(pb[2]) && pa[1].max(pb[1]) <= pa[3].min(pb[3]);
         }
         for py in t..=bt {
             for px in l..=r {
@@ -436,8 +469,58 @@ mod tests {
     fn bbox_rules() {
         assert_eq!(compute_bbox(10.0, 20.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0, 0, 31, 31), [10, 20, 41, 51]);
         assert_eq!(compute_bbox(10.0, 20.0, 2.0, 1.0, 0.0, 16.0, 16.0, 0, 0, 31, 31), [-22, 4, 41, 35]);
-        assert_eq!(compute_bbox(0.0, 0.0, -1.0, 1.0, 0.0, 0.0, 0.0, 0, 0, 9, 9), [-10, 0, -1, 9]);
+        assert_eq!(compute_bbox(0.0, 0.0, -1.0, 1.0, 0.0, 0.0, 0.0, 0, 0, 9, 9), [-11, 0, 0, 9]);
         let b = compute_bbox(0.0, 0.0, 1.0, 1.0, 90.0, 0.0, 0.0, 0, 0, 9, 4);
-        assert_eq!(b, [0, -10, 4, -1]);
+        assert_eq!(b, [0, -9, 4, 0]);
+    }
+
+    /// GM 8.1 black-box results (bb_motion bbox.origin8.*, bb_optional xform.*):
+    /// 16x16 sprite, full box, origin (0,0) or (8,8).
+    #[test]
+    fn bbox_matches_gm81() {
+        let o8 = |x: f64, y: f64| compute_bbox(x, y, 1.0, 1.0, 0.0, 8.0, 8.0, 0, 0, 15, 15);
+        assert_eq!(o8(10.4, 20.6), [2, 13, 17, 28]);
+        assert_eq!(o8(10.5, 20.5), [2, 12, 18, 28]);
+        assert_eq!(o8(11.5, 21.5), [4, 14, 18, 28]);
+        assert_eq!(o8(-0.5, -1.5), [-8, -10, 6, 6]);
+        assert_eq!(o8(10.6, 20.4), [3, 12, 18, 27]);
+        let xf = |o: f64, xs: f64, ys: f64, a: f64| compute_bbox(100.0, 100.0, xs, ys, a, o, o, 0, 0, 15, 15);
+        for (o, xs, ys, a, want) in [
+            (0.0, 2.0, 1.0, 0.0, [100, 100, 131, 115]),
+            (8.0, 2.0, 1.0, 0.0, [84, 92, 115, 107]),
+            (0.0, -1.0, 1.0, 0.0, [83, 100, 100, 115]),
+            (8.0, -1.0, 1.0, 0.0, [91, 92, 108, 107]),
+            (0.0, 1.0, -1.0, 0.0, [100, 83, 115, 100]),
+            (8.0, 1.0, -1.0, 0.0, [92, 91, 107, 108]),
+            (0.0, 0.5, 0.5, 0.0, [100, 100, 107, 107]),
+            (8.0, 0.5, 0.5, 0.0, [96, 96, 103, 103]),
+            (0.0, 1.5, 1.0, 0.0, [100, 100, 123, 115]),
+            (8.0, 1.5, 1.0, 0.0, [88, 92, 111, 107]),
+            (0.0, 1.0, 1.0, 45.0, [100, 89, 121, 111]),
+            (8.0, 1.0, 1.0, 45.0, [89, 89, 110, 111]),
+            (0.0, 1.0, 1.0, 90.0, [100, 85, 115, 100]),
+            (8.0, 1.0, 1.0, 90.0, [92, 93, 107, 108]),
+            (0.0, 1.0, 1.0, 30.0, [100, 92, 120, 113]),
+            (8.0, 1.0, 1.0, 30.0, [89, 90, 110, 110]),
+            (0.0, 1.0, 1.0, 180.0, [85, 85, 100, 100]),
+            (8.0, 1.0, 1.0, 180.0, [93, 93, 108, 108]),
+            (0.0, 2.0, 1.0, 45.0, [100, 78, 133, 111]),
+            (8.0, 2.0, 1.0, 45.0, [83, 84, 116, 116]),
+            (0.0, 0.3, 1.0, 0.0, [100, 100, 104, 115]),
+            (8.0, 0.3, 1.0, 0.0, [98, 92, 101, 107]),
+        ] {
+            assert_eq!(xf(o, xs, ys, a), want, "origin {o} scale {xs},{ys} angle {a}");
+        }
+    }
+
+    #[test]
+    fn rect_mask_pixel_centres() {
+        // a 16-wide box at x = -15.5 covers pixel columns -16..-1 (centre rule),
+        // although bbox_right rounds to 0 (bb_motion coll.place_meeting_xm15_5)
+        assert_eq!(pixel_span(-15.5, 1.0, 0.0, 0, 15), (-16, -1));
+        assert_eq!(pixel_span(-15.4, 1.0, 0.0, 0, 15), (-15, 0));
+        // (the bbox, left = round(15.5) = 16, clips column 15 away: coll.place_meeting_x15_5)
+        assert_eq!(pixel_span(15.5, 1.0, 0.0, 0, 15), (15, 30));
+        assert_eq!(pixel_span(100.0, -1.0, 0.0, 0, 15), (84, 99));
     }
 }

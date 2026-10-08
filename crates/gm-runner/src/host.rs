@@ -30,10 +30,15 @@ impl Host for ConstHost {
     }
 }
 
+/// A real built-in variable's new value. VERIFIED black-box (bb_lang type.*): a
+/// string assigned to a real built-in stores 0 without an error; boolean built-ins
+/// are set when the value is above 0.5 (`solid = 0.5` reads back 0, `visible = 2`
+/// reads back 1).
 fn real(var: VariableId, x: &Value) -> Result<f64, Error> {
+    let _ = var;
     match x {
         Value::Real(r) => Ok(*r),
-        Value::Str(_) => Err(Error::new(format!("Wrong type of value assigned to variable {}.", var.name()))),
+        Value::Str(_) => Ok(0.0),
     }
 }
 
@@ -205,15 +210,15 @@ impl Game {
             v::PATH_SCALE => i.path_scale = real(var, &x)?,
             v::PATH_ORIENTATION => i.path_orientation = real(var, &x)?,
             v::PATH_ENDACTION => i.path_endaction = gml::to_int(real(var, &x)?) as i32,
-            v::SOLID => i.solid = real(var, &x)? >= 0.5,
-            v::PERSISTENT => i.persistent = real(var, &x)? >= 0.5,
+            v::SOLID => i.solid = real(var, &x)? > 0.5,
+            v::PERSISTENT => i.persistent = real(var, &x)? > 0.5,
             v::MASK_INDEX => i.mask_index = gml::to_int(real(var, &x)?) as i32,
             v::TIMELINE_INDEX => i.timeline_index = gml::to_int(real(var, &x)?) as i32,
             v::TIMELINE_POSITION => i.timeline_position = real(var, &x)?,
             v::TIMELINE_SPEED => i.timeline_speed = real(var, &x)?,
-            v::TIMELINE_RUNNING => i.timeline_running = real(var, &x)? >= 0.5,
-            v::TIMELINE_LOOP => i.timeline_loop = real(var, &x)? >= 0.5,
-            v::VISIBLE => i.visible = real(var, &x)? >= 0.5,
+            v::TIMELINE_RUNNING => i.timeline_running = real(var, &x)? > 0.5,
+            v::TIMELINE_LOOP => i.timeline_loop = real(var, &x)? > 0.5,
+            v::VISIBLE => i.visible = real(var, &x)? > 0.5,
             v::SPRITE_INDEX => i.sprite_index = gml::to_int(real(var, &x)?) as i32,
             v::IMAGE_INDEX => i.image_index = real(var, &x)?,
             v::IMAGE_SPEED => i.image_speed = real(var, &x)?,
@@ -225,7 +230,9 @@ impl Game {
             v::IMAGE_BLEND => i.image_blend = gml::to_int(real(var, &x)?) as i32,
             v::ALARM => {
                 if (0..12).contains(&index) {
-                    i.alarm[index as usize] = real(var, &x)?;
+                    // VERIFIED black-box (bb_events ev.alarms.s01): alarms hold integers
+                    // (1.5 reads back as 2, 0.5 as 0: round half to even)
+                    i.alarm[index as usize] = gml::to_int(real(var, &x)?) as f64;
                 }
             }
             _ => return Err(Error::new(format!("Cannot assign to the variable {}", var.name()))),
@@ -366,7 +373,7 @@ impl Game {
             let vs = &mut self.rs.views[k];
             let done = match var {
                 v::VIEW_VISIBLE => {
-                    vs.visible = real(var, &x)? >= 0.5;
+                    vs.visible = real(var, &x)? > 0.5;
                     true
                 }
                 v::VIEW_XVIEW => {
@@ -435,11 +442,11 @@ impl Game {
             let bg = &mut self.rs.backgrounds[k];
             let done = match var {
                 v::BACKGROUND_VISIBLE => {
-                    bg.visible = real(var, &x)? >= 0.5;
+                    bg.visible = real(var, &x)? > 0.5;
                     true
                 }
                 v::BACKGROUND_FOREGROUND => {
-                    bg.foreground = real(var, &x)? >= 0.5;
+                    bg.foreground = real(var, &x)? > 0.5;
                     true
                 }
                 v::BACKGROUND_INDEX => {
@@ -455,11 +462,11 @@ impl Game {
                     true
                 }
                 v::BACKGROUND_HTILED => {
-                    bg.htiled = real(var, &x)? >= 0.5;
+                    bg.htiled = real(var, &x)? > 0.5;
                     true
                 }
                 v::BACKGROUND_VTILED => {
-                    bg.vtiled = real(var, &x)? >= 0.5;
+                    bg.vtiled = real(var, &x)? > 0.5;
                     true
                 }
                 v::BACKGROUND_XSCALE => {
@@ -505,7 +512,7 @@ impl Game {
                 self.rs.caption = string(var, &x)?;
                 self.window_dirty = true;
             }
-            v::ROOM_PERSISTENT => self.rs.persistent = real(var, &x)? >= 0.5,
+            v::ROOM_PERSISTENT => self.rs.persistent = real(var, &x)? > 0.5,
             v::TRANSITION_KIND => self.transition_kind = int(&x)?,
             v::TRANSITION_STEPS => self.transition_steps = int(&x)?,
             v::TRANSITION_COLOR => self.transition_color = int(&x)?,
@@ -529,13 +536,13 @@ impl Game {
                 self.health = nv;
                 self.window_dirty = true;
             }
-            v::SHOW_SCORE => self.show_score = real(var, &x)? >= 0.5,
-            v::SHOW_LIVES => self.show_lives = real(var, &x)? >= 0.5,
-            v::SHOW_HEALTH => self.show_health = real(var, &x)? >= 0.5,
+            v::SHOW_SCORE => self.show_score = real(var, &x)? > 0.5,
+            v::SHOW_LIVES => self.show_lives = real(var, &x)? > 0.5,
+            v::SHOW_HEALTH => self.show_health = real(var, &x)? > 0.5,
             v::CAPTION_SCORE => self.caption_score = string(var, &x)?,
             v::CAPTION_LIVES => self.caption_lives = string(var, &x)?,
             v::CAPTION_HEALTH => self.caption_health = string(var, &x)?,
-            v::ERROR_OCCURRED => self.error_occurred = real(var, &x)? >= 0.5,
+            v::ERROR_OCCURRED => self.error_occurred = real(var, &x)? > 0.5,
             v::ERROR_LAST => self.error_last = string(var, &x)?,
             v::KEYBOARD_KEY => self.input.keyboard_key = int(&x)?,
             v::KEYBOARD_LASTKEY => self.input.keyboard_lastkey = int(&x)?,
@@ -545,8 +552,8 @@ impl Game {
             v::MOUSE_LASTBUTTON => self.input.mouse_lastbutton = int(&x)?,
             v::CURSOR_SPRITE => self.cursor_sprite = int(&x)?,
             v::BACKGROUND_COLOR => self.rs.bg_color = int(&x)?,
-            v::BACKGROUND_SHOWCOLOR => self.rs.show_color = real(var, &x)? >= 0.5,
-            v::VIEW_ENABLED => self.rs.views_enabled = real(var, &x)? >= 0.5,
+            v::BACKGROUND_SHOWCOLOR => self.rs.show_color = real(var, &x)? > 0.5,
+            v::VIEW_ENABLED => self.rs.views_enabled = real(var, &x)? > 0.5,
             _ => return Err(Error::new(format!("Cannot assign to the variable {}", var.name()))),
         }
         Ok(())
@@ -581,10 +588,17 @@ impl Host for Game {
         self.first_of(target)
     }
 
-    fn get_builtin(&mut self, _ctx: &Ctx, inst: i32, var: VariableId, index: i32) -> Result<Value, Error> {
+    fn get_builtin(&mut self, ctx: &Ctx, inst: i32, var: VariableId, index: i32) -> Result<Value, Error> {
         use gml::builtins::VarScope;
         match var.info().scope {
             VarScope::Instance => {
+                // VERIFIED black-box (bb_instances destroy.read_after vs
+                // with.destroy_self_then_read): a destroyed instance's variables can
+                // still be read as `self`, but `u.x` from elsewhere is the non-fatal
+                // error "Unknown variable x".
+                if inst != ctx.self_id && self.inst(inst).map(|i| i.destroyed).unwrap_or(false) {
+                    return Err(Error::new(format!("Unknown variable {}", var.name())));
+                }
                 if var == v::ALARM {
                     let Some(i) = self.inst(inst) else {
                         return Err(Error::new(format!("Unknown variable alarm (instance {} does not exist)", inst)));
@@ -606,10 +620,20 @@ impl Host for Game {
     }
 
     fn call_function(&mut self, vm: &mut Vm, ctx: &Ctx, func: FunctionId, args: &[Value]) -> Result<Value, Error> {
+        if self.pending_lives_event || self.pending_health_event {
+            self.flush_edge_events(vm)?;
+        }
         crate::builtins::dispatch(self, vm, ctx, func, args)
     }
 
     fn call_script(&mut self, vm: &mut Vm, ctx: &Ctx, script: i32, args: &[Value]) -> Result<Value, Error> {
+        // VERIFIED black-box (bb_events ev.s06+1 / ev.s07+1): No More Lives / Health
+        // run at the assignment, before the next statement of the code. set_builtin
+        // has no VM, so they are dispatched at the next host call (or after the
+        // action).
+        if self.pending_lives_event || self.pending_health_event {
+            self.flush_edge_events(vm)?;
+        }
         if script >= crate::ext::EXT_SCRIPT_BASE {
             return crate::ext::call(self, vm, ctx, (script - crate::ext::EXT_SCRIPT_BASE) as usize, args);
         }
@@ -626,11 +650,16 @@ impl Host for Game {
         };
         if self.prof.is_some() {
             let t0 = web_time::Instant::now();
-            let r = vm.run(self, &prog, *ctx, args);
+            let r = vm.run_script(self, &prog, *ctx, args);
             crate::profile::Profiler::add(&mut self.prof.as_mut().unwrap().scripts, script, t0);
             return r;
         }
-        vm.run(self, &prog, *ctx, args)
+        vm.run_script(self, &prog, *ctx, args)
+    }
+
+    fn soft_error(&mut self, e: Error) -> Result<(), Error> {
+        let action = self.ev.action;
+        self.report_error(e, action)
     }
 
     fn read_file(&mut self, path: &str) -> Result<Vec<u8>, Error> {

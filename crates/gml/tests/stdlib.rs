@@ -41,7 +41,7 @@ fn registry() {
     }
     // variadic arities
     let choose = builtins::functions::CHOOSE.info();
-    assert_eq!((choose.min_args, choose.max_args), (1, 16));
+    assert_eq!((choose.min_args, choose.max_args), (0, 16));
     let ext = builtins::function_id("external_define").unwrap().info();
     assert_eq!((ext.min_args, ext.max_args), (5, 16));
 }
@@ -76,7 +76,10 @@ fn real_functions() {
         string("return min('b', 'a', 'c') + max('b', 'a', 'c')"),
         "ac"
     );
-    assert!(err("return min(1, 'a')").message.contains("Wrong type"));
+    // mixed types: arguments of the other type are skipped (VERIFIED black-box,
+    // bb_lang math.max_mixed)
+    assert_eq!(string("return max('a', 1)"), "a");
+    assert_eq!(real("return min(3, 'a', 1)"), 1.0);
     assert_eq!(real("return mean(1, 2, 3, 4)"), 2.5);
     assert_eq!(real("return median(5, 1, 3)"), 3.0);
     assert_eq!(real("return median(4, 1, 3, 2)"), 2.0); // lower middle
@@ -156,7 +159,7 @@ fn random_functions() {
 #[test]
 fn string_functions() {
     assert_eq!(
-        real("return real('12.5') + real(' -2') + real('1e2') + real('junk') + real(3)"),
+        real("return real('12.5') + real(' -2') + real('1e2') + real('') + real(3)"),
         12.5 - 2.0 + 100.0 + 3.0
     );
     assert_eq!(
@@ -210,12 +213,16 @@ fn string_functions() {
         real("return string_count('ab', 'abcabab') + string_count('aa', 'aaaa') * 10"),
         23.0
     );
-    assert!(err("return string_length(5)")
-        .message
-        .contains("string_length"));
+    // a real passed for a string reads as "" (VERIFIED black-box, bb_lang
+    // sf.length_real)
+    assert_eq!(real("return string_length(5)"), 0.0);
     // byte strings: chr(200) is a single character
     assert_eq!(real("return string_length(chr(200) + chr(0))"), 2.0);
-    assert_eq!(real("return ord(string_upper(chr(233)))"), 201.0);
+    // case mapping returns UTF-8 for Latin-1 letters (VERIFIED black-box, bb_lang
+    // sf.upper_latin1): É = C3 89
+    assert_eq!(real("return ord(string_upper(chr(233)))"), 195.0);
+    assert_eq!(real("return ord(string_char_at(string_upper(chr(233)), 2))"), 137.0);
+    assert_eq!(string("return string_lower('AbC')"), "abc");
 }
 
 #[test]

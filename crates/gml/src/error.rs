@@ -49,6 +49,10 @@ pub enum ErrorKind {
     /// Not an error: the host asked the interpreter to unwind all GML currently
     /// executing (e.g. to end the game immediately). Propagated unchanged.
     Halt,
+    /// A crash-like failure that abandons the rest of the current event without a
+    /// message (GM 8.1: reading `argument[16]`, VERIFIED black-box bb_lang
+    /// args.arr_index_16). Script argument arrays are not restored on the way out.
+    AbortEvent,
 }
 
 /// Where a run-time error happened.
@@ -60,6 +64,32 @@ pub struct Location {
     pub line: u32,
     /// 1-based column.
     pub col: u32,
+    /// The text of the source line (without line break), if known.
+    pub source_line: Option<String>,
+}
+
+/// GM 8.1's text for an error in code (VERIFIED black-box, bb_lang *.msg), with
+/// `\n` between its lines (GM 8.1 itself uses `\r`):
+/// `Error in code at line 1:\n   <line>\n<P+1 spaces>^\nat position P: <msg>`.
+pub fn code_error_text(line: u32, col: u32, source_line: &str, msg: &str) -> String {
+    format!(
+        "Error in code at line {}:\n   {}\n{}^\nat position {}: {}",
+        line,
+        source_line,
+        " ".repeat(col as usize + 1),
+        col,
+        msg
+    )
+}
+
+/// The 1-based line `line` of `src` (without its line break).
+pub fn source_line(src: &[u8], line: u32) -> String {
+    let l = src
+        .split(|&b| b == b'\n')
+        .nth(line.saturating_sub(1) as usize)
+        .unwrap_or(b"");
+    let l = l.strip_suffix(b"\r").unwrap_or(l);
+    l.iter().map(|&b| b as char).collect()
 }
 
 /// A run-time error. Host callbacks return this; the interpreter fills in the
@@ -88,6 +118,14 @@ impl Error {
         Error {
             kind: ErrorKind::Fatal,
             message: message.into(),
+            location: None,
+        }
+    }
+    /// An event abort (see [`ErrorKind::AbortEvent`]).
+    pub fn abort_event() -> Self {
+        Error {
+            kind: ErrorKind::AbortEvent,
+            message: String::new(),
             location: None,
         }
     }

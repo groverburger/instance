@@ -947,11 +947,18 @@ fn zero_frame_sprite_keeps_trailer() {
 /// there. Bit 0 alone means "treat uninitialized variables as 0"; other bits round-trip.
 #[test]
 fn uninitialized_flags_word_is_lossless() {
-    for (treat, extra, raw) in [(false, 2, 2i32), (true, 2, 3), (true, 0, 1), (false, 0, 0)] {
+    for (treat, args, extra, raw) in [
+        (false, true, 0, 2i32),
+        (true, true, 0, 3),
+        (true, false, 0, 1),
+        (false, false, 0, 0),
+        (false, true, 8, 10),
+    ] {
         let mut p = Project::default();
         p.settings.icon = b"ICONICON".to_vec();
         p.settings.display_errors = true;
         p.settings.treat_uninitialized_as_zero = treat;
+        p.settings.argument_errors = args;
         p.settings.uninitialized_extra_bits = extra;
         let out = write_project(&p, FormatVersion::V810).unwrap();
         let mut want = W::default();
@@ -963,6 +970,7 @@ fn uninitialized_flags_word_is_lossless() {
         );
         let q = read_project(&out).unwrap();
         assert_eq!(q.settings.treat_uninitialized_as_zero, treat);
+        assert_eq!(q.settings.argument_errors, args);
         assert_eq!(q.settings.uninitialized_extra_bits, extra);
         assert_eq!(q, p);
     }

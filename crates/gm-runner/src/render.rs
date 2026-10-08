@@ -683,16 +683,43 @@ impl Game {
                 items.push((t.depth, 0, k, t.id));
             }
         }
-        for (k, i) in self.instances.iter().enumerate() {
-            if i.alive() && i.visible {
-                items.push((i.depth, 1, k, i.id));
+        self.update_draw_order();
+        for (rank, &id) in self.draw_order.iter().enumerate() {
+            if let Some(i) = self.inst(id) {
+                if i.alive() && i.visible {
+                    items.push((i.depth, 1, rank, id));
+                }
             }
         }
         for (k, d) in self.particles.drawable_systems() {
             items.push((d, 2, k, k as i32));
         }
-        items.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
-        for (depth, kind, k, id) in items {
+        let key = |a: &(f64, u8, usize, i32), b: &(f64, u8, usize, i32)| {
+            b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2))
+        };
+        items.sort_by(key);
+        let mut seen = self.instances.len();
+        let mut next_rank = self.draw_order.len();
+        let mut idx = 0;
+        loop {
+            // instances created by draw events are drawn in the same frame
+            // (VERIFIED black-box, bb_events ev.s02+5 h.DR)
+            if self.instances.len() > seen {
+                let new: Vec<(f64, i32)> =
+                    self.instances[seen..].iter().filter(|i| i.alive() && i.visible).map(|i| (i.depth, i.id)).collect();
+                seen = self.instances.len();
+                for (d, nid) in new {
+                    let it = (d, 1u8, next_rank, nid);
+                    next_rank += 1;
+                    let at = idx + items[idx..].partition_point(|e| key(e, &it) != std::cmp::Ordering::Greater);
+                    items.insert(at, it);
+                }
+            }
+            if idx >= items.len() {
+                break;
+            }
+            let (depth, kind, k, id) = items[idx];
+            idx += 1;
             self.gfx.d3d.depth = depth;
             match kind {
                 0 => {

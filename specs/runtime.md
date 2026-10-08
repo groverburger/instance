@@ -229,6 +229,19 @@ These override anything above that disagrees.
   then perform §3.2 into `room_first` with `is_game_start = true`. User `global.*`
   variables, particle systems, surfaces, data structures and dynamically changed
   resources are **not** reset (`[412_02]` confirms for particle systems).
+  **VERIFIED black-box (bb_restart rs.p2.\*), correcting the above:**
+  - Global user variables (`global.*` and `globalvar` names) are **cleared**: after
+    the restart, `variable_global_exists` is false for them.
+  - `score` is reset to 0 and `lives` to -1, but **`health` keeps its value**
+    (40 stayed 40).
+  - The persistent controller exists once and the persistent extra instance is
+    gone, so all instances are removed.
+  - `room_speed` comes back from the room (30).
+  - Game Start and Room Start run again in the first room.
+  - Files and the clipboard survive.
+  - Not visible because the log lived in globals: whether the rest of the
+    calling action / Game End run, and whether instance ids restart. A follow-up
+    test should carry them in a file.
 
 ### 3.4 Transitions
 * `transition_kind` (0–21 built-ins listed in `[403_08]`; 0 = none) applies to the
@@ -292,8 +305,12 @@ The full recommended sequence (bold items are fixed by the manual; the rest is
    instance gets **Close Button** (`ev_close_button`) `[111]`, `[302_03]`.
 3. For every instance: `xprevious = x`, `yprevious = y`,
    `path_positionprevious = path_position`.
-4. Timelines advance for every instance (§10.2).
+4. (moved: timelines run after Begin Step, see 5b.)
 5. **Begin-step triggers**, then **Begin Step** events.
+5b. Timelines advance for every instance (§10.2). **VERIFIED black-box (bb_motion
+   mo.tl.\*):** a timeline started in Create runs moment 0 in the first step, after
+   that step's Begin Step events. Its position relative to alarms / keyboard /
+   mouse / Step is not verified (proposed test: bb_events a.TL0 vs alarm/step tags).
 6. **Alarm events** (§5.3).
 7. **Keyboard events** (held keys), then **Key Press**, then **Key Release**
    (§11.3). (The manual lists these three together; the press/release relative
@@ -326,7 +343,17 @@ least certain (see OPEN_QUESTIONS).
 ### 4.3 Iteration rules for an event phase
 For an event phase "deliver event E to all instances":
 
-* Instances are visited in instance-list (creation) order.
+* Instances are visited in instance-list (creation) order — except the **step
+  events** (begin, normal, end), which are delivered **object-major**: objects in
+  ascending index order, each object's instances in instance order. **VERIFIED
+  black-box (bb_motion mo.seq):** movers placed r1..r5 (r1, r4, r5 of object
+  `mo_mover`, r2, r3 of the later `mo_mover_solid`) step as `r1 r4 r5 r2 r3`.
+  Room Start / Room End stay in instance-list order (bb_rooms `pp.RE tq.RE k.RE`
+  with `k` of a lower object index). Alarm, keyboard and mouse order across
+  objects is not verified (still instance order; bb_instances will tell).
+  Instances created during a step phase: visited when their object's turn comes;
+  those of objects whose turn has passed are visited at the end of the phase
+  (unverified).
 * Only instances whose object has an *effective* handler for E (own or inherited,
   §6) receive it. Others are skipped (no cost).
 * Deactivated instances and instances already marked destroyed are skipped.
@@ -335,6 +362,68 @@ For an event phase "deliver event E to all instances":
   (iterate by index over a growing list). Instances destroyed during the phase are
   skipped from then on.
 * After each handler returns, check for a pending room change (§3.1).
+
+### 4.3a VERIFIED event dispatch rules (black-box, GM 8.1 Lite, `bb_events`, `bb_instances`)
+
+Evidence: `gm81_blackbox_tests/gm/results_bb_events.txt`, `results_bb_instances.txt`.
+These override the recommendations of §4.2/§4.3/§4.4/§5 where they differ.
+
+1. **Order inside a step** (bb_events ev.s01+1 "a.TL0 a.A3 a.ST", ev.s02+1
+   "z.al2 a.TL1 q.A0inh"): begin-step triggers, Begin Step, **then timelines**,
+   then alarms, keyboard, mouse, step triggers, Step, motion, boundary events,
+   collisions, end-step triggers, End Step, draw. (Timelines move from step 4 of
+   §4.2 to after step 5.) Animation End is raised after drawing, before the next
+   step's begin-step triggers (ev.s03+7 "d.AE0 a.TRbs").
+2. **Object-major dispatch** of Begin Step, Step and End Step (gm-runner uses the
+   same dispatcher for the keyboard phases; not verified there): objects in
+   ascending object index, within an object its instances in instance order
+   (ev.s03 "a b e f g h c d z" follows object order although c and d were placed
+   before e..h; bb_instances in.s01 "p1 p2 p3 q r s" while the instance order is
+   p1 s p2 q p3 r). An instance created during the phase is visited in the same
+   phase if its object is processed later (or is the object being processed);
+   instances of already processed objects wait for the next step (in.s03: p4 of
+   in_p, created in in_ctl's Step, gets no Step that step; ev.s02: f, created in
+   a's Begin Step, runs its Begin Step after b's).
+3. **Room Start** (and other one-off broadcasts) use instance order (ev.s10+1
+   "r2.RS k.RS a.RS": placed instances of the new room before carried persistent
+   ones; cf. §3.2a).
+4. **Alarms** (ev.alarms.*, ev.s02+1, ev.s03+1): processed alarm number by alarm
+   number (0..11), each object-major as in rule 2. Alarm values are integers:
+   assignment rounds half to even (1.5 → 2, 0.5 → 0). Only instances whose object
+   has (or inherits: q.A0inh) that alarm event count down; others keep the value
+   (z.al2 stays 2). Each step a positive alarm is decremented and fires when it
+   reaches 0 (the event reads 0); an alarm that is 0 at the start of the alarm
+   phase becomes -1 without firing (alarm[2] = 0 and alarm[4] = 0.5 never fire; a
+   fired alarm reads 0 for one step, then -1).
+5. **Draw order**: by depth (higher first). Equal-depth instances keep the order of
+   the previous frame: the draw list is re-sorted stably every frame and new
+   instances are appended (bb_instances in.s02..in.s04: after q 0→5→0 and p3
+   0→-5→0 the order stays "q p1 p2 s r p4 p3"). An instance created by a Draw event
+   is drawn in the same frame (ev.s02+5 h.DR).
+6. **Boundary events** (16 px sprite, hspeed 4, room width 1024): Outside Room when
+   `bbox_left > room_width`, `bbox_right < 0`, `bbox_top > room_height` or
+   `bbox_bottom < 0` (fires at x 1028, not at 1024); Intersect Boundary every step
+   while the box is not completely inside, also while completely outside (x 1012 ..
+   1036). Both fire in the same step when outside, Outside first. Views: same rules
+   (unverified).
+7. **Lives / health**: No More Lives / No More Health run at the assignment, before
+   the next statement (ev.s06+1 "a.lives0 a.NML a.lives0done"). (gm-runner raises
+   them at the next function/script call or after the action, because built-in
+   variable writes have no VM access.)
+8. **`keyboard_key_press` / `keyboard_key_release`** post a key message: the step of
+   the call sees no change (kb.chk0); the next step has the Keyboard and Key Press
+   events, `keyboard_check` true and the character appended to `keyboard_string`
+   (lower case for letters: "k"); a release shows up the next step (Key Release).
+9. **`other`** in a Create event run by `instance_create` (also inside `with`) and in
+   a Destroy event is the instance itself (other.create_from_code "0/1",
+   other.create_from_with, other.in_destroy "0/1", bb_lang
+   ref.other_in_driver_create); `event_user` / `event_perform` keep the caller's
+   `other`.
+10. **Destroy**: `instance_destroy()` twice on the same instance before it is removed
+   runs the Destroy event twice (destroy.twice = 2). The destroyed instance still
+   reads its own variables as `self` (with.destroy_self_then_read "7/0"), but `u.x`
+   from another instance is the non-fatal error "Unknown variable x"
+   (destroy.read_after).
 
 ### 4.4 Event context
 During any event, `self` = the receiving instance; `other` = the other instance in
@@ -541,9 +630,10 @@ instance; writing assigns to all of them `[401_06]`.
 * Changing `sprite_index` does **not** reset `image_index` `[405_01]`.
 * Each step (§4.2 step 18): `image_index += image_speed`. If it becomes
   `≥ image_number`, subtract `image_number` (wrap) and fire **Animation End**
-  `[111]`. **UNSPECIFIED – recommended:** with negative `image_speed`, if it becomes
-  `< 0`, add `image_number` and fire Animation End; with `image_number = 0` do not
-  advance; the wrap subtracts once (not a modulo).
+  `[111]`. **VERIFIED black-box (bb_motion mo.an3, mo.an1):** a negative
+  `image_speed` is never wrapped (`image_index` goes −1, −2, −3, …) and fires no
+  Animation End; 0.4 per step on 3 frames gives 2.8 → 0.2 with Animation End.
+  With `image_number = 0` do not advance; the wrap subtracts once (not a modulo).
 
 ### 7.4 Per-step motion update
 For every active instance, in instance order (**UNSPECIFIED – recommended**
@@ -593,6 +683,17 @@ Per sprite (`[202]`, `[409_01]`):
 The collision sprite is `mask_index` if ≥ 0, else `sprite_index`. If neither
 exists, the instance has no box and never collides.
 
+**VERIFIED black-box (bb_motion bbox.origin8.\*, bb_optional xform.\*, 27 cases;
+supersedes the recommendation below):** with local box `[l..r]×[t..b]`, origin
+`(ox,oy)`, scales `xs, ys`, the local corner coordinates are
+`u ∈ {xs·(l − ox), xs·(r + 1 − ox) − 1}`, `v ∈ {ys·(t − oy), ys·(b + 1 − oy) − 1}`
+(the −1 is applied after scaling, also for negative scales); the four corners are
+rotated by `image_angle` (`x' = u·cos a + v·sin a`, `y' = −u·sin a + v·cos a`),
+translated by (x, y), and `bbox_left/top/right/bottom` = min/max of the corners
+**rounded half to even**. Examples: origin (8,8) at x = 10.5 → left 2, right 18;
+x = 11.5 → 4, 18; image_xscale = −1 at x = 100 (origin 0) → 83..100; angle 45 →
+100,89,121,111.
+
 **UNSPECIFIED – recommended computation** (well-known GM8 convention; integer,
 inclusive edges):
 * Without rotation: with `xs = image_xscale`, `ys = image_yscale`, sprite origin
@@ -605,6 +706,12 @@ inclusive edges):
   separate masks), scale or angle change.
 
 ### 8.3 Instance–instance test
+**VERIFIED black-box (bb_motion coll.place_meeting_x\*):** the bounding box is only
+a pre-filter; even for rectangle masks a room pixel belongs to an instance only if
+it is inside its bbox *and* its centre maps into the local mask box. A 16-px box
+at x = −15.5 (bbox_right rounds to 0) does not touch a box at 0; at −15.4 it does;
+at 15.5 (bbox_left 16) it does not touch 0..15.
+
 Two instances collide iff their boxes overlap and:
 * if both masks are non-precise rectangles (kind 1) and there is no rotation: box
   overlap suffices;
@@ -650,8 +757,22 @@ Manual rules `[111]`, `[212]`:
 * 8.0 fixed a bug where mutual collision events ran twice `[new]`: each pair runs
   each side's event once per step.
 
-**UNSPECIFIED – recommended algorithm** (each ordered pair handled by the event
-owner, matching "one event for each instance"):
+**VERIFIED black-box (bb_motion mo.seq, mo.sol; rows: non-solid/solid mover ×
+non-solid/solid wall, all objects having collision events both ways):**
+* Order: objects in ascending index order; for each object its collision events in
+  ascending order of the event's target object; for each event the object's
+  instances in instance order, each against the colliding instances of the target
+  (instance order). Observed: `r4m r4w r1m r1w r5m r5w1 r3m r3w r2m r2w`.
+* A colliding pair is handled once per step: the first instance's event, then
+  immediately the partner's event for the first instance's object (if it has one);
+  the pair is not handled again when the partner's object comes up.
+* The put-back applies when **either** instance is solid (solid mover vs non-solid
+  wall is stopped too): both are put back before the events; afterwards both are
+  moved to their new positions and put back again if they still collide.
+  The mover's speed is kept (it stays at 112 with hspeed 6 every step while
+  touching the wall at 130).
+
+Superseded recommendation (kept for reference):
 ```
 for each active instance A in instance order:
     for each active instance B != A in instance order:
@@ -728,8 +849,10 @@ Notes / open points:
 * Sets `path_index`, `path_speed = speed`, `path_endaction`, `path_position = 0`
   (or 1 when speed < 0). Sets `speed = 0` (normal motion is ignored on a path).
 * absolute: the path's own coordinates are used, the instance jumps to the start
-  (end if speed < 0). Relative: the path is translated so its start (end for
-  negative speed) lies on the current position.
+  (end if speed < 0). Relative: the path is translated so its **first point**
+  lies on the current position, also for a negative speed (the instance does not
+  move at path_start). **VERIFIED black-box (bb_motion mo.pa4):** path (0,0)→(20,0),
+  speed −3 from x = 600: x 600 at start, 617 at position 0.85.
 * Each path point has a speed factor (percent); the effective speed is
   interpolated between points.
 * Each step (§4.2 step 10): `path_position += path_speed × factor(pos) /
@@ -738,7 +861,12 @@ Notes / open points:
   pivot:** the path's start point (absolute or relative anchor). `direction` is set
   to the direction of travel each step `[212]`.
 * When the end is reached (`path_position ≥ 1`, or `≤ 0` for negative speed):
-  * 0 stop: clamp, `path_index = -1` (end path);
+  * 0 stop: `path_position = 1` (also when the end reached was 0 with a
+    negative speed: x jumps to the last point), `path_index = -1`, `path_speed`
+    unchanged. **VERIFIED black-box (bb_motion mo.pa0/pa4 PE: `620,1`).**
+    Verified for 1/2/3 as well (mo.pa1..3): overshoot carried (0.05), continue
+    re-anchors at the end point, reverse gives 1 − overshoot and negates the speed;
+    the End of Path event sees the adjusted position.
   * 1 restart: jump back to the start position (for an unclosed path) and
     continue, carrying any overshoot;
   * 2 continue from current position: re-anchor the path at the current position
@@ -759,7 +887,9 @@ Variables `[403_07]`: `timeline_index` (−1 = none; assignment does not start i
 immediately?, loop?), position, speed, start, pause, stop (= pause and position 0)
 `[206_02]`.
 
-**UNSPECIFIED – recommended per-step algorithm** (step 4 of §4.2):
+**Per-step algorithm** (step 5b of §4.2; VERIFIED black-box bb_motion mo.tl.\*
+for speeds 1, 2, 0.5, −1, a fractional start and looping — moments run with the
+position already advanced to p1):
 ```
 if timeline_running and timeline_index valid:
     p0 = timeline_position; p1 = p0 + timeline_speed
@@ -1102,6 +1232,24 @@ backgrounds, tiles `[302_01]` (same flag as `texture_set_interpolation`).
   logged if enabled); `error_occurred = true`, `error_last = message` are set
   either way.
 * `show_error(str, abort)` raises a user error through the same path.
+* **VERIFIED black-box (bb_lang errcont.\*, math.\*, real.\*, misc.\*; details in
+  gml-language.md "Language and library details"):**
+  - An error in code (operator, variable, script call) abandons the rest of the
+    action; the next action runs.
+  - An error raised by a built-in function is reported, the function returns 0,
+    and the code continues.
+  - Errors inside `execute_string` don't stop the caller.
+  - `error_last` holds GM's full text. The header lines end with CR LF
+    (`ERROR in`, `action number N`, `of <Event> Event`, `for object <name>:`,
+    empty line). The body uses CR between its lines (`In script s:`,
+    `Error in code at line L:`, the source line, a caret, `at position P: msg`).
+  - gm-runner implements this in `Game::report_error` and `Host::soft_error`.
+  - Reading `argument[16]` or above abandons the event with no message.
+* File functions, **VERIFIED black-box (bb_optional file.\*):**
+  - `file_text_open_read` of a missing file returns -1 with no error.
+  - `file_text_write_real` writes a leading space. Integral values are written as
+    a 32-bit integer, wrapping (`100000000000` → ` 1215752192`); other values get
+    6 decimals.
 * `show_debug_message(str)` writes to the debug console (no-op without debug mode).
 
 ---

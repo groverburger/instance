@@ -149,14 +149,21 @@ pub struct Game {
     pub script_names: HashMap<String, i32>,
     /// Effective event tables (own + inherited): object → (type,num) → (owner, list).
     pub effective: Vec<HashMap<(i32, i32), (i32, Rc<ActionList>)>>,
-    /// Collision handler per (object, other object): (owner object, list).
-    pub collision_table: HashMap<(i32, i32), (i32, Rc<ActionList>)>,
+    /// Collision handler per (object, other object): (owner object, list, the
+    /// event's target object, i.e. the other object or the ancestor it names).
+    pub collision_table: HashMap<(i32, i32), (i32, Rc<ActionList>, i32)>,
+    /// Per object: the distinct targets of its effective collision events, ascending.
+    pub collision_targets: Vec<Vec<i32>>,
     /// Ancestor chains, self first.
     pub ancestors: Vec<Vec<i32>>,
     /// Objects that have a collision handler at all (fast skip).
     pub has_collision: Vec<bool>,
     /// Per event (type, number): which objects have an effective handler.
     pub event_objs: HashMap<(i32, i32), Rc<Vec<bool>>>,
+    /// Instance draw order (ids), kept between frames: re-sorted by depth with a
+    /// stable sort each frame, new instances appended (VERIFIED black-box,
+    /// bb_instances in.s02..in.s04).
+    pub draw_order: Vec<i32>,
     /// Per object: the objects it has a collision handler with.
     pub collision_partners: Vec<Vec<i32>>,
     /// Per object: has any mouse event / any outside-boundary event.
@@ -269,6 +276,7 @@ impl Game {
     pub fn new(project: fmt::Project, vm: &mut Vm, headless: bool) -> Result<Game, String> {
         let p = project;
         vm.settings.uninitialized_as_zero = p.settings.treat_uninitialized_as_zero;
+        vm.settings.check_script_args = p.settings.argument_errors;
         let mut g = Game {
             game_id: p.game_id,
             settings: p.settings.clone(),
@@ -382,7 +390,9 @@ impl Game {
             ancestors: Vec::new(),
             has_collision: Vec::new(),
             event_objs: HashMap::new(),
+            draw_order: Vec::new(),
             collision_partners: Vec::new(),
+            collision_targets: Vec::new(),
             has_mouse: Vec::new(),
             has_boundary: Vec::new(),
             instances: Vec::new(),
@@ -521,7 +531,9 @@ impl Game {
                     Value::Real(0.0)
                 }
             };
-            g.constants.insert(c.name.clone(), v);
+            // a resource name wins over a user constant of the same name (VERIFIED
+            // black-box, bb_clash clash.const_vs_object)
+            g.constants.entry(c.name.clone()).or_insert(v);
         }
         g.compile_all(vm, &p);
         crate::ext::compile(&mut g, vm);
@@ -705,6 +717,7 @@ impl Game {
             .collect();
         self.collision_table.clear();
         self.collision_partners = vec![Vec::new(); n];
+        self.collision_targets = vec![Vec::new(); n];
         self.has_collision = vec![false; n];
         for a in 0..n {
             if self.objects[a].is_none() {
@@ -725,13 +738,17 @@ impl Game {
                     let o = self.objects[owner as usize].as_ref().unwrap();
                     for &target in &self.ancestors[b] {
                         if let Some(l) = o.events.get(&(ev::COLLISION, target)) {
-                            self.collision_table.insert((a as i32, b as i32), (owner, l.clone()));
+                            self.collision_table.insert((a as i32, b as i32), (owner, l.clone(), target));
                             self.collision_partners[a].push(b as i32);
+                            if !self.collision_targets[a].contains(&target) {
+                                self.collision_targets[a].push(target);
+                            }
                             break 'outer;
                         }
                     }
                 }
             }
+            self.collision_targets[a].sort_unstable();
         }
     }
 
@@ -926,18 +943,25 @@ impl Game {
         }
         let id = self.alloc_id();
         self.add_instance(id, obj, x, y);
-        let other = if caller >= gml::special::FIRST_INSTANCE_ID { caller } else { id };
-        self.run_event(vm, id, ev::CREATE, 0, other)?;
+        // VERIFIED black-box (bb_instances other.create_from_code/_from_with, bb_lang
+        // ref.other_in_driver_create): in the Create event `other` is the new
+        // instance itself, not the caller.
+        let _ = caller;
+        self.run_event(vm, id, ev::CREATE, 0, id)?;
         Ok(id)
     }
 
     /// Destroys an instance: Destroy event then mark (§5.6).
+    ///
+    /// VERIFIED black-box (bb_instances other.in_destroy, destroy.twice): `other` in
+    /// the Destroy event is the instance itself, and destroying an instance again
+    /// before it is removed runs the Destroy event again.
     pub fn destroy_instance(&mut self, vm: &mut Vm, id: i32, other: i32) -> Result<(), Error> {
-        match self.inst(id) {
-            Some(i) if !i.destroyed => {}
-            _ => return Ok(()),
+        let _ = other;
+        if self.inst(id).is_none() {
+            return Ok(());
         }
-        let r = self.run_event(vm, id, ev::DESTROY, 0, other);
+        let r = self.run_event(vm, id, ev::DESTROY, 0, id);
         if let Some(i) = self.inst_mut(id) {
             i.destroyed = true;
         }
@@ -973,6 +997,27 @@ impl Game {
             self.run_event(vm, id, ev::CREATE, 0, id)?;
         }
         Ok(())
+    }
+
+    /// Updates [`Game::draw_order`]: drops dead instances, appends new ones in
+    /// instance order, then sorts stably by depth (higher depth first). Equal-depth
+    /// instances therefore keep their previous relative order, even after a depth
+    /// change and back (VERIFIED black-box, bb_instances in.s04+1).
+    pub fn update_draw_order(&mut self) {
+        let mut order = std::mem::take(&mut self.draw_order);
+        let mut known: std::collections::HashSet<i32> = std::collections::HashSet::with_capacity(order.len());
+        order.retain(|id| match self.inst(*id) {
+            Some(i) if i.alive() => known.insert(*id),
+            _ => false,
+        });
+        for i in &self.instances {
+            if i.alive() && !known.contains(&i.id) {
+                order.push(i.id);
+            }
+        }
+        let depth = |id: &i32| self.inst(*id).map(|i| i.depth).unwrap_or(0.0);
+        order.sort_by(|a, b| depth(b).partial_cmp(&depth(a)).unwrap_or(std::cmp::Ordering::Equal));
+        self.draw_order = order;
     }
 
     /// Removes destroyed instances from the list.
@@ -1021,23 +1066,49 @@ impl Game {
         if e.kind == ErrorKind::Halt {
             return Err(e);
         }
+        if e.kind == ErrorKind::AbortEvent {
+            // an event abandoned without a message (GM 8.1 crash-like failure)
+            return Ok(());
+        }
         self.error_occurred = true;
-        self.error_last = e.message.clone();
+        // GM 8.1's message layout (VERIFIED black-box, bb_lang *.msg): a header,
+        // then "In script <name>:" for errors inside scripts and the code excerpt
+        // with a caret; errors of built-in functions show only their message.
+        let body = match &e.location {
+            Some(l) => {
+                let script = if self.script_names.contains_key(&*l.program) {
+                    format!("In script {}:\n", l.program)
+                } else {
+                    String::new()
+                };
+                let line = l.source_line.clone().unwrap_or_default();
+                format!("{}{}", script, gml::code_error_text(l.line, l.col, &line, &e.message))
+            }
+            None => e.message.clone(),
+        };
         let obj_name = self
             .object(self.ev.object)
             .map(|o| o.name.clone())
             .unwrap_or_else(|| "<none>".into());
-        let msg = if self.in_timeline || self.ev.object < 0 {
-            format!("ERROR in action number {}:\n{}", action_no + 1, e)
+        let header: Vec<String> = if self.in_timeline || self.ev.object < 0 {
+            vec![format!("ERROR in action number {}:", action_no + 1)]
         } else {
-            format!(
-                "ERROR in\naction number {}\nof {} Event\nfor object {}:\n\n{}",
-                action_no + 1,
-                crate::events::event_name(self.ev.etype, self.ev.number, self),
-                obj_name,
-                e
-            )
+            vec![
+                "ERROR in".into(),
+                format!("action number {}", action_no + 1),
+                format!("of {} Event", crate::events::event_name(self.ev.etype, self.ev.number, self)),
+                format!("for object {}:", obj_name),
+                String::new(),
+            ]
         };
+        // error_last: header lines end with CR LF, the body uses CR (as GM 8.1)
+        // a compile error in execute_string has no header (bb_lang syn.*.msg)
+        self.error_last = if body.starts_with("COMPILATION ERROR") {
+            body.replace('\n', "\r")
+        } else {
+            format!("{}\r\n{}", header.join("\r\n"), body.replace('\n', "\r"))
+        };
+        let msg = format!("{}\n{}", header.join("\n"), body);
         let abort = self.ui_error(&msg, e.kind == ErrorKind::Fatal);
         if abort {
             self.aborted = true;
@@ -1141,17 +1212,18 @@ impl Game {
                     i.path_positionprevious = i.path_position;
                 }
             }
-            // 4. timelines
-            phase!(self, "timelines", self.advance_timelines(vm));
-            if self.pending.is_some() {
-                break 'phases;
-            }
             // 5. begin step
             self.run_triggers(vm, 1)?;
             if self.pending.is_some() {
                 break 'phases;
             }
             phase!(self, "begin step", self.broadcast(vm, ev::STEP, crate::events::step::BEGIN));
+            if self.pending.is_some() {
+                break 'phases;
+            }
+            // 4. timelines: after Begin Step, before alarms (VERIFIED black-box,
+            // bb_events ev.s01+1 "a.TL0 a.A3 a.ST", ev.s02+1 "z.al2 a.TL1 q.A0inh")
+            phase!(self, "timelines", self.advance_timelines(vm));
             if self.pending.is_some() {
                 break 'phases;
             }
@@ -1260,9 +1332,11 @@ impl Game {
                     self.instances.clear();
                     self.reindex();
                     self.snapshots.clear();
+                    // VERIFIED black-box (bb_restart rs.p2.*): global variables are
+                    // cleared, score/lives reset, health keeps its value.
+                    vm.clear_globals();
                     self.score = 0.0;
                     self.lives = -1.0;
-                    self.health = 100.0;
                     self.audio.stop_all();
                     self.room = -1;
                     self.pending = None;

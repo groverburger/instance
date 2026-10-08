@@ -94,17 +94,32 @@ pub fn register(l: &mut Reg) {
         g.input.numlock = a.b(0)?;
         zero()
     }));
+    // VERIFIED black-box (bb_events ev.s05..ev.s09, ev.keyboard_string): a simulated
+    // key press/release is a posted key message: keyboard_check does not change in
+    // the step of the call; the next step sees the press (Key Press event,
+    // keyboard_string gets the character) or the release (Key Release event).
     l.push(("keyboard_key_press", |g, _, _, a| {
         let k = a.i(0)?;
         if (0..256).contains(&k) {
-            g.input.apply(&InputEvent::KeyDown(k as u8));
+            let f = g.frame + 1;
+            g.scripted_input.push((f, InputEvent::KeyDown(k as u8)));
+            let c = k as u8;
+            let ch = match c {
+                b'A'..=b'Z' => Some((c + 32) as char),
+                b'0'..=b'9' | b' ' => Some(c as char),
+                _ => None,
+            };
+            if let Some(ch) = ch {
+                g.scripted_input.push((f, InputEvent::Char(ch)));
+            }
         }
         zero()
     }));
     l.push(("keyboard_key_release", |g, _, _, a| {
         let k = a.i(0)?;
         if (0..256).contains(&k) {
-            g.input.apply(&InputEvent::KeyUp(k as u8));
+            let f = g.frame + 1;
+            g.scripted_input.push((f, InputEvent::KeyUp(k as u8)));
         }
         zero()
     }));

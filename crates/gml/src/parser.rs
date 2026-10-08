@@ -239,7 +239,7 @@ impl Parser {
                 match self.peek() {
                     Tok::Semi | Tok::RBrace | Tok::End | Tok::Eof => {
                         return Err(CompileError::new(
-                            "Expression expected after return.",
+                            "Unexpected symbol in expression.",
                             self.span(),
                         ))
                     }
@@ -394,7 +394,7 @@ impl Parser {
             (5, Star) => BinOp::Mul,
             (5, Slash) => BinOp::Div,
             (5, Div) => BinOp::IntDiv,
-            (5, Mod | Percent) => BinOp::Mod,
+            (5, Mod) => BinOp::Mod,
             _ => return None,
         })
     }
@@ -599,7 +599,9 @@ mod tests {
         assert_eq!(pe("-a.x"), "(-a.x)");
         assert_eq!(pe("- - a"), "(-(-a))");
         assert_eq!(pe("!-a"), "(!(-a))");
-        assert_eq!(pe("a mod b div c % d"), "(((a mod b) div c) mod d)");
+        assert_eq!(pe("a mod b div c mod d"), "(((a mod b) div c) mod d)");
+        // `%` is not an operator in GM 8.1 (VERIFIED black-box, bb_lang syn.percent)
+        assert!(parse_expression(b"7 % 3").is_err());
         assert_eq!(pe("not a and b"), "((!a) && b)");
         assert_eq!(pe("a := b"), "(a == b)");
         assert_eq!(pe("--b"), "(-(-b))");

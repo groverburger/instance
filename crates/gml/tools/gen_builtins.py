@@ -56,6 +56,10 @@ def main():
         args = e.get("args") or []
         if e.get("variadic"):
             mn, mx = max(len(args) - 2, 0), 16
+            # VERIFIED black-box (bb_lang math.min_none/max_none/choose_none): GM 8.1
+            # accepts these with no argument (result 0).
+            if e["name"] in ("choose", "min", "max", "mean", "median"):
+                mn = 0
         else:
             mn = mx = len(args)
         w(f"    FunctionInfo {{ name: {rs_str(e['name'])}, min_args: {mn}, max_args: {mx}, variadic: {'true' if e.get('variadic') else 'false'}, chapter: {rs_str(str(e.get('chapter')))} }},")

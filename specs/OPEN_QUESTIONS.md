@@ -592,3 +592,147 @@ up in runtime.md §3.2a. gm-runner now matches all 48 bb_rooms keys.
   drawing its frame, then the new room is entered at once (also before the first
   step). The new room's entry events still see the input edges of the step in which
   the change was requested (they are cleared after the transition).
+
+## [RESOLVED-LANG] GML semantics verified in GM 8.1 (bb_lang, bb_args0, bb_random, bb_restart, bb_optional file.*, bb_clash; 2026-10-08)
+
+Evidence: `gm81_blackbox_tests/gm/results_*.txt`. The rules are written up in
+gml-language.md ("Language and library details — VERIFIED") and in runtime.md
+§3.3 and §19. gm-runner now matches every non-informational key of bb_lang
+(except `ref.other_in_driver_create`, see GML-10), bb_args0, bb_random,
+bb_restart, bb_clash and bb_optional `file.*`.
+- GML-1: RESOLVED. Reals are true when >= 0.5. A string condition is the
+  run-time error "Expression expected".
+- GML-2: RESOLVED. Mixed string/real comparison is "Cannot compare arguments.";
+  arithmetic, logical and bitwise operators on mixed operands are errors.
+- GML-3: RESOLVED. Comparison uses `SameValue`-style tolerance (1e-12, relative
+  for large values). Open detail: relative vs absolute above 1, which would need
+  `1e6 == 1e6 + 1e-7`.
+- GML-4: RESOLVED. Conversion rounds half to even. Bitwise operations are 64-bit;
+  `>>` is logical; shift counts follow Delphi's rule. `floor`/`ceil` wrap to 32
+  bits.
+- GML-5 / G-11: RESOLVED. Non-integral values print with 2 decimals and at most
+  10 significant digits, otherwise in scientific form. Integral values outside
+  the int64 range print "ERROR". `string_format` uses 18 digits.
+- GML-6: RESOLVED. `/` and `div` by 0 give "Division by 0."; `mod` gives
+  "Modulo by 0.". The error aborts the action.
+- GML-11 / G-2 / FF-18 / IDE-12: RESOLVED.
+  - Settings flag bit 1 is the "Throw an error when arguments aren't initialised
+    correctly." option. With it set, the argument count is checked; with it
+    clear, missing arguments are 0.
+  - `argument_count` is read-only, checked at run time.
+  - Arguments live in a global array.
+  - gm-format exposes the bit as `Settings::argument_errors`.
+- GML-12: RESOLVED. `var` is lexical, and a built-in name can't be redeclared.
+- GML-14: RESOLVED. `%` is not an operator; `:=` in an expression compares; `.5`,
+  `12.` and `1.2.3` are accepted; `1e3` is not.
+- GML-15: RESOLVED. `continue`/`break` outside a loop act like exit (the value
+  stays as set); a bare `return;` is a compile error.
+- GML-16: RESOLVED. Wrong-type assignments to built-ins store 0. Reads through a
+  missing owner give "Unknown variable x"; writes through `noone` give "Cannot
+  assign to the variable"; other writes with no instance are no-ops.
+- GML-17: RESOLVED. Code errors abandon the action. Built-in function errors and
+  errors inside `execute_string` don't.
+- GML-18: RESOLVED (format). Positions match GM's in the observed cases, except
+  compile-time argument-count errors (GM reports them at the end of the call).
+- GML-20: RESOLVED. Script beats built-in function; resource name beats user
+  constant; user constant beats built-in constant.
+- GML-10: PARTLY. `other` in a Create event run by `instance_create` is the new
+  instance itself (`ref.other_in_driver_create = t275`). This is handled with
+  bb_instances / bb_events (runner).
+- G-1: CORRECTED. `choose/min/max/mean/median` accept 0 arguments, result 0.
+- G-20: CORRECTED. Function errors are non-aborting and read "Error in function
+  f()." (`sqrt(-1)`: "Cannot apply sqrt to negative number.").
+- G-21: CONFIRMED (`round` ties to even, `sign(0)` = 0, `frac(-3.25)` = -0.25).
+- G-22: CORRECTED. `real()` is strict (see gml-language.md); a real argument is
+  returned unchanged.
+- G-23: CORRECTED. `string_delete` with an index < 1 deletes nothing. A real
+  passed for a string is "".
+- G-24: CORRECTED. `string_lower/upper` return Latin-1 letters UTF-8-encoded.
+  Open: confirm with `string_length(string_lower(chr(192)))` (expected 2).
+- G-25: CORRECTED. `min/max` skip arguments of the other type.
+- RT-04: PARTLY (runtime.md §3.3). `game_restart` clears globals, resets
+  score/lives and keeps health. Whether Game End runs, and the id counter, still
+  need a test that carries the results through a file.
+- R-26: CORRECTED. `file_text_write_real` wraps integers to 32 bits;
+  `file_text_open_read` of a missing file returns -1.
+
+## [RESOLVED-MOTION] Motion / collision / bbox verified in GM 8.1 (bb_motion, bb_optional, 2026-10-08)
+
+Evidence: `gm81_blackbox_tests/gm/results_bb_motion.txt`, `results_bb_optional.txt`
+(GM 8.1 Lite); rules written up in runtime.md §4.2 (5b), §4.3, §7.5, §8.2, §8.3,
+§8.6, §10.1, §10.2. gm-runner now matches all 472 bb_motion keys and all 22
+bb_optional `xform.*` keys.
+- RT-01: PARTLY RESOLVED. Timelines advance after Begin Step (mo.tl.*: moment 0 of a
+  timeline started in Create logs step 1, after the clock's Begin Step), not before
+  it. Order relative to alarms/keyboard/mouse/Step still open. Animation advances
+  after Draw (Draw sees the pre-advance image_index, mo.an*.dr) — unchanged.
+- RT-06 / R-14: RESOLVED (§8.6). The put-back happens when either instance is solid
+  (solid mover vs non-solid wall stops too: mo.sol.r3m stays at 112). A colliding
+  pair is handled once per step, the partner's event right after the first one.
+  Collision events are processed object-major (objects ascending, then the event's
+  target object ascending, then instance order): `r4m r4w r1m r1w r5m r5w1 r3m ...`.
+  Not verified: whether both instances are moved back (only static walls tested).
+- RT-08: (alarms) not covered by bb_motion.
+- RT-11 / R-11: RESOLVED (§8.2). bbox corners are `xs·(l−ox)` and `xs·(r+1−ox) − 1`
+  (−1 after scaling, also for negative scales), rotated, min/max rounded half to
+  even (27 cases incl. origin 8,8 at .5 positions, scales −1/0.3/0.5/1.5/2, angles
+  30/45/90/180). The bbox is only a pre-filter: a pixel belongs to an instance only
+  if its centre maps into the local mask box, also for rectangle masks
+  (coll.place_meeting_xm15_5 = 0 although bbox_right = 0 touches column 0).
+- RT-17: RESOLVED for open paths (§10.1). Relative paths are anchored at their first
+  point even when a negative speed starts them at position 1; end action stop sets
+  position 1 (also when running backwards); restart/continue carry the overshoot,
+  reverse mirrors it; path_speed is never changed by stop. Timelines: moments run
+  with the position already advanced; speed 2/0.5/−1, fractional start, looping
+  (position 0 after passing the last moment) as recommended.
+- New (VERIFIED, §4.3): step events (begin/normal/end) are delivered object-major
+  (objects ascending, then instance order): mo.seq `r1m r4m r5m r2m r3m`. Room
+  Start/End stay in instance order (bb_rooms). Alarm/keyboard/mouse order across
+  objects remains instance order until bb_instances / bb_events results arrive
+  (bb_instances `in.s*` already logs step order of objects created out of index
+  order; bb_events logs timeline vs alarm vs step tags).
+- Animation (§7.5): negative image_speed never wraps and fires no Animation
+  End (mo.an3: −1, −2, −3, ...).
+
+## [RESOLVED-EVENTS] Event dispatch verified in GM 8.1 (bb_events, bb_instances, 2026-10-08)
+
+Evidence: `gm81_blackbox_tests/gm/results_bb_events.txt`, `results_bb_instances.txt`
+(GM 8.1 Lite); rules in runtime.md §4.3a. gm-runner now matches all 59 bb_events keys
+and 72 of 75 bb_instances keys.
+- RT-01: PARTLY RESOLVED (§4.3a rule 1): timelines run after Begin Step, before
+  alarms; Animation End after drawing. The positions of the xprevious capture and of
+  the particle / view updates remain unverified.
+- RT-05: RESOLVED (§4.3a rule 6): Outside Room = box beyond the room by at least one
+  pixel; Intersect Boundary every step while not completely inside (also when fully
+  outside); both repeat every step. Instances without a sprite: unverified.
+- RT-08: RESOLVED (§4.3a rule 4): integer alarms (round half even), fire at 0 and
+  read 0 in the event, 0 becomes -1 next step without firing; alarms only tick when
+  the object has (or inherits) that alarm event; alarm-number-major order.
+- RT-09: RESOLVED (§4.3a rule 2): object-major dispatch; an instance created during
+  a phase runs in it only if its object has not been processed yet.
+- RT-12: No More Lives / Health timing RESOLVED (§4.3a rule 7): at the assignment.
+- RT-13: PARTLY RESOLVED (§4.3a rule 8): simulated keys take effect the next step;
+  held-key events before press events (ev.s06 "a.KB a.KBany a.KP"). Key-major vs
+  instance/object-major nesting is still open.
+- RT-16 / D3D-IMPL-2: equal-depth instance draw order RESOLVED (§4.3a rule 5, stable
+  re-sort of the previous frame's order). Tiles / particle systems at equal depth
+  remain open.
+- GML-10: RESOLVED (§4.3a rule 9): `other` is the instance itself in Create (run by
+  instance_create) and Destroy.
+- runtime.md §5.6: double destroy and reads after destroy RESOLVED (§4.3a rule 10).
+- Still open from these projects:
+  - RT-21 (bb_instances change.props): right after `instance_change(in_ic2, false)`
+    the same code still reads the OLD object_index, sprite, depth, solid, visible,
+    persistent and mask; gm-runner switches all of them at once. New test (added to
+    bb_instances, needs a GM run)
+    `change.later.next_action` / `change.later.counts`: logs the same properties in
+    the following action, plus `instance_number(in_ic1)`,
+    `instance_number(in_ic2)` and the id, to learn whether GM changes the object later
+    (deferred) or replaces the instance record.
+  - Collision event order (in.s01+1 / in.s02+2: GM "cx.COcy1 cy1.COcx" although cy1
+    was placed before cx; gm-runner fires cy1's event first at step 2) belongs with
+    the bb_motion collision work (mo.seq). GM appears to process pairs starting from
+    the lower object index and to fire both sides of a pair together.
+  - Keyboard / mouse phase order: gm-runner assumes object-major as for Step.
+    Proposed test: two objects with Keyboard <K> events whose instances are placed in
+    reverse object order, key press simulated the step before.

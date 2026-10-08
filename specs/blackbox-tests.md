@@ -24,6 +24,42 @@ RS/RE room start/end, GS/GE game start/end, NML/NMH no more lives/health, U0 use
 TL<n> timeline moment, TRbs/TRst/TRes trigger (begin/step/end moment), KP/KB/KR key
 press/held/release, k.BS = the clock instance (first in instance order).
 
+## bb_smoke1 — Smoke test
+
+Lite: Lite-safe  
+Headless frames for gm-runner: 10
+
+| key prefix | answers | what is logged |
+|---|---|---|
+| `smoke` | - | smoke test ladder (diagnostic) |
+
+## bb_smoke2 — Smoke test
+
+Lite: Lite-safe  
+Headless frames for gm-runner: 10
+
+| key prefix | answers | what is logged |
+|---|---|---|
+| `smoke` | - | smoke test ladder (diagnostic) |
+
+## bb_smoke3 — Smoke test
+
+Lite: Lite-safe  
+Headless frames for gm-runner: 10
+
+| key prefix | answers | what is logged |
+|---|---|---|
+| `smoke` | - | smoke test ladder (diagnostic) |
+
+## bb_smoke4 — Smoke test 4 (full harness)
+
+Lite: Lite-safe  
+Headless frames for gm-runner: 31
+
+| key prefix | answers | what is logged |
+|---|---|---|
+| `smoke` | - | smoke test ladder (diagnostic) |
+
 ## bb_constants — Every built-in constant's numeric value
 
 Lite: Lite-safe (only reads constants; constants of Pro-only features are plain numbers). A constant unknown to GM 8.1 shows up as c.groupN.aborted or a missing key.  
@@ -214,6 +250,59 @@ Headless frames for gm-runner: 34
 |---|---|---|
 | `clash.` | GML-20 | resolution priority of clashing names |
 | `.msg` | GML-18 | error message text (informational) |
+
+## bb_perf — Performance baselines (timed loops; informational)
+
+Lite: Lite-safe. Takes roughly 10-30 s in GM 8.1; please don't touch anything until DONE.  
+Headless frames for gm-runner: 50
+
+| key prefix | answers | what is logged |
+|---|---|---|
+| `perf.` | perf | milliseconds per benchmark (timing, informational) (informational) |
+| `perf.done` | - | end marker |
+
+## bb_perf_fps — Performance baseline: steps per second with 1000 instances (informational)
+
+Lite: Lite-safe. Runs about 4 seconds.  
+Headless frames for gm-runner: 400000
+
+| key prefix | answers | what is logged |
+|---|---|---|
+| `perf.` | perf | steps per second (timing, informational) (informational) |
+
+## bb_lang2 — Follow-up: comparison tolerance, case mapping, implicit results, argument forms
+
+Lite: Lite-safe.  
+Headless frames for gm-runner: 44
+
+| key prefix | answers | what is logged |
+|---|---|---|
+| `eq2.` | GML-3 | relative vs absolute comparison tolerance |
+| `case.` | G-24 | string_lower/upper of Latin-1 letters (UTF-8?) |
+| `mm.` | G-25 | min/max/mean with mixed types |
+| `ret.` | GML-11 | script result without return: last assignment or last expression? |
+| `args.` | GML-11, FF-18 | argumentN together with argument[i]; script_execute counts |
+| `.msg` | GML-18 | error message text (informational) |
+| `lang2.done` | - | end marker |
+
+## bb_restart2 — Follow-up: game_restart() events and instance ids (logged through a file)
+
+Lite: Lite-safe (file_text_* and file_exists). Delete bb_restart2.txt if a run was interrupted.  
+Headless frames for gm-runner: 30
+
+| key prefix | answers | what is logged |
+|---|---|---|
+| `rs2.phase1_log` | RT-04 | phase 1 sequence: rest of the action / next action / Game End / Room End / Destroy around game_restart |
+| `rs2.p2_` | RT-04 | instance ids after the restart (counter reset?) |
+
+## bb_constexpr — Diagnostic: expression-valued constants only
+
+Lite: Lite-safe  
+Headless frames for gm-runner: 31
+
+| key prefix | answers | what is logged |
+|---|---|---|
+| `cx.` | GML-19 | constants defined by expressions |
 
 ## Not covered
 

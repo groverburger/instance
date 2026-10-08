@@ -246,7 +246,10 @@ Create. (`--gm8-create-order` disables this.)
 `<ConfigConstants><constants>` add more user constants. The converter defaults
 "treat uninitialised variables as 0" to **on** (`--uninit-error` / `--uninit-studio`
 to change): Studio code relies on short-circuit evaluation and lenient reads that
-GM 8.1 would turn into runtime errors.
+GM 8.1 would turn into runtime errors. GM 8.1's "throw an error when arguments aren't
+initialised correctly" (settings bit 1, an exact argument-count check per script
+call) is always **off** in converted projects: Studio calls scripts with any
+number of arguments, and `argumenterrors` does not have that meaning there.
 
 ## 10. Data files ("included files") [I]
 
