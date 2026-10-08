@@ -2,6 +2,7 @@
 
 pub mod constants;
 pub mod events;
+pub mod followup;
 pub mod instances;
 pub mod lang;
 pub mod motion;
@@ -34,6 +35,8 @@ pub fn all() -> Vec<Spec> {
         optional::build_clash(),
         perf::build(),
         perf::build_fps(),
+        followup::build_lang2(),
+        followup::build_restart2(),
     ];
     v.extend(lang::diagnostics());
     v
