@@ -75,6 +75,62 @@ impl Editor for SpriteEditor {
     fn ui(&mut self, ui: &mut Ui, cx: &mut Cx) {
         let mut frames_changed = false;
         let mut mask_changed = false;
+        let (k_load, k_add) = (
+            crate::dialogs::key("sprite-load", self as *const Self),
+            crate::dialogs::key("sprite-add", self as *const Self),
+        );
+        match crate::dialogs::take_opened(k_load) {
+            Some(Ok(files)) => {
+                let gmspr = files.len() == 1
+                    && std::path::Path::new(&files[0].name)
+                        .extension()
+                        .is_some_and(|e| e.eq_ignore_ascii_case("gmspr"));
+                if gmspr {
+                    match gm_format::read_sprite_export(&files[0].bytes) {
+                        Ok(mut s) => {
+                            s.name = self.work.name.clone();
+                            s.last_changed = self.work.last_changed;
+                            self.work = s;
+                            self.gen += 1;
+                        }
+                        Err(e) => cx.requests.push(Request::Message(e.to_string())),
+                    }
+                } else {
+                    let files: Vec<_> = files.into_iter().map(|f| (f.name, f.bytes)).collect();
+                    match imageio::frames_from_bytes(&files, self.opts) {
+                        Ok(f) => {
+                            self.work.frames = f;
+                            frames_changed = true;
+                        }
+                        Err(e) => cx.requests.push(Request::Message(e)),
+                    }
+                }
+            }
+            Some(Err(e)) => cx.requests.push(Request::Message(e)),
+            None => {}
+        }
+        match crate::dialogs::take_opened(k_add) {
+            Some(Ok(files)) => {
+                let files: Vec<_> = files.into_iter().map(|f| (f.name, f.bytes)).collect();
+                match imageio::frames_from_bytes(&files, self.opts) {
+                    Ok(f) if !f.is_empty() => {
+                        let (w, h) = if !self.work.frames.is_empty() {
+                            (self.work.width(), self.work.height())
+                        } else {
+                            (f[0].width, f[0].height)
+                        };
+                        self.work
+                            .frames
+                            .extend(f.iter().map(|x| imageio::fit_canvas(x, w, h)));
+                        frames_changed = true;
+                    }
+                    Ok(_) => {}
+                    Err(e) => cx.requests.push(Request::Message(e)),
+                }
+            }
+            Some(Err(e)) => cx.requests.push(Request::Message(e)),
+            None => {}
+        }
         if let Some(ed) = &mut self.frames_editor {
             let id = egui::Id::new(("sprite-frames-editor", self.uid));
             match ed.show(&cx.ctx, cx.tex, id) {
@@ -98,39 +154,14 @@ impl Editor for SpriteEditor {
                 name_field(ui, &mut self.work.name);
                 ui.horizontal(|ui| {
                     if ui.button("Load Sprite…").clicked() {
-                        if let Some(files) = rfd::FileDialog::new()
-                            .add_filter("Images", &["png", "bmp", "gif", "jpg", "jpeg"])
-                            .add_filter("GameMaker sprite", &["gmspr"])
-                            .pick_files()
-                        {
-                            let gmspr = files.len() == 1
-                                && files[0]
-                                    .extension()
-                                    .is_some_and(|e| e.eq_ignore_ascii_case("gmspr"));
-                            if gmspr {
-                                match std::fs::read(&files[0])
-                                    .map_err(|e| e.to_string())
-                                    .and_then(|b| {
-                                        gm_format::read_sprite_export(&b).map_err(|e| e.to_string())
-                                    }) {
-                                    Ok(mut s) => {
-                                        s.name = self.work.name.clone();
-                                        s.last_changed = self.work.last_changed;
-                                        self.work = s;
-                                        self.gen += 1;
-                                    }
-                                    Err(e) => cx.requests.push(Request::Message(e)),
-                                }
-                            } else {
-                                match imageio::load_frames(&files, self.opts) {
-                                    Ok(f) => {
-                                        self.work.frames = f;
-                                        frames_changed = true;
-                                    }
-                                    Err(e) => cx.requests.push(Request::Message(e)),
-                                }
-                            }
-                        }
+                        crate::dialogs::request_open(
+                            k_load,
+                            &[
+                                ("Images", &["png", "bmp", "gif", "jpg", "jpeg"]),
+                                ("GameMaker sprite", &["gmspr"]),
+                            ],
+                            true,
+                        );
                     }
                     if ui.button("Edit Sprite…").clicked() {
                         self.frames_editor = Some(SpriteFramesEditor::new(
@@ -140,12 +171,21 @@ impl Editor for SpriteEditor {
                         ));
                     }
                     if ui.button("Save…").clicked() {
-                        if let Some(f) = rfd::FileDialog::new()
-                            .add_filter("PNG strip", &["png"])
-                            .add_filter("GameMaker sprite", &["gmspr"])
-                            .set_file_name(format!("{}.png", self.work.name))
-                            .save_file()
-                        {
+                        let name = format!("{}.png", self.work.name);
+                        if !crate::dialogs::HAS_FILESYSTEM {
+                            // web: download the PNG strip
+                            if let Err(e) = crate::dialogs::save_encoded(
+                                &name,
+                                crate::dialogs::PNG,
+                                imageio::strip_png_bytes(&self.work.frames),
+                            ) {
+                                cx.requests.push(Request::Message(e));
+                            }
+                        } else if let Some(f) = crate::dialogs::save_path(
+                            &name,
+                            None,
+                            &[("PNG strip", &["png"]), ("GameMaker sprite", &["gmspr"])],
+                        ) {
                             let r = if f
                                 .extension()
                                 .is_some_and(|e| e.eq_ignore_ascii_case("gmspr"))
@@ -278,25 +318,7 @@ impl Editor for SpriteEditor {
                         self.gen += 1;
                     }
                     if ui.button("Add from file…").clicked() {
-                        if let Some(files) = rfd::FileDialog::new()
-                            .add_filter("Images", &["png", "bmp", "gif", "jpg", "jpeg"])
-                            .pick_files()
-                        {
-                            match imageio::load_frames(&files, self.opts) {
-                                Ok(f) => {
-                                    let (w, h) = if n > 0 {
-                                        (self.work.width(), self.work.height())
-                                    } else {
-                                        (f[0].width, f[0].height)
-                                    };
-                                    self.work
-                                        .frames
-                                        .extend(f.iter().map(|x| imageio::fit_canvas(x, w, h)));
-                                    frames_changed = true;
-                                }
-                                Err(e) => cx.requests.push(Request::Message(e)),
-                            }
-                        }
+                        crate::dialogs::request_open(k_add, crate::dialogs::IMAGES, true);
                     }
                 });
                 ui.horizontal(|ui| {

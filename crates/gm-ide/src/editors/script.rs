@@ -33,30 +33,30 @@ impl Editor for ScriptEditor {
         Vec2::new(640.0, 480.0)
     }
     fn ui(&mut self, ui: &mut Ui, cx: &mut Cx) {
+        let load_key = crate::dialogs::key("script-load", self as *const Self);
+        match crate::dialogs::take_opened(load_key) {
+            Some(Ok(files)) => {
+                if let Some(f) = files.first() {
+                    self.work.code = gm_format::text::decode_cp1252(&f.bytes);
+                }
+            }
+            Some(Err(e)) => cx.requests.push(Request::Message(e)),
+            None => {}
+        }
         ui.horizontal(|ui| {
             ui.label("Name:");
             ui.add(egui::TextEdit::singleline(&mut self.work.name).desired_width(180.0));
             if ui.button("Load from file…").clicked() {
-                if let Some(f) = rfd::FileDialog::new()
-                    .add_filter("Text", &["txt", "gml"])
-                    .pick_file()
-                {
-                    match std::fs::read(&f) {
-                        Ok(b) => self.work.code = gm_format::text::decode_cp1252(&b),
-                        Err(e) => cx.requests.push(Request::Message(e.to_string())),
-                    }
-                }
+                crate::dialogs::request_open(load_key, &[("Text", &["txt", "gml"])], false);
             }
             if ui.button("Save to file…").clicked() {
-                if let Some(f) = rfd::FileDialog::new()
-                    .add_filter("Text", &["txt", "gml"])
-                    .save_file()
-                {
-                    if let Err(e) =
-                        std::fs::write(&f, gm_format::text::encode_cp1252(&self.work.code))
-                    {
-                        cx.requests.push(Request::Message(e.to_string()));
-                    }
+                if let Err(e) = crate::dialogs::save_bytes(
+                    &format!("{}.gml", self.work.name),
+                    None,
+                    &[("Text", &["txt", "gml"])],
+                    &gm_format::text::encode_cp1252(&self.work.code),
+                ) {
+                    cx.requests.push(Request::Message(e));
                 }
             }
         });

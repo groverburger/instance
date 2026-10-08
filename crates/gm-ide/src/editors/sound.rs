@@ -17,8 +17,15 @@ impl SoundEditor {
 }
 
 /// Load a sound file into `s` (MIDI defaults to background music, spec §8).
+#[allow(dead_code)]
 pub fn load_sound_file(s: &mut Sound, path: &std::path::Path) -> Result<(), String> {
     let data = std::fs::read(path).map_err(|e| e.to_string())?;
+    set_sound_data(s, path, data);
+    Ok(())
+}
+
+/// Put a sound file's contents (`path` gives its name) into `s`.
+pub fn set_sound_data(s: &mut Sound, path: &std::path::Path, data: Vec<u8>) {
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
@@ -36,7 +43,6 @@ pub fn load_sound_file(s: &mut Sound, path: &std::path::Path) -> Result<(), Stri
         .unwrap_or_default()
         .to_string();
     s.data = Some(data);
-    Ok(())
 }
 
 impl Editor for SoundEditor {
@@ -47,31 +53,40 @@ impl Editor for SoundEditor {
         format!("Sound Properties: {}", self.work.name)
     }
     fn ui(&mut self, ui: &mut Ui, cx: &mut Cx) {
+        let load_key = crate::dialogs::key("sound-load", self as *const Self);
         let s = &mut self.work;
+        match crate::dialogs::take_opened(load_key) {
+            Some(Ok(files)) => {
+                if let Some(f) = files.into_iter().next() {
+                    set_sound_data(s, std::path::Path::new(&f.name), f.bytes);
+                }
+            }
+            Some(Err(e)) => cx.requests.push(Request::Message(e)),
+            None => {}
+        }
         name_field(ui, &mut s.name);
         ui.horizontal(|ui| {
             if ui.button("Load Sound…").clicked() {
-                if let Some(f) = rfd::FileDialog::new()
-                    .add_filter("Sounds", &["wav", "mid", "midi", "mp3", "ogg"])
-                    .add_filter("All files", &["*"])
-                    .pick_file()
-                {
-                    if let Err(e) = load_sound_file(s, &f) {
-                        cx.requests.push(Request::Message(e));
-                    }
-                }
+                crate::dialogs::request_open(
+                    load_key,
+                    &[
+                        ("Sounds", &["wav", "mid", "midi", "mp3", "ogg"]),
+                        ("All files", &["*"]),
+                    ],
+                    false,
+                );
             }
             if ui
                 .add_enabled(s.data.is_some(), egui::Button::new("Save Sound…"))
                 .clicked()
             {
-                if let Some(f) = rfd::FileDialog::new()
-                    .set_file_name(&s.file_name)
-                    .save_file()
-                {
-                    if let Err(e) = std::fs::write(f, s.data.as_deref().unwrap_or_default()) {
-                        cx.requests.push(Request::Message(e.to_string()));
-                    }
+                if let Err(e) = crate::dialogs::save_bytes(
+                    &s.file_name,
+                    None,
+                    crate::dialogs::ALL,
+                    s.data.as_deref().unwrap_or_default(),
+                ) {
+                    cx.requests.push(Request::Message(e));
                 }
             }
         });

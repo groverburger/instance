@@ -14,34 +14,33 @@ pub const SHADOW: Color32 = Color32::from_rgb(160, 160, 160);
 /// Frame stroke width of interactive widgets, and their expansion (see [`apply`]).
 const EXPANSION: f32 = 1.0;
 
+/// UI fonts in order of preference: Windows, macOS, Linux. TrueType collections
+/// (.ttc) are avoided. On the web nothing is found and egui's built-in fonts are used.
+const UI_FONTS: &[&str] = &[
+    "segoeui.ttf",
+    "tahoma.ttf",
+    "Arial.ttf",
+    "DejaVuSans.ttf",
+    "LiberationSans-Regular.ttf",
+    "NotoSans-Regular.ttf",
+];
+const MONO_FONTS: &[&str] = &[
+    "consola.ttf",
+    "cour.ttf",
+    "Courier New.ttf",
+    "DejaVuSansMono.ttf",
+    "LiberationMono-Regular.ttf",
+    "NotoSansMono-Regular.ttf",
+];
+
 fn system_font(names: &[&str]) -> Option<Vec<u8>> {
-    let dirs: Vec<std::path::PathBuf> = if cfg!(windows) {
-        let root = std::env::var_os("WINDIR").map_or_else(
-            || std::path::PathBuf::from(r"C:\Windows"),
-            std::path::PathBuf::from,
-        );
-        vec![root.join("Fonts")]
-    } else {
-        vec![
-            "/usr/share/fonts/truetype/dejavu".into(),
-            "/usr/share/fonts/TTF".into(),
-            "/Library/Fonts".into(),
-        ]
-    };
-    for d in dirs {
-        for n in names {
-            if let Ok(b) = std::fs::read(d.join(n)) {
-                return Some(b);
-            }
-        }
-    }
-    None
+    crate::platform::find_font(names)
 }
 
 /// Install fonts and visuals on `ctx`.
 pub fn apply(ctx: &egui::Context) {
     let mut fonts = FontDefinitions::default();
-    if let Some(bytes) = system_font(&["segoeui.ttf", "tahoma.ttf"]) {
+    if let Some(bytes) = system_font(UI_FONTS) {
         fonts.font_data.insert(
             "system-ui".into(),
             std::sync::Arc::new(FontData::from_owned(bytes)),
@@ -52,7 +51,7 @@ pub fn apply(ctx: &egui::Context) {
             .or_default()
             .insert(0, "system-ui".into());
     }
-    if let Some(bytes) = system_font(&["consola.ttf", "cour.ttf"]) {
+    if let Some(bytes) = system_font(MONO_FONTS) {
         fonts.font_data.insert(
             "system-mono".into(),
             std::sync::Arc::new(FontData::from_owned(bytes)),
