@@ -864,3 +864,11 @@ fn host_side_function_calls() {
             .contains("Unknown variable never_set")
     );
 }
+
+#[test]
+fn keyword_after_dot_is_not_a_variable() {
+    // GM 8.1 (bb_instances): `other.other.id` fails with "Variable name expected."
+    for src in ["a = other.other.id", "a = self.global", "a = (5).noone"] {
+        assert_eq!(compile_err(src).message, "Variable name expected.", "{src}");
+    }
+}

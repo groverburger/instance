@@ -71,9 +71,9 @@ pub fn build() -> Spec {
         ],
     );
     let _ = tl;
-    g.trigger("trg_step", "global.bb_step == 3", 0);
-    g.trigger("trg_begin", "global.bb_step == 3", 1);
-    g.trigger("trg_end", "global.bb_step == 3", 2);
+    g.trigger("trg_step", "return global.bb_step == 3;", 0);
+    g.trigger("trg_begin", "return global.bb_step == 3;", 1);
+    g.trigger("trg_end", "return global.bb_step == 3;", 2);
 
     let clk = clock(&mut g, "ev", 17, true, "");
     // extra defaults logged by the clock at creation

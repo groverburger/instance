@@ -399,7 +399,7 @@ Key codes are Windows virtual-key codes (`vk_left` = 37 etc.); `vk_nokey` = 0,
 | Close button | §4.2 step 2. |
 | User 0–15 | only via `event_user(n)` / `event_perform(ev_other, ev_userN)` `[403_10]`. |
 | Draw | §13; only for visible instances `[111]`; once per visible view per step `[403_10]`. |
-| Trigger | condition (GML returning true/false) is evaluated per instance at the chosen moment (before begin step / step / end step); if true the trigger event runs for that instance `[208]`. **UNSPECIFIED – recommended:** evaluate the condition once per instance that has a handler for that trigger, with `self` = that instance. |
+| Trigger | condition: a piece of GML *code* (not an expression) whose `return` value decides — VERIFIED in GM 8.1: a bare `global.bb_step == 3` fails to compile with "Assignment operator expected."; write `return global.bb_step == 3;` is evaluated per instance at the chosen moment (before begin step / step / end step); if true the trigger event runs for that instance `[208]`. **UNSPECIFIED – recommended:** evaluate the condition once per instance that has a handler for that trigger, with `self` = that instance. |
 
 ### 5.3 Alarms
 * 12 alarms per instance, `alarm[0..11]` `[111]`.

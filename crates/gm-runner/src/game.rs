@@ -587,12 +587,13 @@ impl Game {
         let mut trs = Vec::new();
         for (i, t) in p.triggers.iter().enumerate() {
             if let Some(t) = t {
-                let src = format!("return ({});", t.condition);
-                let pr = vm.compile(&format!("trigger {}", t.name), src.as_bytes(), &*self);
+                // The condition is a piece of code that returns the result, not an
+                // expression (runtime.md §5 trigger row, verified in GM 8.1).
+                let pr = vm.compile(&format!("trigger {}", t.name), t.condition.as_bytes(), &*self);
                 match pr {
                     Ok(pr) => trs.push((i, Some(pr))),
                     Err(e) => {
-                        errors.push(format!("COMPILATION ERROR in trigger {}\n{}", t.name, e));
+                        errors.push(format!("COMPILATION ERROR in condition of trigger {}\n{}", t.name, e));
                         trs.push((i, None));
                     }
                 }

@@ -191,7 +191,7 @@ if (global.bb_step == 1)
         ),
         err_stmt(
             "with.other_inside",
-            "var i; i = instance_create(0, 0, in_wg); with (i) global.bb_r = (other.id == other.other.id) + 10 * (other.object_index == in_wg);",
+            "var i; global.bb_me = id; i = instance_create(0, 0, in_wg); with (i) global.bb_r = (other.id == global.bb_me) + 10 * (object_index == in_wg);",
         ),
         err_stmt(
             "with.other_is_caller",
