@@ -15,7 +15,7 @@ use crate::framework::Spec;
 
 /// Every project, in the order the user should run them.
 pub fn all() -> Vec<Spec> {
-    vec![
+    let mut v = vec![
         smoke::build1(),
         smoke::build2(),
         smoke::build3(),
@@ -31,5 +31,7 @@ pub fn all() -> Vec<Spec> {
         restart::build(),
         optional::build(),
         optional::build_clash(),
-    ]
+    ];
+    v.extend(lang::diagnostics());
+    v
 }

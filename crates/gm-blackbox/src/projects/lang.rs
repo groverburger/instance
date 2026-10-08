@@ -82,12 +82,47 @@ pub fn arg_tests() -> Vec<Test> {
 }
 
 pub fn build() -> Spec {
-    let mut g = Gen::new("bb_lang", 81003);
+    build_with("bb_lang", 81003, true, None)
+}
+
+/// Diagnostic variants for locating why bb_lang closes instantly in GM 8.1:
+/// without the expression constants, the constants alone, and the tests in quarters.
+pub fn diagnostics() -> Vec<Spec> {
+    let mut v = vec![build_with("bb_lang_noconst", 81020, false, None), constexpr()];
+    for (i, name) in ["bb_lang_q1", "bb_lang_q2", "bb_lang_q3", "bb_lang_q4"].into_iter().enumerate() {
+        v.push(build_with(name, 81021 + i as i32, false, Some((i, 4))));
+    }
+    v
+}
+
+/// Only bb_lang's expression-valued constants plus one trivial test.
+fn constexpr() -> Spec {
+    let mut g = Gen::new("bb_constexpr", 81025);
     let fw = install(&mut g);
-    arg_scripts(&mut g);
     g.constant("bb_k1", "3+4");
     g.constant("bb_k2", "bb_k1*2");
     g.constant("bb_k3", "'str'");
+    let t = vec![vals("cx", &[("cx.k1", "bb_k1"), ("cx.k2", "bb_k2"), ("cx.k3", "bb_k3")])];
+    let frames = unit_project(&mut g, &fw, t, 30);
+    Spec {
+        name: "bb_constexpr",
+        title: "Diagnostic: expression-valued constants only",
+        lite: "Lite-safe",
+        frames,
+        keys: vec![k("cx.", "GML-19", "constants defined by expressions")],
+        project: g.finish(),
+    }
+}
+
+fn build_with(name: &'static str, id: i32, consts: bool, part: Option<(usize, usize)>) -> Spec {
+    let mut g = Gen::new(name, id);
+    let fw = install(&mut g);
+    arg_scripts(&mut g);
+    if consts {
+        g.constant("bb_k1", "3+4");
+        g.constant("bb_k2", "bb_k1*2");
+        g.constant("bb_k3", "'str'");
+    }
     let noinst = g.object("bb_noinst");
     let _ = noinst;
     let mut t: Vec<Test> = Vec::new();
@@ -746,11 +781,15 @@ bb_log('datestr.time', date_time_string(d));"#],
         ("misc.instance_number_all", "instance_number(all) >= 2"),
         ("misc.is_real_id", "is_real(id)"),
     ]));
+    if let Some((k, n)) = part {
+        let per = t.len().div_ceil(n);
+        t = t.into_iter().skip(k * per).take(per).collect();
+    }
     t.push(vals("lang.done", &[("lang.done", "1")]));
 
     let frames = unit_project(&mut g, &fw, t, 60);
     Spec {
-        name: "bb_lang",
+        name,
         title: "GML language semantics, conversions and library edge cases",
         lite: "Lite-safe (code only; uses execute_string to isolate syntax that may not compile). Errors are not shown (Display errors off) but recorded via error_occurred / error_last.",
         frames,
