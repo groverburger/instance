@@ -389,6 +389,15 @@ impl<'a> Compiler<'a> {
             }
             ExprKind::Field(owner, name, nspan) => {
                 let fname = self.field_name(name);
+                // A name after `.` that is a constant (resource name, user or built-in
+                // constant) is not a variable: GM 8.1 rejects `global.obj_name` with
+                // "Variable name expected." (gml-language.md §3 note 12, verified black-box).
+                if matches!(fname, FieldName::User(_))
+                    && (builtins::constant_value(name).is_some()
+                        || self.host.resolve_constant(name).is_some())
+                {
+                    return err("Variable name expected.", *nspan);
+                }
                 if write {
                     if let FieldName::Builtin(id) = fname {
                         Self::check_writable_builtin(id, name, *nspan)?;

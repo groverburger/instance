@@ -51,7 +51,7 @@ if (!variable_global_exists('bb_n')) global.bb_n = 0;
 v = bb_fmt(argument1);
 v = string_replace_all(v, chr(13), '\r');
 v = string_replace_all(v, chr(10), '\n');
-global.bb_out[global.bb_n] = argument0 + '=' + v;
+global.bb_lines[global.bb_n] = argument0 + '=' + v;
 global.bb_n += 1;
 "#;
 
@@ -171,7 +171,7 @@ for (i = 0; i < 180; i += 1)
 {
     r = page * 180 + i;
     if (r >= global.bb_n) break;
-    s = global.bb_out[r];
+    s = global.bb_lines[r];
     if (string_length(s) > 52) s = string_copy(s, 1, 51) + '~';
     s = string_replace_all(s, '#', '\#');
     draw_text(x0 + 4 + (i div 60) * 340, y0 + 18 + (i mod 60) * 12, s);
@@ -185,7 +185,7 @@ for (i = 0; i < 180; i += 1)
 f = file_text_open_write('results_{name}.txt');
 for (i = 0; i < global.bb_n; i += 1)
 {{
-    file_text_write_string(f, global.bb_out[i]);
+    file_text_write_string(f, global.bb_lines[i]);
     file_text_writeln(f);
 }}
 file_text_close(f);
@@ -200,7 +200,7 @@ global.bb_saved = 'results_{name}.txt';"#
             "global.bb_clip = 'FAILED';",
             r#"var s, i;
 s = '';
-for (i = 0; i < global.bb_n; i += 1) s += global.bb_out[i] + chr(13) + chr(10);
+for (i = 0; i < global.bb_n; i += 1) s += global.bb_lines[i] + chr(13) + chr(10);
 clipboard_set_text(s);
 global.bb_clip = 'copied';"#,
         ],

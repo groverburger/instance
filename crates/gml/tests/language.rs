@@ -716,6 +716,10 @@ fn local_owner() {
 
 #[test]
 fn compile_errors() {
+    // a resource or constant name after `.` is not a variable (verified in GM 8.1)
+    for src in ["global.obj_b[0] = 1", "a = global.obj_b", "self.c_red = 1", "a = other.pi"] {
+        assert_eq!(compile_err(src).message, "Variable name expected.", "{src}");
+    }
     let e = compile_err("a = 1\nb = nosuchfunc(1)");
     assert_eq!(e.message, "Unknown function or script: nosuchfunc");
     assert_eq!((e.line, e.col), (2, 5));

@@ -51,12 +51,18 @@ pub struct Gen {
     pub name: String,
 }
 
+/// GM 8.1 stores code with Windows line endings; LF-only code shows up run together
+/// on one line in its error messages.
+pub fn crlf(code: &str) -> String {
+    code.replace("\r\n", "\n").replace('\n', "\r\n")
+}
+
 /// A "code" action (library 1, action 603) containing `code`.
 pub fn code_action(code: &str) -> Action {
     let mut a = builtin_action(1, 603)
         .expect("built-in code action")
         .instantiate(1);
-    a.args[0] = code.to_string();
+    a.args[0] = crlf(code);
     a
 }
 
@@ -181,7 +187,7 @@ impl Gen {
         self.p.scripts.push(Some(Script {
             name: name.into(),
             last_changed: STAMP,
-            code: code.into(),
+            code: crlf(code),
         }));
         (self.p.scripts.len() - 1) as i32
     }
@@ -295,7 +301,7 @@ impl Gen {
             y,
             object: obj,
             id,
-            creation_code: creation_code.into(),
+            creation_code: crlf(creation_code),
             locked: false,
         });
         id

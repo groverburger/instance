@@ -216,6 +216,12 @@ Notes:
     GM 8.1: `show_message(string(instance_nearest(x,y,all).x))` runs. A call result
     still cannot be indexed with `[ ]`. See §4.1.
 
+12. **Constants after `.`.** The identifier after `.` must be a variable name. If it
+    names a constant — a resource name (object, sprite, room, …), a user constant or
+    a built-in constant — compilation fails with "Variable name expected." VERIFIED
+    black-box in GM 8.1 Lite: a script containing `global.bb_out[...] = ...` while an
+    object named `bb_out` exists fails to compile with exactly that message.
+
 ### 3.1 Lvalues
 ```
 lvalue      = var_ref ;

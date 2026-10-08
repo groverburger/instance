@@ -846,3 +846,10 @@ value other than 0/1 anywhere in the corpus. It is therefore an `i32` bit set:
 - All 21 user files use exactly the record versions listed in the 810 addendum above.
 - No further layout differences: every other section consumed exactly with the
   existing layouts.
+
+## Note: line endings in code (verified black-box)
+
+GM 8.1 stores and expects code (scripts, code actions, creation code) with CR LF line
+endings. A project whose code uses LF only still compiles (line numbers are counted
+correctly), but GM's error messages show the code run together on one line. Writers
+should emit CR LF.
