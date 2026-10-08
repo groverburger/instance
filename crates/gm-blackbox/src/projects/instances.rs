@@ -233,6 +233,16 @@ if (global.bb_step == 1)
             "change.props",
             "var i; global.ic_ev = ''; i = instance_create(0, 0, in_ic1); with (i) { image_speed = 0.25; instance_change(in_ic2, false); global.bb_r = object_get_name(object_index) + ' spr=' + sprite_get_name(sprite_index) + ' d=' + string(depth) + ' so=' + string(solid) + ' vi=' + string(visible) + ' pe=' + string(persistent) + ' ma=' + string(mask_index) + ' is=' + string(image_speed); }",
         ),
+        // follow-up to change.props: when does GM switch object/properties?
+        raw(
+            "change.later",
+            &[
+                "var i; i = instance_create(0, 0, in_ic1); global.ic_id = i; with (i) { image_speed = 0.25; instance_change(in_ic2, false); }",
+                r#"with (global.ic_id) bb_log('change.later.next_action', object_get_name(object_index) + ' spr=' + sprite_get_name(sprite_index) + ' d=' + string(depth) + ' so=' + string(solid) + ' vi=' + string(visible) + ' pe=' + string(persistent) + ' ma=' + string(mask_index));
+bb_log('change.later.counts', string(instance_number(in_ic1)) + '/' + string(instance_number(in_ic2)) + '/' + string(instance_exists(global.ic_id)));
+with (in_ic1) instance_destroy(); with (in_ic2) instance_destroy();"#,
+            ],
+        ),
         err_stmt(
             "change.events_perf",
             "var i; global.ic_ev = ''; i = instance_create(0, 0, in_ic1); with (i) instance_change(in_ic2, true); global.bb_r = global.ic_ev; with (in_ic2) instance_destroy();",
