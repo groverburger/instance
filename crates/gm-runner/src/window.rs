@@ -3,6 +3,7 @@
 //! thread (the context is made current there on the winit window) or, as a
 //! fallback, by copying software-rendered pixels to the window with softbuffer.
 
+use crate::debug_window::{DebugWindow, SharedLink};
 use gm_runner::draw::gl::{GlBackend, WindowHandles};
 
 /// The window and its raw handles, sent to the game thread for OpenGL.
@@ -23,6 +24,9 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
+/// Space between the game window and the debug window (physical pixels).
+const DEBUG_GAP: u32 = 8;
+
 /// Renderer choice (`--renderer`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Renderer {
@@ -36,6 +40,8 @@ enum UserEvent {
     Exit(i32),
     /// The game's own window icon (RGBA, width, height).
     Icon(Vec<u8>, u32, u32),
+    /// New data for the debug window.
+    Debug,
 }
 
 /// Window icon from straight RGBA pixels.
@@ -93,6 +99,9 @@ struct App {
     last_caption: String,
     fullscreen: bool,
     shown: bool,
+    /// Debug mode: the link to the game thread, and the Debug Information window.
+    debug_link: Option<SharedLink>,
+    debug: Option<DebugWindow>,
 }
 
 /// Virtual key code of a winit key (its Debug name is the DOM `code` name).
@@ -126,6 +135,12 @@ impl App {
         }
         if let Some(tx) = self.win_tx.take() {
             let _ = tx.send((win.clone(), WindowHandles::of(&win)));
+        }
+        if let Some(link) = self.debug_link.clone() {
+            match DebugWindow::new(el, link, Some(&win)) {
+                Ok(d) => self.debug = Some(d),
+                Err(e) => eprintln!("gm-runner: cannot open the debug window: {}", e),
+            }
         }
         self.window = Some(win);
     }
@@ -204,7 +219,12 @@ impl App {
                 win.set_outer_position(PhysicalPosition::new(x, y));
             }
         } else if recenter && !self.fullscreen {
-            center_window(&win);
+            // in debug mode the game and the debug window are centred side by side
+            let extra = self.debug.as_ref().map(|d| d.outer_width() + DEBUG_GAP).unwrap_or(0);
+            center_window(&win, extra);
+            if let Some(d) = &self.debug {
+                d.place_beside(&win, DEBUG_GAP);
+            }
         }
         win.set_cursor_visible(s.cursor_visible);
         if let Some((x, y)) = s.set_mouse.take() {
@@ -215,16 +235,19 @@ impl App {
         if !self.shown {
             self.shown = true;
             win.set_visible(true);
+            // above a console window opened at start-up
+            win.focus_window();
         }
     }
 }
 
 /// Centres the window on its current (else the primary) monitor, keeping the
 /// title bar on screen.
-fn center_window(win: &Window) {
+/// `extra` (physical pixels) is reserved to the right of the window.
+fn center_window(win: &Window, extra: u32) {
     let Some(mon) = win.current_monitor().or_else(|| win.primary_monitor()) else { return };
     let (mp, ms, os) = (mon.position(), mon.size(), win.outer_size());
-    let x = mp.x + (ms.width as i32 - os.width as i32) / 2;
+    let x = mp.x + (ms.width as i32 - os.width as i32 - extra as i32) / 2;
     let y = mp.y + ((ms.height as i32 - os.height as i32) / 2).max(0);
     win.set_outer_position(PhysicalPosition::new(x.max(mp.x), y));
 }
@@ -266,10 +289,21 @@ impl ApplicationHandler<UserEvent> for App {
                     win.set_window_icon(window_icon(rgba, w, h));
                 }
             }
+            UserEvent::Debug => {
+                if let Some(d) = &self.debug {
+                    d.wake();
+                }
+            }
         }
     }
 
-    fn window_event(&mut self, _el: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, _el: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        if let Some(d) = &mut self.debug {
+            if d.id() == id {
+                d.event(&event);
+                return;
+            }
+        }
         match event {
             WindowEvent::CloseRequested => {
                 let _ = self.input.send(InputEvent::Close);
@@ -467,6 +501,7 @@ fn game_thread(
     proxy: EventLoopProxy<UserEvent>,
     renderer: Renderer,
     win_rx: Receiver<WinMsg>,
+    debug: Option<SharedLink>,
 ) -> i32 {
     let mut vm = gml::Vm::new();
     let mut g = match gm_runner::load_game(&path, &mut vm, false) {
@@ -477,6 +512,11 @@ fn game_thread(
             return 1;
         }
     };
+    if debug.is_some() {
+        g.enable_debug();
+        eprintln!("gm-runner: debug mode");
+    }
+    let (mut debug_last, mut debug_seen) = (None, 0u64);
     let mut use_gl = false;
     if renderer == Renderer::Gl {
         match win_rx.recv() {
@@ -523,6 +563,14 @@ fn game_thread(
         if let Err(e) = frontend::tick(&mut g, &mut vm) {
             eprintln!("gm-runner: {}", e);
             break;
+        }
+        if let Some(link) = &debug {
+            if crate::debug_window::service(&mut g, &mut vm, link, &mut debug_last, &mut debug_seen) {
+                let _ = proxy.send_event(UserEvent::Debug);
+            }
+            if g.ended {
+                break;
+            }
         }
         {
             let mut s = slot.lock().unwrap();
@@ -583,7 +631,7 @@ fn game_thread(
 }
 
 /// Runs the game in a window; returns the exit code.
-pub fn run(path: PathBuf, input: Vec<(u64, InputEvent)>, renderer: Renderer) -> i32 {
+pub fn run(path: PathBuf, input: Vec<(u64, InputEvent)>, renderer: Renderer, debug: bool) -> i32 {
     let event_loop = match EventLoop::<UserEvent>::with_user_event().build() {
         Ok(e) => e,
         Err(e) => {
@@ -602,11 +650,13 @@ pub fn run(path: PathBuf, input: Vec<(u64, InputEvent)>, renderer: Renderer) -> 
     let (win_tx, win_rx) = channel();
     let slot2 = slot.clone();
     let proxy2 = proxy.clone();
+    let debug_link: Option<SharedLink> = debug.then(Default::default);
+    let link2 = debug_link.clone();
     let handle = std::thread::Builder::new()
         .name("game".into())
         .stack_size(gm_runner::GAME_STACK_SIZE)
         .spawn(move || {
-            let code = game_thread(path, input, rx, slot2, proxy2.clone(), renderer, win_rx);
+            let code = game_thread(path, input, rx, slot2, proxy2.clone(), renderer, win_rx, link2);
             let _ = proxy2.send_event(UserEvent::Exit(code));
             code
         })
@@ -621,6 +671,8 @@ pub fn run(path: PathBuf, input: Vec<(u64, InputEvent)>, renderer: Renderer) -> 
         last_caption: String::new(),
         fullscreen: false,
         shown: false,
+        debug_link,
+        debug: None,
     };
     if let Err(e) = event_loop.run_app(&mut app) {
         eprintln!("gm-runner: event loop error: {}", e);

@@ -61,6 +61,8 @@ pub struct IdeApp {
     confirm_delete: Option<TreePath>,
     group_prompt: Option<(TreePath, String)>,
     runner: Option<Child>,
+    /// Arguments of the last runner launch (tests).
+    last_run_args: Vec<String>,
     show_prefs: bool,
     allow_close: bool,
     last_title: String,
@@ -99,6 +101,7 @@ impl IdeApp {
             confirm_delete: None,
             group_prompt: None,
             runner: None,
+            last_run_args: Vec::new(),
             show_prefs: false,
             allow_close: false,
             last_title: String::new(),
@@ -483,7 +486,7 @@ Restore it?"
         }
     }
 
-    fn run_game(&mut self) {
+    fn run_game(&mut self, debug: bool) {
         #[cfg(target_arch = "wasm32")]
         {
             if self.project.rooms.iter().flatten().next().is_none() {
@@ -491,6 +494,8 @@ Restore it?"
                     .push("A game needs at least one room to run.".into());
                 return;
             }
+            // (no debugger in the browser: debug runs play normally)
+            let _ = debug;
             match ops::project_bytes(&self.project) {
                 Ok(b) => {
                     crate::web::js::run_game(&b);
@@ -507,12 +512,31 @@ Restore it?"
         }
         let rp =
             (!self.prefs.runner_path.trim().is_empty()).then(|| self.prefs.runner_path.clone());
-        match crate::run::launch(&self.project, rp.as_deref(), self.path.as_deref()) {
+        let mut cmd =
+            match crate::run::prepare(&self.project, rp.as_deref(), self.path.as_deref(), debug) {
+                Ok(c) => c,
+                Err(e) => {
+                    self.messages.push(e);
+                    return;
+                }
+            };
+        self.last_run_args = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        match cmd.spawn() {
             Ok(child) => {
                 self.runner = Some(child);
-                self.status = "Game running…".into();
+                self.status = if debug {
+                    "Game running in debug mode…".into()
+                } else {
+                    "Game running…".into()
+                };
             }
-            Err(e) => self.messages.push(e),
+            Err(e) => self.messages.push(format!(
+                "Cannot start {}: {e}",
+                cmd.get_program().to_string_lossy()
+            )),
         }
     }
 
@@ -570,6 +594,16 @@ Restore it?"
             .iter()
             .map(|f| Id::new(("form", f.uid)))
             .collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_set_runner_path(&mut self, p: &str) {
+        self.prefs.runner_path = p.to_string();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_last_run(&self) -> (&[String], &[String]) {
+        (&self.last_run_args, &self.messages)
     }
 
     #[cfg(test)]
@@ -754,11 +788,21 @@ Restore it?"
                     });
             });
             ui.menu_button("Run", |ui| {
-                if ui.button("Run normally (F5)").clicked() {
-                    self.run_game();
+                let idle = self.runner.is_none();
+                if ui
+                    .add_enabled(idle, egui::Button::new("Run normally (F5)"))
+                    .clicked()
+                {
+                    self.run_game(false);
                     ui.close();
                 }
-                ui.add_enabled(false, egui::Button::new("Run in Debug mode (F6)"));
+                if ui
+                    .add_enabled(idle, egui::Button::new("Run in Debug mode (F6)"))
+                    .clicked()
+                {
+                    self.run_game(true);
+                    ui.close();
+                }
             });
             ui.menu_button("Window", |ui| self.window_menu(ui));
             ui.menu_button("Help", |ui| {
@@ -987,14 +1031,11 @@ Restore it?"
             icons::tool_separator(ui);
             let running = self.runner.is_some();
             if tb(ui, Icon::Run, "Run the game (F5)", !running).clicked() {
-                self.run_game();
+                self.run_game(false);
             }
-            tb(
-                ui,
-                Icon::Debug,
-                "Run the game in debug mode (not available)",
-                false,
-            );
+            if tb(ui, Icon::Debug, "Run the game in debug mode (F6)", !running).clicked() {
+                self.run_game(true);
+            }
             icons::tool_separator(ui);
             for (k, label, _) in LIST_KINDS {
                 let article = if label.starts_with(['A', 'E', 'I', 'O', 'U']) {
@@ -1343,12 +1384,13 @@ Restore it?"
 
     fn shortcuts(&mut self, ctx: &Context) {
         use egui::{Key, Modifiers};
-        let (s, o, n, f5) = ctx.input_mut(|i| {
+        let (s, o, n, f5, f6) = ctx.input_mut(|i| {
             (
                 i.consume_key(Modifiers::COMMAND, Key::S),
                 i.consume_key(Modifiers::COMMAND, Key::O),
                 i.consume_key(Modifiers::COMMAND, Key::N),
                 i.consume_key(Modifiers::NONE, Key::F5),
+                i.consume_key(Modifiers::NONE, Key::F6),
             )
         });
         if s {
@@ -1361,7 +1403,10 @@ Restore it?"
             self.request(Pending::New);
         }
         if f5 {
-            self.run_game();
+            self.run_game(false);
+        }
+        if f6 {
+            self.run_game(true);
         }
         // Dropped files: projects open, images become sprites.
         // Natively dropped files are read from their path; on the web their

@@ -8,10 +8,19 @@ use crate::Game;
 use std::time::Duration;
 use web_time::Instant;
 
-/// Runs one game step: applies pending input, then [`Game::step`].
-pub fn tick(g: &mut Game, vm: &mut gml::Vm) -> Result<(), gml::Error> {
+/// Runs one game step: applies pending input, then [`Game::step`]. In debug
+/// mode a paused game does not step (returns `Ok(false)`); watches are
+/// re-evaluated after each step.
+pub fn tick(g: &mut Game, vm: &mut gml::Vm) -> Result<bool, gml::Error> {
     g.pump_input();
-    g.step(vm)
+    if !g.debug_should_step() {
+        return Ok(false);
+    }
+    g.step(vm)?;
+    if g.debug.is_some() {
+        g.debug_update_watches(vm);
+    }
+    Ok(true)
 }
 
 /// Fixed-rate step scheduling at `room_speed`.

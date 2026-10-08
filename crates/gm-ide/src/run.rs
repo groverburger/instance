@@ -1,8 +1,11 @@
-//! Run normally (specs/ide.md §20.1): save the project to a temporary `.gm81` and
-//! launch the runner executable with it.
+//! Run normally / Run in Debug mode (specs/ide.md §20.1, §20.3): save the project
+//! to a temporary `.gm81` and launch the runner executable with it. The runner
+//! opens a console window of its own for the game's output (`--new-console`);
+//! debug runs add `--debug` (the runner's Debug Information window).
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::Command;
 
 use gm_format::Project;
 
@@ -58,12 +61,23 @@ pub fn write_temp_game(p: &Project) -> Result<PathBuf, String> {
     Ok(file)
 }
 
-/// Check the preconditions and launch the runner.
-pub fn launch(
+/// Runner arguments for playing `game`.
+pub fn runner_args(game: &Path, debug: bool) -> Vec<OsString> {
+    let mut a: Vec<OsString> = vec![game.into(), "--new-console".into()];
+    if debug {
+        a.push("--debug".into());
+    }
+    a
+}
+
+/// Check the preconditions, write the game and build the runner command (not
+/// yet started).
+pub fn prepare(
     p: &Project,
     runner: Option<&str>,
     project_path: Option<&Path>,
-) -> Result<Child, String> {
+    debug: bool,
+) -> Result<Command, String> {
     if p.rooms.iter().flatten().next().is_none() {
         return Err("A game needs at least one room to run.".into());
     }
@@ -80,11 +94,9 @@ pub fn launch(
         .filter(|d| d.is_dir())
         .map(Path::to_path_buf)
         .unwrap_or_else(temp_dir);
-    Command::new(&exe)
-        .arg(&game)
-        .current_dir(workdir)
-        .spawn()
-        .map_err(|e| format!("Cannot start {}: {e}", exe.display()))
+    let mut c = Command::new(&exe);
+    c.args(runner_args(&game, debug)).current_dir(workdir);
+    Ok(c)
 }
 
 /// Remove this instance's temporary folder.

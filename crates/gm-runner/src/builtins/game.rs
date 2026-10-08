@@ -293,10 +293,7 @@ pub fn register(l: &mut Reg) {
     }));
     l.push(("show_debug_message", |g, _, _, a| {
         let t = String::from_utf8_lossy(&a.text(0)).into_owned();
-        if g.headless {
-            eprintln!("[debug] {}", t);
-        }
-        g.debug_messages.push(t);
+        g.debug_message(&t);
         zero()
     }));
     l.push(("set_program_priority", |_, _, _, _| zero()));
