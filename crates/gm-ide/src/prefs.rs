@@ -37,30 +37,59 @@ impl Default for Prefs {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn config_path() -> Option<PathBuf> {
-    let base = std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from))
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
-    Some(base.join("gm81-clean").join("ide.json"))
+    Some(crate::platform::config_dir()?.join("ide.json"))
+}
+
+/// localStorage key of the preferences on the web.
+#[cfg(target_arch = "wasm32")]
+const STORAGE_KEY: &str = "gm81-clean/ide.json";
+
+#[cfg(target_arch = "wasm32")]
+fn storage() -> Option<web_sys::Storage> {
+    web_sys::window()?.local_storage().ok()?
+}
+
+fn read_text() -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        storage()?.get_item(STORAGE_KEY).ok()?
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::fs::read_to_string(config_path()?).ok()
+    }
+}
+
+fn write_text(s: &str) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(st) = storage() {
+            let _ = st.set_item(STORAGE_KEY, s);
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if let Some(p) = config_path() {
+            if let Some(d) = p.parent() {
+                let _ = std::fs::create_dir_all(d);
+            }
+            let _ = std::fs::write(p, s);
+        }
+    }
 }
 
 impl Prefs {
     pub fn load() -> Prefs {
-        config_path()
-            .and_then(|p| std::fs::read_to_string(p).ok())
+        read_text()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default()
     }
 
     pub fn save(&self) {
-        if let Some(p) = config_path() {
-            if let Some(d) = p.parent() {
-                let _ = std::fs::create_dir_all(d);
-            }
-            if let Ok(s) = serde_json::to_string_pretty(self) {
-                let _ = std::fs::write(p, s);
-            }
+        if let Ok(s) = serde_json::to_string_pretty(self) {
+            write_text(&s);
         }
     }
 

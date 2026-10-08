@@ -5,6 +5,7 @@ use gm_format::{Background, Project, ResourceKind};
 
 use super::image_editor::{EditorAction, ImageEditor};
 use super::{commit_slot, name_field, slot_dirty, Cx, Editor, Request, ResKey};
+use crate::dialogs;
 use crate::imageio::{self, LoadOptions};
 use crate::widgets::{image_preview, owner_key};
 
@@ -54,6 +55,19 @@ impl Editor for BackgroundEditor {
                 EditorAction::None | EditorAction::Prev | EditorAction::Next => {}
             }
         }
+        let load_key = dialogs::key("bg-load", self as *const Self);
+        if let Some(r) = dialogs::take_opened(load_key) {
+            let files: Result<Vec<_>, String> =
+                r.map(|v| v.into_iter().map(|f| (f.name, f.bytes)).collect());
+            match files.and_then(|f| imageio::frames_from_bytes(&f, self.opts)) {
+                Ok(mut fr) if !fr.is_empty() => {
+                    self.work.image = fr.swap_remove(0);
+                    self.gen += 1;
+                }
+                Ok(_) => {}
+                Err(e) => cx.requests.push(Request::Message(e)),
+            }
+        }
         if self.image_editor.is_some() {
             ui.disable();
         }
@@ -64,18 +78,7 @@ impl Editor for BackgroundEditor {
                 name_field(ui, &mut b.name);
                 ui.horizontal(|ui| {
                     if ui.button("Load Background…").clicked() {
-                        if let Some(f) = rfd::FileDialog::new()
-                            .add_filter("Images", &["png", "bmp", "gif", "jpg", "jpeg"])
-                            .pick_file()
-                        {
-                            match imageio::load_frames(&[f], self.opts) {
-                                Ok(mut fr) => {
-                                    b.image = fr.swap_remove(0);
-                                    self.gen += 1;
-                                }
-                                Err(e) => cx.requests.push(Request::Message(e)),
-                            }
-                        }
+                        dialogs::request_open(load_key, dialogs::IMAGES, false);
                     }
                     if ui.button("Edit Background…").clicked() {
                         let img = if b.image.width == 0 || b.image.height == 0 {
@@ -86,16 +89,12 @@ impl Editor for BackgroundEditor {
                         self.image_editor = Some(ImageEditor::new(img, b.name.clone()));
                     }
                     if ui.button("Save…").clicked() {
-                        if let Some(f) = rfd::FileDialog::new()
-                            .add_filter("PNG", &["png"])
-                            .set_file_name(format!("{}.png", b.name))
-                            .save_file()
-                        {
-                            if let Err(e) =
-                                imageio::save_strip_png(std::slice::from_ref(&b.image), &f)
-                            {
-                                cx.requests.push(Request::Message(e));
-                            }
+                        if let Err(e) = dialogs::save_encoded(
+                            &format!("{}.png", b.name),
+                            dialogs::PNG,
+                            imageio::strip_png_bytes(std::slice::from_ref(&b.image)),
+                        ) {
+                            cx.requests.push(Request::Message(e));
                         }
                     }
                 });

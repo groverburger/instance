@@ -131,10 +131,22 @@ pub fn load_frames(
     paths: &[std::path::PathBuf],
     opt: LoadOptions,
 ) -> Result<Vec<RgbaImage>, String> {
-    let mut frames = Vec::new();
+    let mut files = Vec::new();
     for p in paths {
         let bytes = std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()))?;
-        let mut f = decode_frames(p, &bytes).map_err(|e| format!("{}: {e}", p.display()))?;
+        files.push((p.display().to_string(), bytes));
+    }
+    frames_from_bytes(&files, opt)
+}
+
+/// Like [`load_frames`] for files already read: (file name, bytes).
+pub fn frames_from_bytes(
+    files: &[(String, Vec<u8>)],
+    opt: LoadOptions,
+) -> Result<Vec<RgbaImage>, String> {
+    let mut frames = Vec::new();
+    for (name, bytes) in files {
+        let mut f = decode_frames(Path::new(name), bytes).map_err(|e| format!("{name}: {e}"))?;
         frames.append(&mut f);
     }
     let w = frames.iter().map(|f| f.width).max().unwrap_or(0);
@@ -149,8 +161,8 @@ pub fn load_frames(
         .collect())
 }
 
-/// Save frames as a horizontal strip PNG.
-pub fn save_strip_png(frames: &[RgbaImage], path: &Path) -> Result<(), String> {
+/// Encode frames as a horizontal strip PNG.
+pub fn strip_png_bytes(frames: &[RgbaImage]) -> Result<Vec<u8>, String> {
     let w = frames.first().map_or(0, |f| f.width);
     let h = frames.first().map_or(0, |f| f.height);
     let n = frames.len() as u32;
@@ -162,8 +174,16 @@ pub fn save_strip_png(frames: &[RgbaImage], path: &Path) -> Result<(), String> {
             }
         }
     }
-    out.save_with_format(path, image::ImageFormat::Png)
-        .map_err(|e| e.to_string())
+    let mut buf = std::io::Cursor::new(Vec::new());
+    out.write_to(&mut buf, image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+    Ok(buf.into_inner())
+}
+
+/// Save frames as a horizontal strip PNG.
+#[allow(dead_code)]
+pub fn save_strip_png(frames: &[RgbaImage], path: &Path) -> Result<(), String> {
+    std::fs::write(path, strip_png_bytes(frames)?).map_err(|e| e.to_string())
 }
 
 /// Tight bounding box of pixels with alpha > tolerance over all frames

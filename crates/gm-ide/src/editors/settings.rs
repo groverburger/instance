@@ -33,14 +33,19 @@ impl SettingsEditor {
     }
 }
 
-fn load_blob(cx: &mut Cx, filters: &[&str]) -> Option<Vec<u8>> {
-    let f = rfd::FileDialog::new()
-        .add_filter("Files", filters)
-        .pick_file()?;
-    match std::fs::read(f) {
-        Ok(b) => Some(b),
+const IMAGE_EXTS: &[&str] = &["bmp", "png", "jpg", "gif"];
+
+/// Asks for a file whose bytes become a setting (fetched by [`take_blob`]).
+fn load_blob(key: u64, exts: &[&str]) {
+    crate::dialogs::request_open(key, &[("Files", exts)], false);
+}
+
+/// The bytes picked for `key`, if any arrived.
+fn take_blob(cx: &mut Cx, key: u64) -> Option<Vec<u8>> {
+    match crate::dialogs::take_opened(key)? {
+        Ok(files) => files.into_iter().next().map(|f| f.bytes),
         Err(e) => {
-            cx.requests.push(Request::Message(e.to_string()));
+            cx.requests.push(Request::Message(e));
             None
         }
     }
@@ -57,6 +62,25 @@ impl Editor for SettingsEditor {
         Vec2::new(560.0, 460.0)
     }
     fn ui(&mut self, ui: &mut Ui, cx: &mut Cx) {
+        let me = self as *const Self;
+        let (k_load, k_back, k_front, k_icon) = (
+            crate::dialogs::key("settings-load-image", me),
+            crate::dialogs::key("settings-bar-back", me),
+            crate::dialogs::key("settings-bar-front", me),
+            crate::dialogs::key("settings-icon", me),
+        );
+        if let Some(b) = take_blob(cx, k_load) {
+            self.work.custom_load_image = Some(b);
+        }
+        if let Some(b) = take_blob(cx, k_back) {
+            self.work.loading_bar_back = Some(b);
+        }
+        if let Some(b) = take_blob(cx, k_front) {
+            self.work.loading_bar_front = Some(b);
+        }
+        if let Some(b) = take_blob(cx, k_icon) {
+            self.work.icon = b;
+        }
         ui.horizontal_wrapped(|ui| {
             for (t, l) in [
                 (Tab::Graphics, "Graphics"),
@@ -220,9 +244,7 @@ impl Editor for SettingsEditor {
                             "Show your own image while loading",
                         );
                         if ui.button("Change image…").clicked() {
-                            if let Some(b) = load_blob(cx, &["bmp", "png", "jpg", "gif"]) {
-                                s.custom_load_image = Some(b);
-                            }
+                            load_blob(k_load, IMAGE_EXTS);
                         }
                         if ui.button("Clear").clicked() {
                             s.custom_load_image = None;
@@ -246,14 +268,10 @@ impl Editor for SettingsEditor {
                     ui.add_enabled_ui(s.loading_bar == 2, |ui| {
                         ui.horizontal(|ui| {
                             if ui.button("Back image…").clicked() {
-                                if let Some(b) = load_blob(cx, &["bmp", "png", "jpg", "gif"]) {
-                                    s.loading_bar_back = Some(b);
-                                }
+                                load_blob(k_back, IMAGE_EXTS);
                             }
                             if ui.button("Front image…").clicked() {
-                                if let Some(b) = load_blob(cx, &["bmp", "png", "jpg", "gif"]) {
-                                    s.loading_bar_front = Some(b);
-                                }
+                                load_blob(k_front, IMAGE_EXTS);
                             }
                         });
                         ui.checkbox(&mut s.scale_progress_bar, "Scale progress bar image");
@@ -262,9 +280,7 @@ impl Editor for SettingsEditor {
                     ui.horizontal(|ui| {
                         ui.label(format!("Game icon: {} bytes", s.icon.len()));
                         if ui.button("Change icon…").clicked() {
-                            if let Some(b) = load_blob(cx, &["ico"]) {
-                                s.icon = b;
-                            }
+                            load_blob(k_icon, &["ico"]);
                         }
                     });
                     ui.horizontal(|ui| {

@@ -1221,6 +1221,17 @@ impl ImageEditor {
     }
 
     fn menus(&mut self, ui: &mut Ui) -> EditorAction {
+        let (k_open, k_paste) = (
+            crate::dialogs::key("image-open", self as *const Self),
+            crate::dialogs::key("image-paste", self as *const Self),
+        );
+        if let Some(img) = take_image(k_open) {
+            self.set_image(img);
+            self.fit_pending = true;
+        }
+        if let Some(img) = take_image(k_paste) {
+            self.paste_image(img);
+        }
         let mut action = EditorAction::None;
         let multi = self.frame.is_some_and(|(_, n)| n > 1);
         ui.menu_button("File", |ui| {
@@ -1228,10 +1239,7 @@ impl ImageEditor {
                 self.new_size = Some((self.image.width.max(1), self.image.height.max(1)));
             }
             if ui.add_enabled(!multi, egui::Button::new("Open…")).clicked() {
-                if let Some(img) = pick_image() {
-                    self.set_image(img);
-                    self.fit_pending = true;
-                }
+                pick_image(k_open);
             }
             if let Some((i, n)) = self.frame {
                 ui.separator();
@@ -1251,16 +1259,12 @@ impl ImageEditor {
             ui.separator();
             if ui.button("Save as PNG File…").clicked() {
                 self.commit_pending();
-                if let Some(f) = rfd::FileDialog::new()
-                    .add_filter("PNG", &["png"])
-                    .set_file_name("image.png")
-                    .save_file()
-                {
-                    if let Err(e) =
-                        crate::imageio::save_strip_png(std::slice::from_ref(&self.image), &f)
-                    {
-                        self.status = e;
-                    }
+                if let Err(e) = crate::dialogs::save_encoded(
+                    "image.png",
+                    crate::dialogs::PNG,
+                    crate::imageio::strip_png_bytes(std::slice::from_ref(&self.image)),
+                ) {
+                    self.status = e;
                 }
             }
             ui.separator();
@@ -1305,9 +1309,7 @@ impl ImageEditor {
                 self.erase_to_left();
             }
             if ui.button("Paste from File…").clicked() {
-                if let Some(img) = pick_image() {
-                    self.paste_image(img);
-                }
+                pick_image(k_paste);
             }
         });
         ui.menu_button("View", |ui| {
@@ -1852,15 +1854,32 @@ fn color_image(img: &RgbaImage) -> egui::ColorImage {
     egui::ColorImage::from_rgba_unmultiplied([img.width as usize, img.height as usize], &img.data)
 }
 
-fn pick_image() -> Option<RgbaImage> {
-    let f = rfd::FileDialog::new()
-        .add_filter("Images", &["png", "bmp", "gif", "jpg", "jpeg"])
-        .pick_file()?;
-    let mut fr = crate::imageio::load_frames(&[f], crate::imageio::LoadOptions::BACKGROUND).ok()?;
+fn pick_image(key: u64) {
+    crate::dialogs::request_open(key, crate::dialogs::IMAGES, false);
+}
+
+/// The first image picked for `key`, once available.
+pub fn take_image(key: u64) -> Option<RgbaImage> {
+    let files = crate::dialogs::take_opened(key)?.ok()?;
+    let files: Vec<_> = files.into_iter().map(|f| (f.name, f.bytes)).collect();
+    let mut fr =
+        crate::imageio::frames_from_bytes(&files, crate::imageio::LoadOptions::BACKGROUND).ok()?;
     (!fr.is_empty()).then(|| fr.swap_remove(0))
 }
 
+/// Put an image on the system clipboard (errors are ignored; the web build has
+/// only the editors' internal clipboard).
+#[cfg(target_arch = "wasm32")]
+pub fn clipboard_set(_img: &RgbaImage) {}
+
+/// Image from the system clipboard (never on the web).
+#[cfg(target_arch = "wasm32")]
+pub fn clipboard_get() -> Option<RgbaImage> {
+    None
+}
+
 /// Put an image on the system clipboard (errors are ignored).
+#[cfg(not(target_arch = "wasm32"))]
 pub fn clipboard_set(img: &RgbaImage) {
     if img.width == 0 || img.height == 0 {
         return;
@@ -1875,6 +1894,7 @@ pub fn clipboard_set(img: &RgbaImage) {
 }
 
 /// Image from the system clipboard, if any.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn clipboard_get() -> Option<RgbaImage> {
     let mut cb = arboard::Clipboard::new().ok()?;
     let d = cb.get_image().ok()?;

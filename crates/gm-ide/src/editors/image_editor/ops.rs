@@ -726,19 +726,22 @@ impl AnimOp {
                     AnimOp::Morph { n, target } => {
                         frames(ui, n);
                         ui.label("Target image");
+                        let key = crate::dialogs::key("morph-target", &*target as *const _);
+                        if let Some(Ok(files)) = crate::dialogs::take_opened(key) {
+                            let files: Vec<_> =
+                                files.into_iter().map(|f| (f.name, f.bytes)).collect();
+                            if let Ok(mut fr) = crate::imageio::frames_from_bytes(
+                                &files,
+                                crate::imageio::LoadOptions::SPRITE,
+                            ) {
+                                if !fr.is_empty() {
+                                    *target = Some(fr.swap_remove(0));
+                                }
+                            }
+                        }
                         ui.horizontal(|ui| {
                             if ui.button("Load…").clicked() {
-                                if let Some(p) = rfd::FileDialog::new()
-                                    .add_filter("Images", &["png", "bmp", "gif", "jpg", "jpeg"])
-                                    .pick_file()
-                                {
-                                    if let Ok(mut fr) = crate::imageio::load_frames(
-                                        &[p],
-                                        crate::imageio::LoadOptions::SPRITE,
-                                    ) {
-                                        *target = Some(fr.swap_remove(0));
-                                    }
-                                }
+                                crate::dialogs::request_open(key, crate::dialogs::IMAGES, false);
                             }
                             ui.label(match target {
                                 Some(t) => format!("{}×{}", t.width, t.height),

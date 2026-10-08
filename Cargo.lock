@@ -1622,9 +1622,13 @@ dependencies = [
  "gm-brand",
  "gm-format",
  "image",
+ "js-sys",
  "rfd",
  "serde",
  "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

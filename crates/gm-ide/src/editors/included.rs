@@ -20,20 +20,15 @@ impl IncludedEditor {
     }
 }
 
-/// Load a file into an included-file record.
-pub fn load_into(f: &mut IncludedFile, path: &std::path::Path, store: bool) -> Result<(), String> {
-    let data = std::fs::read(path).map_err(|e| e.to_string())?;
-    f.file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or_default()
-        .to_string();
-    f.original_path = path.display().to_string();
+/// Load a picked file into an included-file record.
+pub fn load_into(f: &mut IncludedFile, picked: crate::dialogs::Picked, store: bool) {
+    let data = picked.bytes;
+    f.file_name = picked.name.clone();
+    f.original_path = picked.path.map_or(picked.name, |p| p.display().to_string());
     f.original_file_chosen = true;
     f.original_size = data.len() as i32;
     f.data = store.then_some(data);
     f.last_changed = now_timestamp();
-    Ok(())
 }
 
 impl Editor for IncludedEditor {
@@ -47,6 +42,39 @@ impl Editor for IncludedEditor {
         Vec2::new(680.0, 420.0)
     }
     fn ui(&mut self, ui: &mut Ui, cx: &mut Cx) {
+        let (k_add, k_load) = (
+            crate::dialogs::key("included-add", self as *const Self),
+            crate::dialogs::key("included-load", self as *const Self),
+        );
+        match crate::dialogs::take_opened(k_add) {
+            Some(Ok(files)) => {
+                for p in files {
+                    let mut f = IncludedFile {
+                        free_memory_after_export: true,
+                        export_kind: 2,
+                        ..Default::default()
+                    };
+                    load_into(&mut f, p, true);
+                    self.work.push(f);
+                    self.sel = Some(self.work.len() - 1);
+                }
+            }
+            Some(Err(e)) => cx.requests.push(Request::Message(e)),
+            None => {}
+        }
+        match crate::dialogs::take_opened(k_load) {
+            Some(Ok(files)) => {
+                if let (Some(p), Some(f)) = (
+                    files.into_iter().next(),
+                    self.sel.and_then(|i| self.work.get_mut(i)),
+                ) {
+                    let store = f.data.is_some();
+                    load_into(f, p, store);
+                }
+            }
+            Some(Err(e)) => cx.requests.push(Request::Message(e)),
+            None => {}
+        }
         ui.horizontal_top(|ui| {
             ui.vertical(|ui| {
                 ui.set_width(220.0);
@@ -65,20 +93,7 @@ impl Editor for IncludedEditor {
                     });
                 ui.horizontal(|ui| {
                     if ui.button("Add…").clicked() {
-                        if let Some(path) = rfd::FileDialog::new().pick_file() {
-                            let mut f = IncludedFile {
-                                free_memory_after_export: true,
-                                export_kind: 2,
-                                ..Default::default()
-                            };
-                            match load_into(&mut f, &path, true) {
-                                Ok(()) => {
-                                    self.work.push(f);
-                                    self.sel = Some(self.work.len() - 1);
-                                }
-                                Err(e) => cx.requests.push(Request::Message(e)),
-                            }
-                        }
+                        crate::dialogs::request_open(k_add, crate::dialogs::ALL, true);
                     }
                     if ui
                         .add_enabled(self.sel.is_some(), egui::Button::new("Delete"))
@@ -113,12 +128,7 @@ impl Editor for IncludedEditor {
                     ui.end_row();
                 });
                 if ui.button("Load…").clicked() {
-                    if let Some(path) = rfd::FileDialog::new().pick_file() {
-                        let store = f.data.is_some();
-                        if let Err(e) = load_into(f, &path, store) {
-                            cx.requests.push(Request::Message(e));
-                        }
-                    }
+                    crate::dialogs::request_open(k_load, crate::dialogs::ALL, false);
                 }
                 let mut store = f.data.is_some();
                 if ui

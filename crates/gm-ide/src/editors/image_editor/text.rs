@@ -29,14 +29,7 @@ impl FontSource {
 
 /// Font files found in the usual system font directories (sorted by name).
 pub fn system_fonts() -> Vec<FontSource> {
-    let mut dirs: Vec<PathBuf> = Vec::new();
-    if let Some(w) = std::env::var_os("WINDIR") {
-        dirs.push(PathBuf::from(w).join("Fonts"));
-    }
-    dirs.push("/usr/share/fonts".into());
-    dirs.push("/usr/local/share/fonts".into());
-    dirs.push("/Library/Fonts".into());
-    dirs.push("/System/Library/Fonts".into());
+    let dirs = crate::platform::font_dirs();
     let mut out = Vec::new();
     let mut stack = dirs;
     let mut budget = 4000usize;

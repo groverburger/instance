@@ -213,10 +213,7 @@ pub fn sync_tree_name(p: &mut Project, kind: ResourceKind, idx: usize) {
 
 /// Current time as a Delphi `TDateTime` (UTC; see OPEN_QUESTIONS [IMPL-IDE]).
 pub fn now_timestamp() -> f64 {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0);
+    let secs = crate::platform::unix_secs();
     secs / 86400.0 + 25569.0
 }
 
@@ -576,10 +573,7 @@ pub fn save_project(p: &Project, path: &Path) -> Result<(), String> {
 pub fn new_project() -> Project {
     let mut p = Project::default();
     // Random-ish game id and guid (the IDE's "unique game id").
-    let seed = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(1);
+    let seed = crate::platform::unix_nanos().max(1);
     let mut x = seed ^ 0x9E37_79B9_7F4A_7C15;
     let mut next = || {
         x ^= x << 13;

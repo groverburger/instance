@@ -769,23 +769,68 @@ impl SpriteFramesEditor {
     }
 
     fn open_strip(&mut self, add: bool) {
-        if let Some(f) = rfd::FileDialog::new()
-            .add_filter("Images", &["png", "bmp", "gif", "jpg", "jpeg"])
-            .pick_file()
-        {
-            match imageio::load_frames(&[f], self.opts) {
-                Ok(mut fr) if !fr.is_empty() => {
-                    let src = fr.swap_remove(0);
-                    self.strip = Some(StripDialog {
-                        params: StripParams::for_image(&src),
-                        src,
-                        add,
-                        tex: None,
-                        zoom: 1.0,
-                    });
+        crate::dialogs::request_open(self.strip_key(add), crate::dialogs::IMAGES, false);
+    }
+
+    fn strip_key(&self, add: bool) -> u64 {
+        crate::dialogs::key(
+            if add {
+                "frames-strip-add"
+            } else {
+                "frames-strip-new"
+            },
+            self as *const Self,
+        )
+    }
+
+    /// Picked files of the File menu's dialogs (polled every frame).
+    fn poll_dialogs(&mut self) {
+        let me = self as *const Self;
+        let picked = |purpose: &str| -> Option<Result<Vec<RgbaImage>, String>> {
+            let r = crate::dialogs::take_opened(crate::dialogs::key(purpose, me))?;
+            Some(r.and_then(|files| {
+                let files: Vec<_> = files.into_iter().map(|f| (f.name, f.bytes)).collect();
+                imageio::frames_from_bytes(&files, self.opts)
+            }))
+        };
+        let create = picked("frames-create");
+        let add = picked("frames-add");
+        match create {
+            Some(Ok(f)) => self.replace_frames(f),
+            Some(Err(e)) => self.status = e,
+            None => {}
+        }
+        match add {
+            Some(Ok(f)) => {
+                let at = self.frames.len();
+                self.offer_frames(f, at);
+            }
+            Some(Err(e)) => self.status = e,
+            None => {}
+        }
+        for add in [false, true] {
+            let Some(r) = crate::dialogs::take_opened(self.strip_key(add)) else {
+                continue;
+            };
+            let r = r.and_then(|files| {
+                let files: Vec<_> = files.into_iter().map(|f| (f.name, f.bytes)).collect();
+                imageio::frames_from_bytes(&files, self.opts)
+            });
+            {
+                match r {
+                    Ok(mut fr) if !fr.is_empty() => {
+                        let src = fr.swap_remove(0);
+                        self.strip = Some(StripDialog {
+                            params: StripParams::for_image(&src),
+                            src,
+                            add,
+                            tex: None,
+                            zoom: 1.0,
+                        });
+                    }
+                    Ok(_) => {}
+                    Err(e) => self.status = e,
                 }
-                Ok(_) => {}
-                Err(e) => self.status = e,
             }
         }
     }
@@ -895,6 +940,8 @@ impl SpriteFramesEditor {
     }
 
     fn menus(&mut self, ui: &mut Ui) -> SpriteEditorAction {
+        self.poll_dialogs();
+        let me = self as *const Self;
         let mut action = SpriteEditorAction::None;
         let (w, h) = self.size();
         let n = self.frames.len();
@@ -903,23 +950,10 @@ impl SpriteFramesEditor {
                 self.new_size = Some((w, h));
             }
             if ui.button("Create from File…").clicked() {
-                if let Some(files) = pick_files() {
-                    match imageio::load_frames(&files, self.opts) {
-                        Ok(f) => self.replace_frames(f),
-                        Err(e) => self.status = e,
-                    }
-                }
+                pick_files(crate::dialogs::key("frames-create", me));
             }
             if ui.button("Add from File…").clicked() {
-                if let Some(files) = pick_files() {
-                    match imageio::load_frames(&files, self.opts) {
-                        Ok(f) => {
-                            let at = self.frames.len();
-                            self.offer_frames(f, at);
-                        }
-                        Err(e) => self.status = e,
-                    }
-                }
+                pick_files(crate::dialogs::key("frames-add", me));
             }
             ui.separator();
             ui.checkbox(&mut self.opts.make_opaque, "Make opaque");
@@ -932,14 +966,12 @@ impl SpriteFramesEditor {
                 } else {
                     format!("{}.png", self.name)
                 };
-                if let Some(f) = rfd::FileDialog::new()
-                    .add_filter("PNG", &["png"])
-                    .set_file_name(file)
-                    .save_file()
-                {
-                    if let Err(e) = imageio::save_strip_png(&self.frames, &f) {
-                        self.status = e;
-                    }
+                if let Err(e) = crate::dialogs::save_encoded(
+                    &file,
+                    crate::dialogs::PNG,
+                    imageio::strip_png_bytes(&self.frames),
+                ) {
+                    self.status = e;
                 }
             }
             if ui.button("Create from Strip…").clicked() {
@@ -1173,10 +1205,8 @@ impl SpriteFramesEditor {
     }
 }
 
-fn pick_files() -> Option<Vec<std::path::PathBuf>> {
-    rfd::FileDialog::new()
-        .add_filter("Images", &["png", "bmp", "gif", "jpg", "jpeg"])
-        .pick_files()
+fn pick_files(key: u64) {
+    crate::dialogs::request_open(key, crate::dialogs::IMAGES, true);
 }
 
 #[cfg(test)]

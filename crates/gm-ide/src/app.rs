@@ -7,6 +7,7 @@ use std::process::Child;
 use eframe::egui::{self, Context, Id, Vec2};
 use gm_format::{Action, NodeStatus, Project, ResourceKind};
 
+use crate::dialogs;
 use crate::editors::{open_editor, Cx, Editor, IdAlloc, Request, ResKey};
 use crate::icons::{self, Icon};
 use crate::mdi::{self, MdiState};
@@ -32,7 +33,14 @@ struct OpenForm {
 enum Pending {
     New,
     Open(Option<PathBuf>),
+    /// A project file given as bytes (web drag-and-drop, `?project=` URL).
+    OpenBytes(String, Vec<u8>),
     Exit,
+}
+
+/// Dialog key of File > Open.
+fn open_key() -> u64 {
+    dialogs::key("open-project", std::ptr::null::<u8>())
 }
 
 pub struct IdeApp {
@@ -62,6 +70,12 @@ pub struct IdeApp {
     /// Workspace rectangle of the last frame (where forms live).
     workspace: egui::Rect,
     show_about: bool,
+    /// Web: when the project was last autosaved (seconds), and a pending offer to
+    /// restore the previous session's autosave (name, bytes).
+    #[allow(dead_code)]
+    pub(crate) autosave_at: f64,
+    #[allow(dead_code)]
+    pub(crate) restore_offer: Option<(String, Vec<u8>)>,
 }
 
 impl IdeApp {
@@ -92,7 +106,10 @@ impl IdeApp {
             active: None,
             workspace: egui::Rect::from_min_size(egui::pos2(250.0, 60.0), Vec2::new(1000.0, 700.0)),
             show_about: false,
+            autosave_at: crate::platform::unix_secs(),
+            restore_offer: None,
         };
+        dialogs::set_context(&cc.egui_ctx);
         app.project_replaced();
         if let Some(p) = open {
             app.open_path(&p);
@@ -133,6 +150,107 @@ impl IdeApp {
         }
     }
 
+    /// Opens a project from its bytes (`name` is shown as the file name).
+    pub(crate) fn open_bytes(&mut self, name: &str, bytes: &[u8]) {
+        match gm_format::read_project(bytes) {
+            Ok(proj) => {
+                self.project = proj;
+                self.path = Some(PathBuf::from(name));
+                self.project_replaced();
+                self.status = format!("Opened {name}");
+            }
+            Err(e) => self.messages.push(format!("Cannot open {name}: {e}")),
+        }
+    }
+
+    /// Web: startup (`?project=` / autosave offer), arrivals and the autosave.
+    #[cfg(target_arch = "wasm32")]
+    fn web_frame(&mut self, ctx: &Context) {
+        use crate::web::{self, Incoming};
+        web::startup(ctx);
+        for i in web::take_incoming() {
+            match i {
+                Incoming::Open(name, bytes) => self.open_bytes(&name, &bytes),
+                Incoming::Autosave(name, bytes, time) => {
+                    let mins = ((js_sys::Date::now() - time) / 60000.0).max(0.0).round();
+                    let when = if mins < 1.0 {
+                        "just now".to_string()
+                    } else if mins < 120.0 {
+                        format!("{mins} minutes ago")
+                    } else {
+                        format!("{} hours ago", (mins / 60.0).round())
+                    };
+                    self.restore_offer = Some((format!("{name}, saved {when}"), bytes));
+                }
+                Incoming::Dropped(name, bytes) => {
+                    self.handle_dropped(PathBuf::from(name), Some(bytes))
+                }
+                Incoming::Error(e) => self.messages.push(e),
+            }
+        }
+        if let Some((name, _)) = &self.restore_offer {
+            let label = format!(
+                "A project autosaved in this browser was found ({name}).
+Restore it?"
+            );
+            let d = mdi::dialog(ctx, Id::new("restore-autosave"), "Restore", |ui| {
+                ui.label(label);
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Restore").clicked() {
+                        Some(true)
+                    } else if ui.button("Discard").clicked() {
+                        Some(false)
+                    } else {
+                        None
+                    }
+                })
+                .inner
+            });
+            let choice = if d.close { Some(false) } else { d.inner };
+            if let Some(restore) = choice {
+                if let Some((label, bytes)) = self.restore_offer.take() {
+                    if restore {
+                        let name = label.split(", saved ").next().unwrap_or("game.gm81");
+                        self.open_bytes(name, &bytes);
+                        // the restored project has not been downloaded yet
+                        self.modified = true;
+                    } else {
+                        let _ = web::js::clear_autosave();
+                    }
+                }
+            }
+        }
+        // Autosave every 15 s while there are unsaved changes.
+        let now = crate::platform::unix_secs();
+        if self.modified && self.restore_offer.is_none() && now - self.autosave_at >= 15.0 {
+            self.autosave_at = now;
+            if let Ok(b) = ops::project_bytes(&self.project) {
+                let _ = web::js::save_autosave(&self.save_name(), &b);
+                self.status = "Autosaved in the browser".into();
+            }
+        }
+        if self.modified {
+            ctx.request_repaint_after(std::time::Duration::from_secs(5));
+        }
+    }
+
+    /// Picked result of File > Open.
+    fn poll_open_dialog(&mut self) {
+        match dialogs::take_opened(open_key()) {
+            Some(Ok(files)) => {
+                if let Some(f) = files.into_iter().next() {
+                    match &f.path {
+                        Some(p) => self.open_path(p),
+                        None => self.open_bytes(&f.name, &f.bytes),
+                    }
+                }
+            }
+            Some(Err(e)) => self.messages.push(format!("Cannot open: {e}")),
+            None => {}
+        }
+    }
+
     fn do_new(&mut self) {
         self.project = ops::new_project();
         self.path = None;
@@ -140,17 +258,43 @@ impl IdeApp {
     }
 
     fn do_open_dialog(&mut self) {
-        if let Some(p) = rfd::FileDialog::new()
-            .add_filter("GameMaker projects", &["gm81", "gmk"])
-            .add_filter("All files", &["*"])
-            .pick_file()
-        {
-            self.open_path(&p);
+        dialogs::request_open(open_key(), dialogs::PROJECTS, false);
+    }
+
+    /// File name to save the project as (`<stem>.gm81`).
+    fn save_name(&self) -> String {
+        let stem = self
+            .path
+            .as_ref()
+            .and_then(|p| p.file_stem())
+            .map_or_else(|| "game".to_string(), |s| s.to_string_lossy().into_owned());
+        format!("{stem}.gm81")
+    }
+
+    /// Web: Save / Save As download the .gm81.
+    fn save_download(&mut self) -> bool {
+        let name = self.save_name();
+        let r = ops::project_bytes(&self.project)
+            .and_then(|b| dialogs::save_bytes(&name, None, dialogs::PROJECTS, &b));
+        match r {
+            Ok(_) => {
+                self.modified = false;
+                self.path = Some(PathBuf::from(&name));
+                self.status = format!("Downloaded {name}");
+                true
+            }
+            Err(e) => {
+                self.messages.push(format!("Cannot save: {e}"));
+                false
+            }
         }
     }
 
     /// Save to the current path (or ask). Returns true on success.
     fn save(&mut self, save_as: bool) -> bool {
+        if !dialogs::HAS_FILESYSTEM {
+            return self.save_download();
+        }
         let path = match (&self.path, save_as) {
             (Some(p), false)
                 if p.extension()
@@ -159,16 +303,13 @@ impl IdeApp {
                 p.clone()
             }
             _ => {
-                let mut d = rfd::FileDialog::new().add_filter("GameMaker 8.1 project", &["gm81"]);
-                if let Some(p) = &self.path {
-                    if let Some(stem) = p.file_stem() {
-                        d = d.set_file_name(format!("{}.gm81", stem.to_string_lossy()));
-                    }
-                    if let Some(dir) = p.parent() {
-                        d = d.set_directory(dir);
-                    }
-                }
-                match d.save_file() {
+                let name = if self.path.is_some() {
+                    self.save_name()
+                } else {
+                    String::new()
+                };
+                let dir = self.path.as_ref().and_then(|p| p.parent());
+                match dialogs::save_path(&name, dir, &[("GameMaker 8.1 project", &["gm81"])]) {
                     Some(p) => p.with_extension("gm81"),
                     None => return false,
                 }
@@ -223,6 +364,7 @@ impl IdeApp {
             Pending::New => self.do_new(),
             Pending::Open(Some(path)) => self.open_path(&path),
             Pending::Open(None) => self.do_open_dialog(),
+            Pending::OpenBytes(name, bytes) => self.open_bytes(&name, &bytes),
             Pending::Exit => {
                 self.allow_close = true;
             }
@@ -342,6 +484,23 @@ impl IdeApp {
     }
 
     fn run_game(&mut self) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            if self.project.rooms.iter().flatten().next().is_none() {
+                self.messages
+                    .push("A game needs at least one room to run.".into());
+                return;
+            }
+            match ops::project_bytes(&self.project) {
+                Ok(b) => {
+                    crate::web::js::run_game(&b);
+                    self.status = "Game running…".into();
+                }
+                Err(e) => self.messages.push(e),
+            }
+            return;
+        }
+        #[allow(unreachable_code)]
         if self.runner.is_some() {
             self.messages.push("The game is already running.".into());
             return;
@@ -431,17 +590,19 @@ impl IdeApp {
                     self.request(Pending::Open(None));
                     ui.close();
                 }
-                ui.menu_button("Recent Files", |ui| {
-                    if self.prefs.recent_files.is_empty() {
-                        ui.label("(none)");
-                    }
-                    for p in self.prefs.recent_files.clone() {
-                        if ui.button(p.display().to_string()).clicked() {
-                            self.request(Pending::Open(Some(p)));
-                            ui.close();
+                if dialogs::HAS_FILESYSTEM {
+                    ui.menu_button("Recent Files", |ui| {
+                        if self.prefs.recent_files.is_empty() {
+                            ui.label("(none)");
                         }
-                    }
-                });
+                        for p in self.prefs.recent_files.clone() {
+                            if ui.button(p.display().to_string()).clicked() {
+                                self.request(Pending::Open(Some(p)));
+                                ui.close();
+                            }
+                        }
+                    });
+                }
                 if ui.button("Save").clicked() {
                     self.save(false);
                     ui.close();
@@ -459,10 +620,12 @@ impl IdeApp {
                     self.show_prefs = true;
                     ui.close();
                 }
-                ui.separator();
-                if ui.button("Exit").clicked() {
-                    self.request(Pending::Exit);
-                    ui.close();
+                if dialogs::HAS_FILESYSTEM {
+                    ui.separator();
+                    if ui.button("Exit").clicked() {
+                        self.request(Pending::Exit);
+                        ui.close();
+                    }
                 }
             });
             ui.menu_button("Edit", |ui| {
@@ -734,6 +897,11 @@ impl IdeApp {
 
     /// File > Create Executable: runner + project payload + footer (specs/exe-format.md).
     fn create_executable(&mut self) {
+        if !dialogs::HAS_FILESYSTEM {
+            self.messages
+                .push("Creating executables is not available in the browser version.".into());
+            return;
+        }
         let rp =
             (!self.prefs.runner_path.trim().is_empty()).then(|| self.prefs.runner_path.clone());
         let Some(runner) = crate::run::find_runner(rp.as_deref()) else {
@@ -750,17 +918,19 @@ impl IdeApp {
             .as_ref()
             .and_then(|p| p.file_stem())
             .map_or_else(|| "game".to_string(), |s| s.to_string_lossy().into_owned());
-        let mut d = rfd::FileDialog::new()
-            .add_filter("Executable", &[if cfg!(windows) { "exe" } else { "bin" }])
-            .set_file_name(if cfg!(windows) {
-                format!("{stem}.exe")
-            } else {
-                stem
-            });
-        if let Some(dir) = self.path.as_ref().and_then(|p| p.parent()) {
-            d = d.set_directory(dir);
-        }
-        let Some(out) = d.save_file() else { return };
+        let name = if cfg!(windows) {
+            format!("{stem}.exe")
+        } else {
+            stem
+        };
+        let ext: &[&str] = if cfg!(windows) { &["exe"] } else { &["*"] };
+        let Some(out) = dialogs::save_path(
+            &name,
+            self.path.as_ref().and_then(|p| p.parent()),
+            &[("Executable", ext)],
+        ) else {
+            return;
+        };
         match crate::exe::create_executable(&self.project, &runner, &out, self.path.as_deref()) {
             Ok(warnings) => {
                 self.status = format!("Created {}", out.display());
@@ -1131,7 +1301,7 @@ impl IdeApp {
                     ui.label("Runner executable:");
                     ui.text_edit_singleline(&mut self.prefs.runner_path);
                     if ui.button("…").clicked() {
-                        if let Some(p) = rfd::FileDialog::new().pick_file() {
+                        if let Some(p) = dialogs::pick_path() {
                             self.prefs.runner_path = p.display().to_string();
                         }
                     }
@@ -1190,27 +1360,51 @@ impl IdeApp {
             self.run_game();
         }
         // Dropped files: projects open, images become sprites.
-        let dropped: Vec<PathBuf> = ctx.input(|i| {
-            i.raw
-                .dropped_files
-                .iter()
-                .map(|f| f.path().to_path_buf())
-                .filter(|p| !p.as_os_str().is_empty())
-                .collect()
-        });
-        for p in dropped {
+        // Natively dropped files are read from their path; on the web their
+        // contents are read asynchronously and arrive through `web_frame`.
+        let dropped: Vec<egui::DroppedFileHandle> =
+            ctx.input(|i| i.raw.dropped_files.iter().cloned().collect());
+        for f in dropped {
+            let p = f.path().to_path_buf();
+            if p.as_os_str().is_empty() {
+                continue;
+            }
+            #[cfg(target_arch = "wasm32")]
+            crate::web::read_dropped(f);
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                drop(f);
+                self.handle_dropped(p, None);
+            }
+        }
+    }
+
+    /// A dropped file: projects open, images become sprites. `bytes` are given
+    /// when there is no file system (web).
+    pub(crate) fn handle_dropped(&mut self, p: PathBuf, bytes: Option<Vec<u8>>) {
+        {
             let ext = p
                 .extension()
                 .and_then(|e| e.to_str())
                 .unwrap_or("")
                 .to_ascii_lowercase();
             if ext == "gm81" || ext == "gmk" {
-                self.request(Pending::Open(Some(p)));
+                match bytes {
+                    Some(b) => self.request(Pending::OpenBytes(p.display().to_string(), b)),
+                    None => self.request(Pending::Open(Some(p))),
+                }
             } else if ["png", "bmp", "gif", "jpg", "jpeg"].contains(&ext.as_str()) {
-                match crate::imageio::load_frames(
-                    std::slice::from_ref(&p),
-                    crate::imageio::LoadOptions::SPRITE,
-                ) {
+                let loaded = match bytes {
+                    Some(b) => crate::imageio::frames_from_bytes(
+                        &[(p.display().to_string(), b)],
+                        crate::imageio::LoadOptions::SPRITE,
+                    ),
+                    None => crate::imageio::load_frames(
+                        std::slice::from_ref(&p),
+                        crate::imageio::LoadOptions::SPRITE,
+                    ),
+                };
+                match loaded {
                     Ok(frames) => {
                         let (idx, _) = ops::create_resource(
                             &mut self.project,
@@ -1248,6 +1442,9 @@ impl eframe::App for IdeApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.poll_runner(&ctx);
+        self.poll_open_dialog();
+        #[cfg(target_arch = "wasm32")]
+        self.web_frame(&ctx);
         // Close requests (window X) ask to save first.
         if ctx.input(|i| i.viewport().close_requested())
             && !self.allow_close

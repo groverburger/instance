@@ -89,32 +89,33 @@ impl Editor for ConstantsEditor {
             if ui.button("Sort").clicked() {
                 self.work.sort_by(|a, b| a.name.cmp(&b.name));
             }
+            let load_key = crate::dialogs::key("constants-load", &*self as *const Self);
             if ui.button("Load…").clicked() {
-                if let Some(f) = rfd::FileDialog::new()
-                    .add_filter("Text", &["txt"])
-                    .pick_file()
-                {
-                    match std::fs::read(f) {
-                        Ok(b) => self
-                            .work
-                            .extend(parse_constants(&gm_format::text::decode_cp1252(&b))),
-                        Err(e) => cx.requests.push(Request::Message(e.to_string())),
+                crate::dialogs::request_open(load_key, crate::dialogs::TEXT, false);
+            }
+            match crate::dialogs::take_opened(load_key) {
+                Some(Ok(files)) => {
+                    for f in files {
+                        self.work
+                            .extend(parse_constants(&gm_format::text::decode_cp1252(&f.bytes)));
                     }
                 }
+                Some(Err(e)) => cx.requests.push(Request::Message(e)),
+                None => {}
             }
             if ui.button("Save…").clicked() {
-                if let Some(f) = rfd::FileDialog::new()
-                    .add_filter("Text", &["txt"])
-                    .save_file()
-                {
-                    let text: String = self
-                        .work
-                        .iter()
-                        .map(|c| format!("{}={}\r\n", c.name, c.value))
-                        .collect();
-                    if let Err(e) = std::fs::write(f, gm_format::text::encode_cp1252(&text)) {
-                        cx.requests.push(Request::Message(e.to_string()));
-                    }
+                let text: String = self
+                    .work
+                    .iter()
+                    .map(|c| format!("{}={}\r\n", c.name, c.value))
+                    .collect();
+                if let Err(e) = crate::dialogs::save_bytes(
+                    "constants.txt",
+                    None,
+                    crate::dialogs::TEXT,
+                    &gm_format::text::encode_cp1252(&text),
+                ) {
+                    cx.requests.push(Request::Message(e));
                 }
             }
         });
