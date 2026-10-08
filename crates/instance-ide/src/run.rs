@@ -24,6 +24,15 @@ pub fn runner_file_name() -> &'static str {
 pub fn find_runner(configured: Option<&str>) -> Option<PathBuf> {
     if let Some(c) = configured.filter(|c| !c.trim().is_empty()) {
         let p = PathBuf::from(c.trim());
+        // a path saved by an earlier build names the runner by its old name
+        // (gm-runner): prefer the renamed runner next to it
+        if p.file_stem().is_some_and(|s| s == "gm-runner") {
+            if let Some(renamed) = p.parent().map(|d| d.join(runner_file_name())) {
+                if renamed.is_file() {
+                    return Some(renamed);
+                }
+            }
+        }
         return p.is_file().then_some(p);
     }
     let exe = std::env::current_exe().ok()?;
