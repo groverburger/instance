@@ -5,6 +5,7 @@ use crate::builtins::{VarScope, VariableId};
 use crate::compile::{ArgVar, Ex, FieldName, Idx, Place, PlaceKind, Pos, St};
 use crate::error::{Error, ErrorKind, Location};
 use crate::host::{special, Ctx, Host};
+use crate::stdlib::{self as natives, Args};
 use crate::value::{binary, to_int, unary, BinOp, Value};
 use crate::vars::{Var, VarId, MAX_INDEX};
 use crate::vm::Vm;
@@ -50,9 +51,11 @@ impl Vm {
             ));
         }
         self.depth += 1;
+        let mut locals = self.locals_pool.pop().unwrap_or_default();
+        locals.resize_with(prog.local_names.len(), || None);
         let mut f = Frame {
             prog,
-            locals: (0..prog.local_names.len()).map(|_| None).collect(),
+            locals,
             args: Default::default(),
             argc: args.len().min(16),
             ctx,
@@ -63,6 +66,9 @@ impl Vm {
         }
         let r = self.exec_block(h, &mut f, &prog.body);
         self.depth -= 1;
+        let mut locals = std::mem::take(&mut f.locals);
+        locals.clear();
+        self.locals_pool.push(locals);
         match r {
             Ok(Flow::Return) => Ok(std::mem::take(&mut f.ret)),
             Ok(_) => Ok(Value::Real(0.0)),
@@ -113,6 +119,8 @@ impl Vm {
                 BinOp::Add => a + b,
                 BinOp::Sub => a - b,
                 BinOp::Mul => a * b,
+                BinOp::Div if b != 0.0 => a / b,
+                BinOp::Mod if b != 0.0 => a % b,
                 BinOp::Lt => (a < b) as u8 as f64,
                 BinOp::Le => (a <= b) as u8 as f64,
                 BinOp::Gt => (a > b) as u8 as f64,
@@ -407,6 +415,9 @@ impl Vm {
             }
             Ex::Binary(op, a, b, pos) => {
                 let l = self.eval(h, f, a)?;
+                if let Ex::Const(c) = &**b {
+                    return self.bin(f, *pos, *op, &l, c);
+                }
                 let r = self.eval(h, f, b)?;
                 self.bin(f, *pos, *op, &l, &r)
             }
@@ -424,6 +435,20 @@ impl Vm {
         args: &[Ex],
         pos: Pos,
     ) -> R<Value> {
+        // The argument count was checked at compile time, so natives are called
+        // directly; up to four arguments live on the stack.
+        if args.len() <= 4 {
+            let mut buf: [Value; 4] = Default::default();
+            for (k, a) in args.iter().enumerate() {
+                buf[k] = self.eval(h, f, a)?;
+            }
+            let vals = &buf[..args.len()];
+            let r = match natives::native(fid) {
+                Some(nf) => nf(self, h, &f.ctx, Args { vals, func: fid }),
+                None => h.call_function(self, &f.ctx, fid, vals),
+            };
+            return r.map_err(|e| self.loc(f, pos, e));
+        }
         let buf = self.eval_args(h, f, args)?;
         let r = self.call_function(h, &f.ctx, fid, &buf);
         self.recycle(buf);
@@ -760,6 +785,32 @@ impl Vm {
     ) -> R<()> {
         if let PlaceKind::Field(owner, name) = &p.kind {
             return self.assign_field(h, f, p, owner, *name, op, rhs);
+        }
+        // Fast path: `name op= constant` on a real scalar instance variable of self
+        // (loop counters), updated in place with one lookup.
+        if let (
+            Some(op @ (BinOp::Add | BinOp::Sub | BinOp::Mul)),
+            Ex::Const(Value::Real(rv)),
+            Idx::None,
+        ) = (op, rhs, &p.idx)
+        {
+            let var = match p.kind {
+                PlaceKind::User(v) if !self.is_globalvar(v) => Some(v),
+                PlaceKind::SelfUser(v) => Some(v),
+                _ => None,
+            };
+            if let Some(var) = var {
+                if let Some(Var::Scalar(Value::Real(cur))) =
+                    h.instance_vars(f.ctx.self_id).and_then(|t| t.get_mut(var))
+                {
+                    *cur = match op {
+                        BinOp::Add => *cur + *rv,
+                        BinOp::Sub => *cur - *rv,
+                        _ => *cur * *rv,
+                    };
+                    return Ok(());
+                }
+            }
         }
         let (i, j) = self.eval_idx(h, f, &p.idx, p.pos)?;
         let v = match op {

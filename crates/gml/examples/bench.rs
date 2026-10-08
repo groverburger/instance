@@ -3,6 +3,7 @@ use gml::*;
 
 struct World {
     me: VarTable,
+    script: Option<std::rc::Rc<Program>>,
 }
 
 impl Host for World {
@@ -18,7 +19,7 @@ impl Host for World {
         }
     }
     fn get_builtin(&mut self, _: &Ctx, _: i32, _: VariableId, _: i32) -> Result<Value, Error> {
-        Ok(Value::Real(0.0))
+        Ok(Value::Real(320.0))
     }
     fn set_builtin(
         &mut self,
@@ -37,10 +38,26 @@ impl Host for World {
         f: FunctionId,
         _: &[Value],
     ) -> Result<Value, Error> {
+        if f.name() == "draw_sprite" {
+            return Ok(Value::Real(0.0));
+        }
         Err(Error::new(format!("{} not supported", f.name())))
     }
-    fn call_script(&mut self, _: &mut Vm, _: &Ctx, _: i32, _: &[Value]) -> Result<Value, Error> {
-        Err(Error::new("no scripts"))
+    fn resolve_script(&self, name: &str) -> Option<i32> {
+        (name == "scr").then_some(0)
+    }
+    fn call_script(
+        &mut self,
+        vm: &mut Vm,
+        ctx: &Ctx,
+        _: i32,
+        args: &[Value],
+    ) -> Result<Value, Error> {
+        let p = self
+            .script
+            .clone()
+            .ok_or_else(|| Error::new("no scripts"))?;
+        vm.run(self, &p, *ctx, args)
     }
 }
 
@@ -54,13 +71,21 @@ fn main() {
         ("repeat", "var n; n = 0; repeat 1000000 n += 1; return n"),
         ("array writes", "var i; for (i = 0; i < 1000000; i += 1) a[i mod 1000] = i; return a[999]"),
         ("function calls", "var i, s; s = 0; for (i = 0; i < 1000000; i += 1) s += abs(-i); return s"),
+        ("tile loop (x1000)", "global.g = ds_grid_create(64, 64); global.t[0] = 1; repeat 1000 for(dw=0; dw<ceil(view_wview/32)+2; dw+=1) for(dh=0; dh<ceil(view_hview/32)+2; dh+=1) { get = ds_grid_get(global.g, floor(view_xview/32)+dw, floor(view_yview/32)+dh); draw_sprite(global.t[get], 0, (floor(view_xview/32)+dw)*32, (floor(view_yview/32)+dh)*32); if get == 0 and ds_grid_get(global.g, floor(view_xview/32)+dw, floor(view_yview/32)+dh-1) == 0 draw_sprite(global.t[get], 0, (floor(view_xview/32)+dw)*32, (floor(view_yview/32)+dh)*32 - 16) }"),
+        ("script calls", "var i, s; s = 0; for (i = 0; i < 300000; i += 1) s += scr(i); return s"),
+        ("with self", "var i; for (i = 0; i < 300000; i += 1) with (self) n = i; return n"),
         ("string concat", "var i, s; s = ''; for (i = 0; i < 100000; i += 1) s = 'x' + string(i mod 10); return s"),
     ];
     for (name, src) in cases {
         let mut w = World {
             me: VarTable::new(),
+            script: None,
         };
         let mut vm = Vm::new();
+        w.script = Some(
+            vm.compile("scr", b"var t; t = argument0 * 2; return t + 1", &w)
+                .unwrap(),
+        );
         let p = vm.compile(name, src.as_bytes(), &w).unwrap();
         let mut best = f64::MAX;
         let mut r = Value::Real(0.0);
