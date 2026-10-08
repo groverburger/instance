@@ -12,7 +12,7 @@
 use crate::draw::Backend;
 use crate::frontend::{self, mapping, Pacer};
 use crate::{Game, InputEvent, UiHooks};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -131,6 +131,8 @@ struct Placement {
     w: u32,
     h: u32,
     map: frontend::Mapping,
+    /// Canvas CSS position → region position (mouse events).
+    mouse: frontend::Mapping,
     /// Colour around the region (0RGB).
     outside: u32,
 }
@@ -145,27 +147,40 @@ struct Runner {
     /// Last applied view (canvas size / caption only change when it changes).
     last: Option<frontend::View>,
     place: Rc<RefCell<Placement>>,
+    /// Set by the window's resize event: the canvas is sized again.
+    resized: Rc<Cell<bool>>,
     gl: bool,
     done: bool,
 }
 
 impl Runner {
+    /// Sizes the canvas for the current window state. The game window is scaled
+    /// to fit the page (keeping its aspect ratio; by whole factors when it fits)
+    /// and centred by the page; the backing store follows the device pixel ratio.
     fn apply_view(&mut self) {
         let v = frontend::view(&self.g);
-        if self.last.as_ref() == Some(&v) {
+        let resized = self.resized.replace(false);
+        if !resized && self.last.as_ref() == Some(&v) {
             return;
         }
         let doc = window().document().unwrap();
-        if !v.caption.is_empty() {
+        if !v.caption.is_empty() && self.last.as_ref().map(|l| &l.caption) != Some(&v.caption) {
             doc.set_title(&v.caption);
         }
-        let (cw, ch) = if v.fullscreen {
-            let w = window();
-            let iw = w.inner_width().ok().and_then(|x| x.as_f64()).unwrap_or(800.0) as u32;
-            let ih = w.inner_height().ok().and_then(|x| x.as_f64()).unwrap_or(600.0) as u32;
-            (iw, ih)
-        } else if self.gl {
-            frontend::client_size(&v)
+        let w = window();
+        let aw = w.inner_width().ok().and_then(|x| x.as_f64()).unwrap_or(800.0).max(1.0);
+        let ah = w.inner_height().ok().and_then(|x| x.as_f64()).unwrap_or(600.0).max(1.0);
+        let dpr = w.device_pixel_ratio().clamp(0.25, 8.0);
+        // CSS size of the canvas
+        let (css_w, css_h) = if v.fullscreen {
+            (aw.floor(), ah.floor())
+        } else {
+            let (gw, gh) = frontend::client_size(&v);
+            let k = frontend::fit_scale(gw as f64, gh as f64, aw, ah);
+            (((gw as f64) * k).floor().max(1.0), ((gh as f64) * k).floor().max(1.0))
+        };
+        let (cw, ch) = if self.gl {
+            (((css_w * dpr).round() as u32).max(1), ((css_h * dpr).round() as u32).max(1))
         } else {
             // software frames are put 1:1 and scaled by CSS
             (v.w.max(1), v.h.max(1))
@@ -175,20 +190,25 @@ impl Runner {
             self.canvas.set_height(ch);
         }
         let style = self.canvas.style();
-        let (css_w, css_h) = if v.fullscreen { (cw, ch) } else { frontend::client_size(&v) };
         let _ = style.set_property("width", &format!("{}px", css_w));
         let _ = style.set_property("height", &format!("{}px", css_h));
         let _ = style.set_property("cursor", if v.cursor_visible { "default" } else { "none" });
         let o = v.outside;
         let _ = style.set_property("background", &format!("#{:06x}", o & 0xFFFFFF));
-        let map = if self.gl {
-            mapping(cw, ch, v.w, v.h, v.scale, v.fullscreen)
+        let (map, mouse) = if self.gl {
+            // the region placed in the game window, then the window scaled onto the canvas
+            let (gw, gh) = if v.fullscreen { (css_w as u32, css_h as u32) } else { frontend::client_size(&v) };
+            let m = mapping(gw, gh, v.w, v.h, v.scale, v.fullscreen);
+            let scaled = |f: f64| frontend::Mapping { ox: m.ox * f, oy: m.oy * f, sx: m.sx * f, sy: m.sy * f };
+            let f = css_w / gw.max(1) as f64;
+            (scaled(f * dpr), scaled(f))
         } else {
             // CSS stretches the region over the element
-            let (sx, sy) = (css_w as f64 / v.w.max(1) as f64, css_h as f64 / v.h.max(1) as f64);
-            frontend::Mapping { ox: 0.0, oy: 0.0, sx, sy }
+            let (sx, sy) = (css_w / v.w.max(1) as f64, css_h / v.h.max(1) as f64);
+            let m = frontend::Mapping { ox: 0.0, oy: 0.0, sx, sy };
+            (m, m)
         };
-        *self.place.borrow_mut() = Placement { w: cw, h: ch, map, outside: v.outside };
+        *self.place.borrow_mut() = Placement { w: cw, h: ch, map, mouse, outside: v.outside };
         self.last = Some(v);
     }
 
@@ -196,6 +216,11 @@ impl Runner {
     fn frame(&mut self) -> bool {
         if self.done {
             return false;
+        }
+        if self.resized.get() {
+            // a resized canvas is cleared: show the last frame again
+            self.apply_view();
+            self.g.gfx.present_now();
         }
         let mut steps = 0;
         let now = web_time::Instant::now();
@@ -332,6 +357,7 @@ pub fn start_game(canvas_id: &str, data: &[u8], renderer: Option<String>) -> Res
         w: canvas.width(),
         h: canvas.height(),
         map: mapping(canvas.width(), canvas.height(), 640, 480, 1.0, false),
+        mouse: mapping(canvas.width(), canvas.height(), 640, 480, 1.0, false),
         outside: 0,
     }));
     install_present(&mut g, &canvas, place.clone(), gl);
@@ -342,6 +368,7 @@ pub fn start_game(canvas_id: &str, data: &[u8], renderer: Option<String>) -> Res
         let q = queue.clone();
         g.pump = Some(Box::new(move || std::mem::take(&mut *q.borrow_mut())));
     }
+    let resized = Rc::new(Cell::new(false));
     let _ = canvas.set_attribute("tabindex", "0");
     let target: &web_sys::EventTarget = doc.as_ref();
     {
@@ -371,7 +398,7 @@ pub fn start_game(canvas_id: &str, data: &[u8], renderer: Option<String>) -> Res
     {
         let (q, m) = (queue.clone(), place.clone());
         listen(ct, "mousemove", move |e: MouseEvent| {
-            let (x, y) = m.borrow().map.to_region(e.offset_x() as f64, e.offset_y() as f64);
+            let (x, y) = m.borrow().mouse.to_region(e.offset_x() as f64, e.offset_y() as f64);
             q.borrow_mut().push(InputEvent::MouseMove(x, y));
         });
         let button = |e: &MouseEvent| match e.button() {
@@ -383,7 +410,7 @@ pub fn start_game(canvas_id: &str, data: &[u8], renderer: Option<String>) -> Res
         let (q, m, c2) = (queue.clone(), place.clone(), canvas.clone());
         listen(ct, "mousedown", move |e: MouseEvent| {
             let _ = c2.focus();
-            let (x, y) = m.borrow().map.to_region(e.offset_x() as f64, e.offset_y() as f64);
+            let (x, y) = m.borrow().mouse.to_region(e.offset_x() as f64, e.offset_y() as f64);
             q.borrow_mut().push(InputEvent::MouseMove(x, y));
             if let Some(b) = button(&e) {
                 q.borrow_mut().push(InputEvent::MouseDown(b));
@@ -416,6 +443,8 @@ pub fn start_game(canvas_id: &str, data: &[u8], renderer: Option<String>) -> Res
             q.borrow_mut().push(InputEvent::Close);
             crate::vfs::persist();
         });
+        let r = resized.clone();
+        listen(wt, "resize", move |_: web_sys::Event| r.set(true));
     }
 
     g.start(&mut vm).map_err(|e| JsValue::from_str(&e.to_string()))?;
@@ -429,6 +458,7 @@ pub fn start_game(canvas_id: &str, data: &[u8], renderer: Option<String>) -> Res
         title,
         last: None,
         place,
+        resized,
         gl,
         done: false,
     }));

@@ -143,9 +143,37 @@ pub fn mapping(ww: u32, wh: u32, rw: u32, rh: u32, scale: f64, fullscreen: bool)
     Mapping { ox: ((ww - rw * sx) / 2.0).floor(), oy: ((wh - rh * sy) / 2.0).floor(), sx, sy }
 }
 
+/// Factor that fits a `w × h` window into an `aw × ah` area keeping its aspect
+/// ratio: the largest whole factor (≥ 1) when it fits unscaled, otherwise the
+/// fractional factor that shrinks it to fit (browser frontend letterboxing).
+pub fn fit_scale(w: f64, h: f64, aw: f64, ah: f64) -> f64 {
+    let (w, h) = (w.max(1.0), h.max(1.0));
+    if aw < 1.0 || ah < 1.0 {
+        return 1.0;
+    }
+    let k = (aw / w).min(ah / h);
+    if k >= 1.0 {
+        k.floor()
+    } else {
+        k
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fit_scale_letterboxes() {
+        // fits: whole factor
+        assert_eq!(fit_scale(640.0, 480.0, 1920.0, 969.0), 2.0);
+        assert_eq!(fit_scale(640.0, 480.0, 800.0, 600.0), 1.0);
+        // too big: shrink keeping the aspect ratio
+        let k = fit_scale(1024.0, 768.0, 1366.0, 657.0);
+        assert!((768.0 * k - 657.0).abs() < 1e-9 && 1024.0 * k <= 1366.0);
+        let k = fit_scale(1920.0, 1080.0, 800.0, 600.0);
+        assert!((1920.0 * k - 800.0).abs() < 1e-9 && 1080.0 * k <= 600.0);
+    }
 
     #[test]
     fn mapping_keeps_aspect() {

@@ -91,22 +91,27 @@
     overlay.id = "instance-run-overlay";
     overlay.style.cssText =
       "position:fixed;inset:0;z-index:1000;background:#000;display:flex;flex-direction:column";
+    // a compact bar above the game; the game page (play.html) fits the game into
+    // the area below it
     const bar = document.createElement("div");
     bar.style.cssText =
-      "display:flex;align-items:center;justify-content:space-between;padding:2px 6px;" +
-      "background:#f0f0f0;font:13px system-ui,sans-serif;border-bottom:1px solid #999";
+      "flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;" +
+      "height:22px;box-sizing:border-box;padding:0 2px 0 8px;background:#f0f0f0;color:#222;" +
+      "font:12px/1 system-ui,sans-serif;border-bottom:1px solid #999;user-select:none";
     const title = document.createElement("span");
     title.textContent = "Running game";
     const close = document.createElement("button");
     close.textContent = "✕";
-    close.title = "Close the game";
-    close.style.cssText = "font-size:14px;padding:0 8px;cursor:pointer";
+    close.title = "Close the game (stops it)";
+    close.style.cssText =
+      "font:12px/1 system-ui,sans-serif;height:18px;padding:0 8px;margin:0;cursor:pointer;" +
+      "border:1px solid #aaa;border-radius:2px;background:#fafafa";
     close.onclick = closeGame;
     bar.append(title, close);
     const frame = document.createElement("iframe");
     frame.src = "play.html?game=idb:" + encodeURIComponent(RUN_KEY);
     frame.allow = "autoplay; fullscreen; gamepad";
-    frame.style.cssText = "flex:1;border:0;width:100%;background:#000";
+    frame.style.cssText = "flex:1 1 auto;min-height:0;display:block;border:0;width:100%;background:#000";
     frame.onload = () => frame.focus();
     overlay.append(bar, frame);
     document.body.append(overlay);
