@@ -1105,3 +1105,16 @@ form, object, event selector, room (all tabs), sprite, mask, sound, background,
 path, font, time line, script, debug, triggers, included file, constants,
 import/export, game information, preferences (forms tab) and extension packages
 forms.
+
+## Global Game Settings › Errors tab — VERIFIED (screenshot of GM 8.1 Lite)
+
+Five checkboxes, in this order and wording:
+1. Display error messages
+2. Write error messages to file game_errors.log
+3. Abort on all error messages
+4. Treat uninitialized variables as value 0
+5. Throw an error when arguments aren't initialised correctly.
+
+Option 5 is GM 8.1's strict script-argument check (gml-language.md, bb_lang vs
+bb_args0). In the file it is bit 1 (value 2) of the settings word whose bit 0 is
+option 4 (file-formats.md, FF-18).
