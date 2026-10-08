@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GM81 Clean Player</title>
+  <link rel="icon" href="data:,">
+  <style>
+    [hidden] { display: none !important; }
+    html, body { margin: 0; height: 100%; background: #000; color: #ddd;
+      font: 15px system-ui, -apple-system, "Segoe UI", sans-serif; }
+    body { display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    #game { display: block; outline: none; image-rendering: pixelated; background: #000; }
+    #overlay { position: fixed; inset: 0; display: flex; flex-direction: column; gap: 12px;
+      align-items: center; justify-content: center; background: rgba(0, 0, 0, .85); text-align: center; padding: 16px; }
+    #overlay button { font: inherit; font-size: 18px; padding: 12px 28px; border: 0; border-radius: 6px;
+      background: #3a7bd5; color: #fff; cursor: pointer; }
+    #overlay button:hover { background: #2f68b8; }
+    #overlay .hint { color: #999; font-size: 13px; max-width: 34em; }
+    #overlay.drop { outline: 3px dashed #3a7bd5; outline-offset: -12px; }
+    .error { color: #f88; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <canvas id="game" width="640" height="480" hidden></canvas>
+  <div id="overlay">
+    <div id="status">Loading&hellip;</div>
+    <button id="start" hidden>Click to start</button>
+    <div class="hint" id="hint">
+      Load a game with <code>?game=URL</code> (a .gm81 or .gmk file on this server),
+      or drop a .gm81 / .gmk file onto this page.
+    </div>
+  </div>
+  <!-- written by the build script: sets window.GM81_SOUNDFONT when a SoundFont was bundled -->
+  <script src="config.js"></script>
+  <script type="module">
+    import init, { start_game, set_soundfont } from "./pkg/gm_runner.js";
+
+    // Configuration (URL parameters):
+    //   game=URL | idb:KEY   game file to load (idb: = IndexedDB "gm81-clean"/"files", used by the IDE)
+    //   soundfont=URL        SoundFont for MIDI music (default: window.GM81_SOUNDFONT from config.js; "none" to skip)
+    //   renderer=gl|software
+    // A page can also embed a game: <script id="gm81-game" type="application/octet-stream" data-src="URL">
+    // or a base64 payload in window.GM81_GAME_BASE64.
+    const params = new URLSearchParams(location.search);
+    const $ = (id) => document.getElementById(id);
+    const status = (t, err) => { $("status").textContent = t; $("status").className = err ? "error" : ""; };
+
+    function idbGet(key) {
+      return new Promise((resolve, reject) => {
+        const r = indexedDB.open("gm81-clean");
+        r.onerror = () => reject(r.error);
+        r.onupgradeneeded = () => r.result.createObjectStore("files");
+        r.onsuccess = () => {
+          const db = r.result;
+          if (!db.objectStoreNames.contains("files")) { resolve(null); return; }
+          const g = db.transaction("files", "readonly").objectStore("files").get(key);
+          g.onsuccess = () => resolve(g.result ? new Uint8Array(g.result) : null);
+          g.onerror = () => reject(g.error);
+        };
+      });
+    }
+
+    async function fetchBytes(url) {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+      return new Uint8Array(await r.arrayBuffer());
+    }
+
+    async function loadSoundFont() {
+      const sf = params.get("soundfont") ?? window.GM81_SOUNDFONT;
+      if (!sf || sf === "none") {
+        console.warn("gm81: no SoundFont configured; MIDI music will be silent. " +
+          "Build with GM81_SOUNDFONT=path/to/file.sf2 (or put one in web/soundfonts/default.sf2) or pass ?soundfont=URL.");
+        return;
+      }
+      try {
+        set_soundfont(await fetchBytes(sf));
+        console.info("gm81: SoundFont loaded from", sf);
+      } catch (e) {
+        console.warn(`gm81: cannot load the SoundFont (${e.message}); MIDI music will be silent.`);
+      }
+    }
+
+    async function initialGame() {
+      const g = params.get("game");
+      if (g && g.startsWith("idb:")) {
+        const b = await idbGet(g.slice(4));
+        if (!b) throw new Error(`no game stored under "${g.slice(4)}"`);
+        return { name: g.slice(4), bytes: b };
+      }
+      if (g) return { name: g, bytes: await fetchBytes(g) };
+      const tag = document.getElementById("gm81-game");
+      if (tag && tag.dataset.src) return { name: tag.dataset.src, bytes: await fetchBytes(tag.dataset.src) };
+      if (window.GM81_GAME_BASE64) {
+        const s = atob(window.GM81_GAME_BASE64);
+        const b = new Uint8Array(s.length);
+        for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
+        return { name: "embedded", bytes: b };
+      }
+      return null;
+    }
+
+    let started = false;
+    function offer(game) {
+      if (started) return;
+      status(`Ready: ${game.name.split("/").pop()} (${(game.bytes.length / 1024).toFixed(0)} KB)`);
+      $("hint").hidden = true;
+      const btn = $("start");
+      btn.hidden = false;
+      btn.focus();
+      // audio may only start after a user gesture: the game starts from this click
+      btn.onclick = () => run(game);
+      if (params.has("autostart")) run(game);
+    }
+
+    function run(game) {
+      if (started) return;
+      started = true;
+      $("overlay").hidden = true;
+      const canvas = $("game");
+      canvas.hidden = false;
+      try {
+        start_game("game", game.bytes, params.get("renderer") ?? undefined);
+        canvas.focus();
+      } catch (e) {
+        console.error(e);
+        $("overlay").hidden = false;
+        $("start").hidden = true;
+        status("The game could not start: " + e, true);
+      }
+    }
+
+    window.gm81GameEnded = () => {
+      $("game").hidden = true;
+      $("overlay").hidden = false;
+      $("start").hidden = true;
+      status("The game has ended.");
+      if (parent !== window) parent.postMessage("gm81-close-game", location.origin);
+    };
+
+    // drag and drop of a game file
+    document.addEventListener("dragover", (e) => { e.preventDefault(); $("overlay").classList.add("drop"); });
+    document.addEventListener("dragleave", () => $("overlay").classList.remove("drop"));
+    document.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      $("overlay").classList.remove("drop");
+      const f = e.dataTransfer.files[0];
+      if (!f || started) return;
+      if (!/\.(gm81|gmk|gm6)$/i.test(f.name)) { status(`${f.name}: not a .gm81/.gmk file`, true); return; }
+      offer({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+    });
+
+    try {
+      await init();
+      await loadSoundFont();
+      const game = await initialGame();
+      if (game) offer(game);
+      else status("No game loaded.");
+    } catch (e) {
+      console.error(e);
+      status(String(e.message ?? e), true);
+    }
+  </script>
+</body>
+</html>

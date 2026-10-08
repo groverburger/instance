@@ -4,3 +4,5 @@
 /.claude/
 /*.txt
 game_errors.log
+/dist
+/web/soundfonts/

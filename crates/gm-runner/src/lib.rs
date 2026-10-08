@@ -39,9 +39,12 @@ pub use input::InputEvent;
 pub const GAME_STACK_SIZE: usize = 256 * 1024 * 1024;
 
 /// GML call depth allowed before "stack overflow" errors. Desktop runs use a
-/// [`GAME_STACK_SIZE`] thread; the browser build runs on the wasm main stack,
-/// which the linker makes 32 MiB (`.cargo/config.toml`).
-pub const MAX_CALL_DEPTH: u32 = if cfg!(target_arch = "wasm32") { 1024 } else { 4096 };
+/// [`GAME_STACK_SIZE`] thread. In the browser two stacks matter: the wasm
+/// shadow stack in linear memory (32 MiB, set in `.cargo/config.toml`) and the
+/// engine's own call stack, which is the real limit (about 850 levels of a
+/// simple recursive script in Edge/Chrome); 512 leaves room for complex
+/// expressions, so deep recursion ends in a GML error rather than a crash.
+pub const MAX_CALL_DEPTH: u32 = if cfg!(target_arch = "wasm32") { 512 } else { 4096 };
 
 /// Prints a warning on stderr (desktop) or the browser console (web).
 pub fn warn(msg: &str) {
