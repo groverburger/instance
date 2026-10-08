@@ -1078,19 +1078,22 @@ Restore it?"
                     icon,
                     active,
                     |ui| {
-                        ui.horizontal(|ui| {
-                            if ok_button(ui).clicked() {
-                                ok = true;
-                            }
-                            if ui.button("Cancel").clicked() {
-                                cancel = true;
-                            }
-                        });
-                        ui.separator();
+                        if !f.editor.has_own_ok() {
+                            ui.horizontal(|ui| {
+                                if ok_button(ui).clicked() {
+                                    ok = true;
+                                }
+                                if ui.button("Cancel").clicked() {
+                                    cancel = true;
+                                }
+                            });
+                            ui.separator();
+                        }
                         f.editor.ui(ui, &mut cx);
                     },
                 )
             };
+            ok |= f.editor.take_ok();
             if out.activated {
                 self.active = Some(f.uid);
                 mdi::bring_to_front(ctx, wid);
@@ -1155,6 +1158,7 @@ Restore it?"
             match r {
                 Request::Open(k) => self.open_form(k),
                 Request::Message(m) => self.messages.push(m),
+                Request::Create(kind) => self.create(kind, Placement::End),
             }
         }
     }

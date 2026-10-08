@@ -1,5 +1,6 @@
 //! Common widgets (specs/ide.md §4): resource picker, colour box, image previews.
 
+pub mod action_text;
 pub mod actions;
 pub mod code_editor;
 pub mod event_selector;
@@ -207,6 +208,199 @@ pub fn resource_picker(
             }
         });
     changed
+}
+
+/// Items of a resource menu: `tree_order` entries (index, name, depth; groups < 0).
+type TreeItems = [(i32, String, usize)];
+
+/// Menu entries for the resources in `items` (groups become submenus).
+fn resource_menu_items(ui: &mut Ui, items: &TreeItems, value: &mut i32, changed: &mut bool) {
+    let mut i = 0;
+    while i < items.len() {
+        let (idx, name, depth) = &items[i];
+        // children of a group: the following items deeper than it
+        let end = items[i + 1..]
+            .iter()
+            .position(|x| x.2 <= *depth)
+            .map_or(items.len(), |k| i + 1 + k);
+        if *idx < 0 {
+            let children = &items[i + 1..end];
+            if children.is_empty() {
+                ui.add_enabled(false, egui::Button::new(name.as_str()));
+            } else {
+                ui.menu_button(name.as_str(), |ui| {
+                    egui::ScrollArea::vertical()
+                        .max_height(480.0)
+                        .show(ui, |ui| {
+                            resource_menu_items(ui, children, value, changed);
+                        });
+                });
+            }
+            i = end;
+        } else {
+            if ui.selectable_label(*value == *idx, name.as_str()).clicked() {
+                *value = *idx;
+                *changed = true;
+                ui.close();
+            }
+            i += 1;
+        }
+    }
+}
+
+/// GameMaker-style resource selector: a read-only field showing the current resource
+/// and a small menu button; clicking either opens a menu of the resources (groups as
+/// submenus, plus the "none" entry). Fixed size `width` × 20. Returns true when changed.
+#[allow(clippy::too_many_arguments)]
+pub fn resource_menu_field(
+    ui: &mut Ui,
+    id_salt: impl Hash + std::fmt::Debug,
+    p: &Project,
+    kind: ResourceKind,
+    value: &mut i32,
+    none_text: &str,
+    none_value: i32,
+    width: f32,
+) -> bool {
+    let current = if *value == none_value || *value < 0 {
+        none_text.to_string()
+    } else {
+        res_name(p, kind, *value as usize)
+            .map_or_else(|| format!("<missing {}>", *value), str::to_string)
+    };
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 20.0), egui::Sense::hover());
+    let resp = ui.interact(
+        rect,
+        ui.id().with(("res_menu", id_salt)),
+        egui::Sense::click(),
+    );
+    let enabled = ui.is_enabled();
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, enabled, &current));
+    let field = Rect::from_min_max(rect.min, egui::pos2(rect.right() - 21.0, rect.bottom()));
+    let button = Rect::from_min_max(egui::pos2(rect.right() - 20.0, rect.top()), rect.max);
+    if ui.is_rect_visible(rect) {
+        let pt = ui.painter();
+        let ink = if enabled {
+            Color32::from_gray(10)
+        } else {
+            Color32::from_gray(140)
+        };
+        pt.rect_filled(field, 0.0, Color32::from_rgb(246, 246, 246));
+        pt.rect_stroke(
+            field,
+            0.0,
+            egui::Stroke::new(1.0, Color32::from_gray(170)),
+            egui::StrokeKind::Inside,
+        );
+        let galley = egui::WidgetText::from(current.as_str()).into_galley(
+            ui,
+            Some(egui::TextWrapMode::Truncate),
+            field.width() - 8.0,
+            egui::TextStyle::Body,
+        );
+        pt.galley(
+            egui::pos2(field.left() + 4.0, field.center().y - galley.size().y / 2.0),
+            galley,
+            ink,
+        );
+        let hot = enabled && resp.hovered();
+        let down = enabled
+            && (resp.is_pointer_button_down_on()
+                || egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&resp)));
+        let fill = if down {
+            Color32::from_rgb(204, 228, 247)
+        } else if hot {
+            Color32::from_rgb(229, 241, 251)
+        } else {
+            Color32::from_rgb(225, 225, 225)
+        };
+        let stroke = if hot || down {
+            Color32::from_rgb(0, 120, 215)
+        } else {
+            Color32::from_gray(173)
+        };
+        pt.rect(
+            button,
+            2.0,
+            fill,
+            egui::Stroke::new(1.0, stroke),
+            egui::StrokeKind::Inside,
+        );
+        // menu glyph: three short lines and a small triangle
+        let c = button.center();
+        for k in 0..3 {
+            let y = c.y - 4.0 + k as f32 * 3.0;
+            pt.hline(
+                egui::Rangef::new(c.x - 5.0, c.x + 1.0),
+                y,
+                egui::Stroke::new(1.0, ink),
+            );
+        }
+        pt.add(egui::Shape::convex_polygon(
+            vec![
+                egui::pos2(c.x + 2.0, c.y + 1.0),
+                egui::pos2(c.x + 7.0, c.y + 1.0),
+                egui::pos2(c.x + 4.5, c.y + 4.5),
+            ],
+            ink,
+            egui::Stroke::NONE,
+        ));
+    }
+    let mut changed = false;
+    egui::Popup::menu(&resp).show(|ui| {
+        ui.set_min_width(width.max(140.0));
+        if ui
+            .selectable_label(*value == none_value || *value < 0, none_text)
+            .clicked()
+        {
+            *value = none_value;
+            changed = true;
+            ui.close();
+        }
+        let items = tree_order(p, kind);
+        egui::ScrollArea::vertical()
+            .max_height(480.0)
+            .show(ui, |ui| {
+                resource_menu_items(ui, &items, value, &mut changed);
+            });
+    });
+    changed
+}
+
+/// A classic group box: an etched frame of fixed `width` with `title` on its top edge.
+pub fn group_box<R>(ui: &mut Ui, title: &str, width: f32, add: impl FnOnce(&mut Ui) -> R) -> R {
+    ui.add_space(7.0);
+    let r = egui::Frame::NONE
+        .stroke(egui::Stroke::new(1.0, Color32::from_gray(190)))
+        .corner_radius(3)
+        .inner_margin(egui::Margin {
+            left: 7,
+            right: 7,
+            top: 11,
+            bottom: 7,
+        })
+        .show(ui, |ui| {
+            ui.set_width(width - 16.0);
+            add(ui)
+        });
+    let rect = r.response.rect;
+    let pt = ui.painter();
+    let galley = pt.layout_no_wrap(
+        title.to_string(),
+        egui::TextStyle::Body.resolve(ui.style()),
+        Color32::from_gray(10),
+    );
+    let pos = egui::pos2(rect.left() + 8.0, rect.top() - galley.size().y / 2.0);
+    pt.rect_filled(
+        Rect::from_min_size(
+            pos - Vec2::new(3.0, 0.0),
+            galley.size() + Vec2::new(6.0, 0.0),
+        ),
+        0.0,
+        crate::theme::PANEL,
+    );
+    pt.galley(pos, galley, Color32::from_gray(10));
+    r.inner
 }
 
 /// Simple modal text prompt state used by several editors.
