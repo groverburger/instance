@@ -124,7 +124,7 @@ pub fn build_clash() -> Spec {
     let mut g = Gen::new("bb_clash", 81011);
     let fw = install(&mut g);
     // a script with a built-in function's name, a constant with a resource name
-    g.script("abs", "return 42;");
+    g.script("abs", "return 42 + 0 * argument0;"); // one argument: GM 8.1 checks script arity
     let _obj = g.object("bb_clashobj");
     g.constant("bb_clashobj", "77");
     g.constant("c_red", "5");
