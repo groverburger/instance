@@ -174,7 +174,10 @@ fn run_ours(dir: &Path, runner: Option<PathBuf>, only: Option<String>) -> i32 {
             .arg("--frames")
             .arg(s.frames.to_string())
             .arg("--max-seconds")
-            .arg("300")
+            // bb_perf_fps runs for wall-clock time and saves after ~4 s
+            .arg(if s.name == "bb_perf_fps" { "10" } else { "300" })
+            // GM 8.1 draws with Direct3D; compare frame rates against our GPU renderer
+            .args(if s.name == "bb_perf_fps" { &["--renderer", "gl"][..] } else { &[][..] })
             .current_dir(&ours)
             .output();
         let _ = std::fs::remove_file(&game);
@@ -318,6 +321,7 @@ fn compare(ours: &Path, gm: &Path) -> i32 {
                 println!("{l}");
             }
         }
+        timing_table(&a, &b);
     }
     println!("\n== per question group (equal / different)");
     for (q, (s, d)) in per_q {
@@ -388,4 +392,31 @@ fn manifest_md() -> String {
          - Mouse events (RT-14) need real mouse input.\n",
     );
     s
+}
+
+/// Prints elapsed time, steps and every `perf.*` timing side by side with the
+/// GM / ours ratio (> 1 means our runner is faster).
+fn timing_table(ours: &BTreeMap<String, String>, gm: &BTreeMap<String, String>) {
+    let num = |m: &BTreeMap<String, String>, k: &str| m.get(k).and_then(|v| v.parse::<f64>().ok());
+    let mut rows = Vec::new();
+    for k in ours.keys().chain(gm.keys()) {
+        let timing = k == "meta.elapsed_ms" || k == "meta.steps" || (k.starts_with("perf.") && !k.ends_with(".n") && k != "perf.done");
+        if !timing || rows.iter().any(|(r, _, _)| r == k) {
+            continue;
+        }
+        rows.push((k.clone(), num(ours, k), num(gm, k)));
+    }
+    if rows.is_empty() {
+        return;
+    }
+    println!("  -- timing (ours | GM 8.1 | GM/ours; for fps: ours/GM):");
+    for (k, o, g) in rows {
+        let f = |v: Option<f64>| v.map_or("-".to_string(), |v| format!("{v:.0}"));
+        let ratio = match (o, g) {
+            (Some(o), Some(g)) if k.contains("fps") && g > 0.0 => format!("{:.2}x", o / g),
+            (Some(o), Some(g)) if o > 0.0 => format!("{:.2}x", g / o),
+            _ => "-".to_string(),
+        };
+        println!("    {k:40} {:>8} | {:>8} | {ratio}", f(o), f(g));
+    }
 }

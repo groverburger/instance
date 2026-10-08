@@ -132,6 +132,8 @@ saved = 0;
 if (!variable_global_exists('bb_started'))
 {{
     global.bb_started = 1;
+    global.bb_t0 = current_time;
+    global.bb_nsteps = 0;
     bb_log('meta.project', '{name}');
 }}"#
     );
@@ -140,6 +142,7 @@ if (!variable_global_exists('bb_started'))
         out_obj,
         ev::END_STEP,
         &[r#"var maxp;
+if (!global.bb_done) global.bb_nsteps += 1;
 if (keyboard_check_pressed(vk_right) || keyboard_check_pressed(vk_pagedown) || keyboard_check_pressed(vk_down)) page += 1;
 if (keyboard_check_pressed(vk_left) || keyboard_check_pressed(vk_pageup) || keyboard_check_pressed(vk_up)) page -= 1;
 if (keyboard_check_pressed(vk_home)) page = 0;
@@ -149,6 +152,9 @@ if (page < 0) page = 0;
 if (global.bb_done && !saved)
 {
     saved = 1;
+    bb_log('meta.elapsed_ms', current_time - global.bb_t0);
+    bb_log('meta.steps', global.bb_nsteps);
+    bb_log('meta.room_speed', room_speed);
     bb_log('meta.end', 1);
     instance_create(0, 0, bb_save);
 }"#],

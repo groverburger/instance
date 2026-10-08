@@ -6,6 +6,7 @@ pub mod instances;
 pub mod lang;
 pub mod motion;
 pub mod optional;
+pub mod perf;
 pub mod random;
 pub mod restart;
 pub mod rooms;
@@ -31,6 +32,8 @@ pub fn all() -> Vec<Spec> {
         restart::build(),
         optional::build(),
         optional::build_clash(),
+        perf::build(),
+        perf::build_fps(),
     ];
     v.extend(lang::diagnostics());
     v
