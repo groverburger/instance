@@ -10,7 +10,7 @@ fn usage() -> ExitCode {
         "usage: gmx2gm81 <input.gmx-dir | file.project.gmx | file.gmz> [-o out.gm81]\n\
          \x20      [--quiet] [--no-compat] [--gm8-create-order] [--string-escapes]\n\
          \x20      [--uninit-zero (default) | --uninit-error | --uninit-studio]\n\
-         \x20      [--dump-code DIR]"
+         \x20      [--system-fonts] [--dump-code DIR]"
     );
     ExitCode::from(2)
 }
@@ -74,6 +74,7 @@ fn main() -> ExitCode {
             "--no-compat" => opts.compat = false,
             "--gm8-create-order" => opts.studio_create_order = false,
             "--string-escapes" => opts.string_escapes = true,
+            "--system-fonts" => opts.sprite_fonts = false,
             "--uninit-zero" => opts.uninit_as_zero = Some(true),
             "--uninit-error" => opts.uninit_as_zero = Some(false),
             "--uninit-studio" => opts.uninit_as_zero = None,

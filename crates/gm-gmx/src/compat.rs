@@ -299,7 +299,6 @@ pub static CONSTANTS: &[(&str, &str)] = &[
     ("ev_draw_pre", "76"),
     ("ev_draw_post", "77"),
     ("ev_user_resize", "65"),
-    ("ev_global_left_button", "50"),
     ("audio_falloff_none", "0"),
     ("audio_falloff_inverse_distance", "1"),
     ("audio_falloff_inverse_distance_clamped", "2"),
@@ -318,7 +317,6 @@ pub static CONSTANTS: &[(&str, &str)] = &[
     ("display_landscape_flipped", "1"),
     ("display_portrait", "2"),
     ("display_portrait_flipped", "3"),
-    ("mb_any", "-1"),
     ("ds_type_map", "1"),
     ("ds_type_list", "2"),
     ("ds_type_stack", "3"),
@@ -345,11 +343,7 @@ pub static VAR_RENAMES: &[(&str, &str)] = &[
     ("event_data", "(-1)"),
     ("iap_data", "(-1)"),
     ("webgl_enabled", "(false)"),
-    ("gamemaker_pro", "(true)"),
-    ("gamemaker_registered", "(true)"),
-    ("gamemaker_version", "(810)"),
     ("view_surface_id", "(-1)"),
-    ("cursor_sprite", "(-1)"),
 ];
 
 pub fn script(name: &str) -> Option<&'static CompatScript> {
@@ -387,4 +381,50 @@ pub fn with_deps(names: &BTreeMap<String, ()>) -> Vec<&'static CompatScript> {
         }
     }
     SCRIPTS.iter().filter(|s| want.contains(&s.name)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every compat script is plain GM 8.1 GML that only calls 8.1 built-ins, its
+    /// declared dependencies or itself.
+    #[test]
+    fn scripts_are_valid_gm81() {
+        let b = builtins();
+        for s in SCRIPTS {
+            let t = crate::gml::Translator::default().translate(s.code);
+            assert!(t.error.is_none(), "{}: {:?}", s.name, t.error);
+            assert!(!t.changed, "{} uses Studio-only syntax", s.name);
+            for c in &t.usage.calls {
+                assert!(
+                    b.functions.contains(c) || s.deps.contains(&c.as_str()),
+                    "{} calls unknown function {c}",
+                    s.name
+                );
+            }
+            for (from, to) in WRAPS {
+                if *to == s.name {
+                    assert!(b.functions.contains(*from));
+                }
+            }
+        }
+        // Constants and renames do not shadow GM 8.1 names.
+        for (c, _) in CONSTANTS {
+            assert!(!b.contains(c), "constant {c} exists in GM 8.1");
+        }
+        for (v, _) in VAR_RENAMES {
+            assert!(!b.contains(v), "variable {v} exists in GM 8.1");
+        }
+    }
+
+    #[test]
+    fn deps_are_closed() {
+        let mut m = BTreeMap::new();
+        m.insert("gamepad_button_check_pressed".to_string(), ());
+        let v: Vec<&str> = with_deps(&m).iter().map(|s| s.name).collect();
+        assert!(v.contains(&"__gmx_gp_button"));
+        assert_eq!(colour_rename("draw_text_colour").as_deref(), Some("draw_text_color"));
+        assert_eq!(colour_rename("my_colour_thing"), None);
+    }
 }

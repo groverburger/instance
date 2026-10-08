@@ -127,6 +127,8 @@ pub struct Loaded {
     pub game_name: String,
     /// Studio short-circuit evaluation setting.
     pub short_circuit: bool,
+    /// Fonts with pre-rendered Studio glyphs: (font index, glyph sprite index, first char).
+    pub font_sprites: Vec<(i32, i32, i32)>,
     pub warnings: Vec<Warning>,
 }
 
@@ -375,7 +377,8 @@ fn load_sound(ctx: &mut Ctx, rel: &str, name: &str) -> Sound {
     s
 }
 
-fn load_font(ctx: &mut Ctx, rel: &str, name: &str) -> Font {
+/// A font, plus its Studio glyphs as a sprite font (sprite, first character).
+fn load_font(ctx: &mut Ctx, rel: &str, name: &str) -> (Font, Option<(Sprite, i32)>) {
     let mut f = Font {
         name: name.to_string(),
         ..Font::default()
@@ -383,11 +386,11 @@ fn load_font(ctx: &mut Ctx, rel: &str, name: &str) -> Font {
     let file = format!("{rel}.font.gmx");
     let Some(src) = ctx.read_string(&file) else {
         ctx.warn(format!("font {name}"), format!("missing {file}"));
-        return f;
+        return (f, None);
     };
     let Ok(doc) = xml::parse(&src) else {
         ctx.warn(format!("font {name}"), "bad XML");
-        return f;
+        return (f, None);
     };
     let r = doc.root_element();
     let fname = text(r, "name");
@@ -422,10 +425,94 @@ fn load_font(ctx: &mut Ctx, rel: &str, name: &str) -> Font {
         ctx.warn(format!("font {name}"), format!("character range {lo}..{hi} clipped to 255"));
         f.range_end = 255;
     }
-    if boolean(r, "includeTTF", false) {
+    // Studio pre-renders the glyphs into <name>.png; turn them into a sprite font.
+    let sprite = glyph_sprite(ctx, r, rel, name, f.range_start as i32, f.range_end);
+    if sprite.is_none() && boolean(r, "includeTTF", false) {
         ctx.warn(format!("font {name}"), "embedded TTF not supported; the font is regenerated from its name");
     }
-    f
+    (f, sprite)
+}
+
+/// Build a sprite font (one frame per character `first..=last`) from the Studio glyph
+/// texture. Frames are top-aligned; each glyph sits at its `offset` and invisible
+/// (alpha 1) marker pixels at columns 0 and `shift-1` make the proportional width
+/// equal to Studio's advance.
+fn glyph_sprite(ctx: &mut Ctx, r: roxmltree::Node, rel: &str, name: &str, first: i32, last: i32) -> Option<(Sprite, i32)> {
+    let glyphs = child(r, "glyphs")?;
+    struct G {
+        c: i32,
+        x: u32,
+        y: u32,
+        w: u32,
+        h: u32,
+        shift: i32,
+        offset: i32,
+    }
+    let gl: Vec<G> = children(glyphs, "glyph")
+        .map(|g| G {
+            c: attr_int(g, "character", -1),
+            x: attr_int(g, "x", 0).max(0) as u32,
+            y: attr_int(g, "y", 0).max(0) as u32,
+            w: attr_int(g, "w", 0).max(0) as u32,
+            h: attr_int(g, "h", 0).max(0) as u32,
+            shift: attr_int(g, "shift", 0),
+            offset: attr_int(g, "offset", 0),
+        })
+        .filter(|g| g.c >= first && g.c <= last)
+        .collect();
+    if gl.is_empty() {
+        return None;
+    }
+    let png = ctx.read(&format!("{rel}.png"))?;
+    let tex = match decode_png(&png) {
+        Ok(t) => t,
+        Err(e) => {
+            ctx.warn(format!("font {name}"), format!("cannot decode glyph texture: {e}"));
+            return None;
+        }
+    };
+    let fw = gl.iter().map(|g| (g.offset.max(0) as u32 + g.w).max(g.shift.max(1) as u32)).max()?.max(1);
+    let fh = gl.iter().map(|g| g.h).max()?.max(1);
+    let mut frames = vec![RgbaImage::new(fw, fh); (last - first + 1).max(1) as usize];
+    for g in &gl {
+        let img = &mut frames[(g.c - first) as usize];
+        for yy in 0..g.h.min(fh) {
+            for xx in 0..g.w {
+                let (sx, sy) = (g.x + xx, g.y + yy);
+                if sx >= tex.width || sy >= tex.height {
+                    continue;
+                }
+                let dx = g.offset.max(0) as u32 + xx;
+                if dx >= fw {
+                    continue;
+                }
+                let s = ((sy * tex.width + sx) * 4) as usize;
+                let d = ((yy * fw + dx) * 4) as usize;
+                // Studio glyph textures are white with alpha; keep them white so the
+                // draw colour tints them.
+                img.data[d..d + 4].copy_from_slice(&[255, 255, 255, tex.data[s + 3]]);
+            }
+        }
+        let adv = g.shift.max(1) as u32;
+        for mx in [0, (adv - 1).min(fw - 1)] {
+            let d = (mx * 4) as usize;
+            if img.data[d + 3] == 0 {
+                img.data[d..d + 4].copy_from_slice(&[255, 255, 255, 1]);
+            }
+        }
+    }
+    Some((
+        Sprite {
+            name: format!("__gmx_font_{name}"),
+            frames,
+            collision_shape: 1,
+            bbox_mode: 1,
+            bbox_right: fw as i32 - 1,
+            bbox_bottom: fh as i32 - 1,
+            ..Sprite::default()
+        },
+        first,
+    ))
 }
 
 fn load_path(ctx: &mut Ctx, rel: &str, name: &str) -> Path {
@@ -1180,9 +1267,19 @@ pub fn load(src: &Source, proj_rel: &str) -> Result<Loaded, String> {
             format!("{} shader(s) dropped (GM 8.1 has no shaders): {}", shaders.len(), shaders.join(", ")),
         );
     }
+    let mut glyph_sprites = Vec::new();
     for path in leaves(Kind::Font) {
-        let f = load_font(&mut ctx, &path, &leaf_name(&path));
+        let (f, spr) = load_font(&mut ctx, &path, &leaf_name(&path));
+        if let Some(s) = spr {
+            glyph_sprites.push((p.fonts.len() as i32, s));
+        }
         p.fonts.push(Some(f));
+    }
+    // Glyph sprites go after the project's sprites (indices stay stable).
+    let mut font_sprites = Vec::new();
+    for (fi, (s, first)) in glyph_sprites {
+        font_sprites.push((fi, p.sprites.len() as i32, first));
+        p.sprites.push(Some(s));
     }
     for path in leaves(Kind::Timeline) {
         let t = load_timeline(&mut ctx, &path, &leaf_name(&path));
@@ -1253,6 +1350,7 @@ pub fn load(src: &Source, proj_rel: &str) -> Result<Loaded, String> {
         split_counts,
         game_name,
         short_circuit,
+        font_sprites,
         warnings: ctx.warnings,
     })
 }

@@ -24,6 +24,9 @@ pub struct Options {
     pub compat: bool,
     /// Emulate Studio's order "Create event, then instance creation code".
     pub studio_create_order: bool,
+    /// Draw fonts with Studio's pre-rendered glyphs (sprite fonts) instead of
+    /// regenerating them from the system font.
+    pub sprite_fonts: bool,
 }
 
 impl Default for Options {
@@ -33,6 +36,7 @@ impl Default for Options {
             uninit_as_zero: Some(true),
             compat: true,
             studio_create_order: true,
+            sprite_fonts: true,
         }
     }
 }
@@ -413,11 +417,20 @@ pub fn convert(mut l: Loaded, opts: &Options) -> (Project, Vec<Warning>) {
             r.caption = l.game_name.clone();
         }
     }
-    if let Some(first) = p.room_order.first().and_then(|&i| p.rooms.get_mut(i as usize)).and_then(|r| r.as_mut()) {
-        first.creation_code = format!(
-            "show_score = false; // gmx2gm81: Studio has no score in the caption\n{}",
-            first.creation_code
+    let mut init = String::from("show_score = false; // gmx2gm81: Studio has no score in the caption\n");
+    if opts.sprite_fonts && !l.font_sprites.is_empty() {
+        init.push_str("// gmx2gm81: use the glyphs Studio pre-rendered for these fonts\n");
+        for (f, s, first) in &l.font_sprites {
+            init.push_str(&format!("font_replace_sprite({f}, {s}, {first}, true, 0);\n"));
+        }
+        warn(
+            &mut warnings,
+            "fonts",
+            format!("{} font(s) use Studio's pre-rendered glyphs as sprite fonts", l.font_sprites.len()),
         );
+    }
+    if let Some(first) = p.room_order.first().and_then(|&i| p.rooms.get_mut(i as usize)).and_then(|r| r.as_mut()) {
+        first.creation_code = format!("{init}{}", first.creation_code);
     }
     if let Some(v) = opts.uninit_as_zero {
         p.settings.treat_uninitialized_as_zero = v;
