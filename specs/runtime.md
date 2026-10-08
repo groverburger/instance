@@ -292,7 +292,7 @@ The full recommended sequence (bold items are fixed by the manual; the rest is
    instance gets **Close Button** (`ev_close_button`) `[111]`, `[302_03]`.
 3. For every instance: `xprevious = x`, `yprevious = y`,
    `path_positionprevious = path_position`.
-4. Timelines advance for every instance (§10.2).
+4. Timelines advance for every instance (§10.2). VERIFIED: GM 8.1 runs them after step 5 (§4.3a rule 1).
 5. **Begin-step triggers**, then **Begin Step** events.
 6. **Alarm events** (§5.3).
 7. **Keyboard events** (held keys), then **Key Press**, then **Key Release**
@@ -335,6 +335,68 @@ For an event phase "deliver event E to all instances":
   (iterate by index over a growing list). Instances destroyed during the phase are
   skipped from then on.
 * After each handler returns, check for a pending room change (§3.1).
+
+### 4.3a VERIFIED event dispatch rules (black-box, GM 8.1 Lite, `bb_events`, `bb_instances`)
+
+Evidence: `gm81_blackbox_tests/gm/results_bb_events.txt`, `results_bb_instances.txt`.
+These override the recommendations of §4.2/§4.3/§4.4/§5 where they differ.
+
+1. **Order inside a step** (bb_events ev.s01+1 "a.TL0 a.A3 a.ST", ev.s02+1
+   "z.al2 a.TL1 q.A0inh"): begin-step triggers, Begin Step, **then timelines**,
+   then alarms, keyboard, mouse, step triggers, Step, motion, boundary events,
+   collisions, end-step triggers, End Step, draw. (Timelines move from step 4 of
+   §4.2 to after step 5.) Animation End is raised after drawing, before the next
+   step's begin-step triggers (ev.s03+7 "d.AE0 a.TRbs").
+2. **Object-major dispatch** of Begin Step, Step and End Step (gm-runner uses the
+   same dispatcher for the keyboard phases; not verified there): objects in
+   ascending object index, within an object its instances in instance order
+   (ev.s03 "a b e f g h c d z" follows object order although c and d were placed
+   before e..h; bb_instances in.s01 "p1 p2 p3 q r s" while the instance order is
+   p1 s p2 q p3 r). An instance created during the phase is visited in the same
+   phase if its object is processed later (or is the object being processed);
+   instances of already processed objects wait for the next step (in.s03: p4 of
+   in_p, created in in_ctl's Step, gets no Step that step; ev.s02: f, created in
+   a's Begin Step, runs its Begin Step after b's).
+3. **Room Start** (and other one-off broadcasts) use instance order (ev.s10+1
+   "r2.RS k.RS a.RS": placed instances of the new room before carried persistent
+   ones; cf. §3.2a).
+4. **Alarms** (ev.alarms.*, ev.s02+1, ev.s03+1): processed alarm number by alarm
+   number (0..11), each object-major as in rule 2. Alarm values are integers:
+   assignment rounds half to even (1.5 → 2, 0.5 → 0). Only instances whose object
+   has (or inherits: q.A0inh) that alarm event count down; others keep the value
+   (z.al2 stays 2). Each step a positive alarm is decremented and fires when it
+   reaches 0 (the event reads 0); an alarm that is 0 at the start of the alarm
+   phase becomes -1 without firing (alarm[2] = 0 and alarm[4] = 0.5 never fire; a
+   fired alarm reads 0 for one step, then -1).
+5. **Draw order**: by depth (higher first). Equal-depth instances keep the order of
+   the previous frame: the draw list is re-sorted stably every frame and new
+   instances are appended (bb_instances in.s02..in.s04: after q 0→5→0 and p3
+   0→-5→0 the order stays "q p1 p2 s r p4 p3"). An instance created by a Draw event
+   is drawn in the same frame (ev.s02+5 h.DR).
+6. **Boundary events** (16 px sprite, hspeed 4, room width 1024): Outside Room when
+   `bbox_left > room_width`, `bbox_right < 0`, `bbox_top > room_height` or
+   `bbox_bottom < 0` (fires at x 1028, not at 1024); Intersect Boundary every step
+   while the box is not completely inside, also while completely outside (x 1012 ..
+   1036). Both fire in the same step when outside, Outside first. Views: same rules
+   (unverified).
+7. **Lives / health**: No More Lives / No More Health run at the assignment, before
+   the next statement (ev.s06+1 "a.lives0 a.NML a.lives0done"). (gm-runner raises
+   them at the next function/script call or after the action, because built-in
+   variable writes have no VM access.)
+8. **`keyboard_key_press` / `keyboard_key_release`** post a key message: the step of
+   the call sees no change (kb.chk0); the next step has the Keyboard and Key Press
+   events, `keyboard_check` true and the character appended to `keyboard_string`
+   (lower case for letters: "k"); a release shows up the next step (Key Release).
+9. **`other`** in a Create event run by `instance_create` (also inside `with`) and in
+   a Destroy event is the instance itself (other.create_from_code "0/1",
+   other.create_from_with, other.in_destroy "0/1", bb_lang
+   ref.other_in_driver_create); `event_user` / `event_perform` keep the caller's
+   `other`.
+10. **Destroy**: `instance_destroy()` twice on the same instance before it is removed
+   runs the Destroy event twice (destroy.twice = 2). The destroyed instance still
+   reads its own variables as `self` (with.destroy_self_then_read "7/0"), but `u.x`
+   from another instance is the non-fatal error "Unknown variable x"
+   (destroy.read_after).
 
 ### 4.4 Event context
 During any event, `self` = the receiving instance; `other` = the other instance in

@@ -438,7 +438,7 @@ fn build() -> HashMap<&'static str, ActionFn> {
     act!("action_set_alarm", |g, _, c, a, rel| {
         let n = int(a, 1).clamp(0, 11) as usize;
         let i = me(g, c)?;
-        i.alarm[n] = if rel { i.alarm[n] + real(a, 0) } else { real(a, 0) };
+        i.alarm[n] = gml::to_int(if rel { i.alarm[n] + real(a, 0) } else { real(a, 0) }) as f64;
         ok()
     });
     act!("action_sleep", |g, vm, _, a, _| {

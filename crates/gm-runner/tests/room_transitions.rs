@@ -164,7 +164,8 @@ fn goto_finishes_action_skips_rest_of_event_and_step() {
     assert_eq!(take(&mut vm), "y.DR x.DR");
     step(&mut g, &mut vm);
     assert_eq!(g.room, 1);
-    assert_eq!(take(&mut vm), "y.ST go.ST go.after y.RE go.RE x.RE n.CR r1.CC n.RS n.DR");
+    // (step events are dispatched object by object: x before go)
+    assert_eq!(take(&mut vm), "y.ST x.ST go.ST go.after y.RE go.RE x.RE n.CR r1.CC n.RS n.DR");
 }
 
 #[test]
@@ -281,7 +282,8 @@ fn goto_in_alarm_timeline_collision_and_draw() {
     let (mut g, mut vm) = b.start();
     take(&mut vm);
     step(&mut g, &mut vm);
-    assert_eq!(take(&mut vm), "tl1 r1.CC");
+    // (timelines run after Begin Step)
+    assert_eq!(take(&mut vm), "t.BS tl1 r1.CC");
 
     // collision
     let mut b = B::new();
