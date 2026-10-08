@@ -145,19 +145,16 @@ fn caption_button(ui: &mut Ui, id: Id, r: Rect, kind: Caption) -> bool {
     resp.clicked()
 }
 
-/// Paint the classic title bar (gradient, icon, caption) and handle its buttons and dragging.
-#[allow(clippy::too_many_arguments)]
-fn title_bar(
-    ui: &mut Ui,
-    id: Id,
+/// Paint a classic caption: horizontal gradient, optional icon and the title, which
+/// is clipped `right_reserve` points before the right end (room for the buttons).
+pub fn paint_caption(
+    p: &egui::Painter,
     bar: Rect,
     title: &str,
-    icon: Icon,
+    icon: Option<Icon>,
     active: bool,
-    st: &mut MdiState,
-    out: &mut MdiOut,
+    right_reserve: f32,
 ) {
-    let p = ui.painter().clone();
     let (a, b) = if active {
         (
             Color32::from_rgb(10, 36, 106),
@@ -174,14 +171,15 @@ fn title_bar(
     mesh.add_triangle(0, 1, 2);
     mesh.add_triangle(0, 2, 3);
     p.add(egui::Shape::mesh(mesh));
-    let icon_r = Rect::from_min_size(bar.min + vec2(2.0, 2.0), Vec2::splat(bar.height() - 4.0));
-    icons::paint(&p, icon_r, icon, true);
-    let n_btn = 3.0;
-    let bw = 16.0;
-    let bh = bar.height() - 4.0;
+    let mut x = bar.min.x + 4.0;
+    if let Some(icon) = icon {
+        let icon_r = Rect::from_min_size(bar.min + vec2(2.0, 2.0), Vec2::splat(bar.height() - 4.0));
+        icons::paint(p, icon_r, icon, true);
+        x = icon_r.max.x + 4.0;
+    }
     let text_clip = Rect::from_min_max(
-        pos2(icon_r.max.x + 4.0, bar.min.y),
-        pos2(bar.max.x - n_btn * (bw + 2.0) - 6.0, bar.max.y),
+        pos2(x, bar.min.y),
+        pos2(bar.max.x - right_reserve, bar.max.y),
     );
     p.with_clip_rect(text_clip).text(
         pos2(text_clip.min.x, bar.center().y),
@@ -193,6 +191,32 @@ fn title_bar(
         } else {
             Color32::from_gray(225)
         },
+    );
+}
+
+/// Paint the classic title bar (gradient, icon, caption) and handle its buttons and dragging.
+#[allow(clippy::too_many_arguments)]
+fn title_bar(
+    ui: &mut Ui,
+    id: Id,
+    bar: Rect,
+    title: &str,
+    icon: Icon,
+    active: bool,
+    st: &mut MdiState,
+    out: &mut MdiOut,
+    min_button: bool,
+) {
+    let n_btn = if min_button { 3.0 } else { 2.0 };
+    let bw = 16.0;
+    let bh = bar.height() - 4.0;
+    paint_caption(
+        ui.painter(),
+        bar,
+        title,
+        Some(icon),
+        active,
+        n_btn * (bw + 2.0) + 6.0,
     );
     // drag / double-click on the caption
     let resp = ui.interact(bar, id.with("caption"), Sense::click_and_drag());
@@ -237,6 +261,9 @@ fn title_bar(
         }
         out.activated = true;
     }
+    if !min_button {
+        return;
+    }
     x -= bw;
     let min_kind = if st.minimised {
         Caption::Restore
@@ -262,9 +289,37 @@ pub fn show(
     active: bool,
     add_contents: impl FnOnce(&mut Ui),
 ) -> MdiOut {
+    show_impl(
+        ctx,
+        id,
+        area,
+        Some(min_slot),
+        st,
+        title,
+        icon,
+        active,
+        add_contents,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn show_impl(
+    ctx: &Context,
+    id: Id,
+    area: Rect,
+    min_slot: Option<Rect>,
+    st: &mut MdiState,
+    title: &str,
+    icon: Icon,
+    active: bool,
+    add_contents: impl FnOnce(&mut Ui),
+) -> MdiOut {
     let mut out = MdiOut::default();
-    let r = if st.minimised {
-        min_slot
+    if min_slot.is_none() {
+        st.minimised = false;
+    }
+    let r = if let (true, Some(slot)) = (st.minimised, min_slot) {
+        slot
     } else if st.maximised {
         area
     } else {
@@ -293,7 +348,17 @@ pub fn show(
                 r.min + vec2(BORDER, BORDER),
                 vec2(r.width() - 2.0 * BORDER, TITLE_H),
             );
-            title_bar(ui, id, bar, title, icon, active, st, &mut out);
+            title_bar(
+                ui,
+                id,
+                bar,
+                title,
+                icon,
+                active,
+                st,
+                &mut out,
+                min_slot.is_some(),
+            );
             if !st.minimised {
                 let content = Rect::from_min_max(
                     pos2(r.min.x + BORDER, bar.max.y + 2.0),
@@ -433,4 +498,153 @@ pub fn cascade_rect(area: Rect, i: usize, size: Vec2) -> Rect {
         Rect::from_min_size(area.min + vec2(8.0 + k * step, 8.0 + k * step), size),
         area,
     )
+}
+
+fn workspace_key() -> Id {
+    Id::new("mdi_workspace")
+}
+
+/// Record the workspace rectangle (where child windows live) for this frame.
+pub fn set_workspace(ctx: &Context, area: Rect) {
+    ctx.data_mut(|d| d.insert_temp(workspace_key(), area));
+}
+
+/// The workspace rectangle, or the whole content area when there is none.
+pub fn workspace(ctx: &Context) -> Rect {
+    ctx.data(|d| d.get_temp::<Rect>(workspace_key()))
+        .unwrap_or_else(|| ctx.content_rect())
+}
+
+/// A child window owned by an editor rather than by the IDE's list of forms (the
+/// sprite and image editors). It has the same chrome as the forms, lives in the
+/// workspace, comes to the front when clicked and has no minimise button. Its placement
+/// is kept in egui memory under `id`; it opens centred with `default_size` (outer).
+pub fn floating(
+    ctx: &Context,
+    id: Id,
+    title: &str,
+    icon: Icon,
+    default_size: Vec2,
+    add_contents: impl FnOnce(&mut Ui),
+) -> MdiOut {
+    let area = workspace(ctx);
+    let key = id.with("mdi_state");
+    let mut st = ctx
+        .data(|d| d.get_temp::<MdiState>(key))
+        .unwrap_or_else(|| {
+            MdiState::new(Rect::from_center_size(
+                area.center(),
+                default_size.min(area.size()),
+            ))
+        });
+    // Come to the front before painting, so that popups opened by this click stay
+    // above the window.
+    let layer = LayerId::new(Order::Middle, id);
+    if ctx.input(|i| i.pointer.any_pressed()) {
+        if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
+            if ctx.layer_id_at(pos) == Some(layer) {
+                bring_to_front(ctx, id);
+            }
+        }
+    }
+    let out = show_impl(
+        ctx,
+        id,
+        area,
+        None,
+        &mut st,
+        title,
+        icon,
+        true,
+        add_contents,
+    );
+    ctx.data_mut(|d| d.insert_temp(key, st));
+    out
+}
+
+/// Result of [`dialog`].
+pub struct DialogOut<T> {
+    pub inner: T,
+    /// The close box was clicked or Escape pressed.
+    pub close: bool,
+}
+
+impl<T> DialogOut<T> {
+    pub fn should_close(&self) -> bool {
+        self.close
+    }
+}
+
+/// A modal dialog box with the classic chrome: raised frame, gradient caption with
+/// `title` and a close box. The contents decide the size.
+pub fn dialog<T>(
+    ctx: &Context,
+    id: Id,
+    title: &str,
+    add_contents: impl FnOnce(&mut Ui) -> T,
+) -> DialogOut<T> {
+    let mut close = false;
+    let m = egui::Modal::new(id)
+        .frame(egui::Frame::NONE)
+        .backdrop_color(Color32::from_black_alpha(24))
+        .show(ctx, |ui| {
+            ui.ctx().move_to_top(ui.layer_id());
+            let bg = ui.painter().add(egui::Shape::Noop);
+            let side = (BORDER + 10.0) as i8;
+            let inner = egui::Frame::NONE
+                .inner_margin(egui::Margin {
+                    left: side,
+                    right: side,
+                    top: (BORDER + TITLE_H + 10.0) as i8,
+                    bottom: side,
+                })
+                .show(ui, |ui| {
+                    ui.set_min_width(240.0);
+                    add_contents(ui)
+                });
+            let r = {
+                use egui::emath::GuiRounding as _;
+                inner
+                    .response
+                    .rect
+                    .round_to_pixels(ui.ctx().pixels_per_point())
+                    .round_ui()
+            };
+            let p = ui.painter().clone();
+            let shadow = egui::epaint::Shadow {
+                offset: [3, 3],
+                blur: 10,
+                spread: 0,
+                color: Color32::from_black_alpha(70),
+            };
+            p.set(
+                bg,
+                egui::Shape::Vec(vec![
+                    shadow.as_shape(r, egui::CornerRadius::ZERO).into(),
+                    egui::Shape::rect_filled(r, 0.0, Color32::from_gray(240)),
+                ]),
+            );
+            bevel(&p, r.shrink(0.5), true);
+            bevel(&p, r.shrink(1.5), true);
+            let bar = Rect::from_min_size(
+                r.min + vec2(BORDER, BORDER),
+                vec2(r.width() - 2.0 * BORDER, TITLE_H),
+            );
+            paint_caption(&p, bar, title, None, true, 24.0);
+            let b = Rect::from_min_size(
+                pos2(bar.max.x - 18.0, bar.min.y + 2.0),
+                vec2(16.0, TITLE_H - 4.0),
+            );
+            if caption_button(ui, id.with("close"), b, Caption::Close) {
+                close = true;
+            }
+            inner.inner
+        });
+    if m.is_top_modal && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        close = true;
+    }
+    DialogOut {
+        inner: m.inner,
+        close,
+    }
 }

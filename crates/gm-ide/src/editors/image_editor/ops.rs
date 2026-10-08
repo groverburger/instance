@@ -572,9 +572,9 @@ impl OpDialog {
     /// Show as a modal; `scope` shows the current/all frames choice.
     pub fn show(&mut self, ctx: &egui::Context, id: egui::Id, scope: bool) -> DialogResult {
         let mut res = DialogResult::Open;
-        let m = egui::Modal::new(id).show(ctx, |ui| {
+        let title = self.op.name().to_string();
+        let m = crate::mdi::dialog(ctx, id, &title, |ui| {
             ui.set_min_width(280.0);
-            ui.heading(self.op.name());
             self.op.ui(ui);
             if scope {
                 ui.horizontal(|ui| {

@@ -226,8 +226,8 @@ pub enum PromptResult {
 /// Show a modal with labelled text fields and OK/Cancel.
 pub fn show_prompt(ctx: &Context, id: egui::Id, prompt: &mut Prompt) -> PromptResult {
     let mut res = PromptResult::None;
-    egui::Modal::new(id).show(ctx, |ui| {
-        ui.heading(&prompt.title);
+    let title = prompt.title.clone();
+    let d = crate::mdi::dialog(ctx, id, &title, |ui| {
         egui::Grid::new(id.with("g")).num_columns(2).show(ui, |ui| {
             for (i, (label, value)) in prompt.fields.iter_mut().enumerate() {
                 ui.label(label.as_str());
@@ -242,10 +242,13 @@ pub fn show_prompt(ctx: &Context, id: egui::Id, prompt: &mut Prompt) -> PromptRe
             if ui.button("OK").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 res = PromptResult::Ok(prompt.fields.iter().map(|f| f.1.clone()).collect());
             }
-            if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if ui.button("Cancel").clicked() {
                 res = PromptResult::Cancel;
             }
         });
     });
+    if d.close && matches!(res, PromptResult::None) {
+        res = PromptResult::Cancel;
+    }
     res
 }

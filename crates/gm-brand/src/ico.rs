@@ -77,7 +77,7 @@ fn res_entry(out: &mut Vec<u8>, ty: u16, name: u16, flags: u16, data: &[u8]) {
     out.extend_from_slice(&0u32.to_le_bytes()); // version
     out.extend_from_slice(&0u32.to_le_bytes()); // characteristics
     out.extend_from_slice(data);
-    while out.len() % 4 != 0 {
+    while !out.len().is_multiple_of(4) {
         out.push(0);
     }
 }
@@ -176,7 +176,7 @@ fn decode_entry(data: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
         Vec::new()
     };
     let xor_off = pal_off + palette.len() * 4;
-    let stride = ((w * bpp as u32).div_ceil(32) * 4) as usize;
+    let stride = ((w * bpp).div_ceil(32) * 4) as usize;
     let mask_off = xor_off + stride * h as usize;
     let mask_stride = (w.div_ceil(32) * 4) as usize;
     let mut out = vec![0u8; (w * h * 4) as usize];
@@ -234,10 +234,10 @@ fn decode_png(data: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
     match info.color_type {
         png::ColorType::Rgba => out.extend_from_slice(src),
         png::ColorType::Rgb => src
-            .chunks_exact(3)
+            .as_chunks::<3>().0.iter()
             .for_each(|p| out.extend_from_slice(&[p[0], p[1], p[2], 255])),
         png::ColorType::GrayscaleAlpha => src
-            .chunks_exact(2)
+            .as_chunks::<2>().0.iter()
             .for_each(|p| out.extend_from_slice(&[p[0], p[0], p[0], p[1]])),
         png::ColorType::Grayscale => src
             .iter()

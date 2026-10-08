@@ -11,6 +11,9 @@ pub const SELECTION: Color32 = Color32::from_rgb(51, 153, 255);
 pub const LIST_BG: Color32 = Color32::WHITE;
 pub const SHADOW: Color32 = Color32::from_rgb(160, 160, 160);
 
+/// Frame stroke width of interactive widgets, and their expansion (see [`apply`]).
+const EXPANSION: f32 = 1.0;
+
 fn system_font(names: &[&str]) -> Option<Vec<u8>> {
     let dirs: Vec<std::path::PathBuf> = if cfg!(windows) {
         let root = std::env::var_os("WINDIR").map_or_else(
@@ -72,9 +75,17 @@ pub fn apply(ctx: &egui::Context) {
         (TextStyle::Monospace, FontId::monospace(12.5)),
     ]
     .into();
-    style.spacing.item_spacing = egui::vec2(6.0, 4.0);
-    style.spacing.button_padding = egui::vec2(8.0, 2.0);
-    style.spacing.interact_size.y = 20.0;
+    // Every interactive state uses the same 1px frame stroke and an expansion equal to
+    // it. egui drops the frame of an unselected selectable button at rest but keeps its
+    // inner margin (padding + expansion - stroke), so only expansion == stroke width
+    // makes hovered and resting buttons the same size (no reflow on hover). The frame
+    // is then painted 1px outside the allocated rect, which the padding / spacing
+    // below compensate for (same look as a 2px-padded button with 6px gaps).
+    style.spacing.item_spacing = egui::vec2(8.0, 5.0);
+    style.spacing.button_padding = egui::vec2(7.0, 1.0);
+    style.spacing.interact_size.y = 18.0;
+    style.spacing.icon_width = 12.0;
+    style.spacing.icon_width_inner = 7.0;
     style.spacing.menu_margin = egui::Margin::same(2);
 
     let mut v = egui::Visuals::light();
@@ -114,30 +125,31 @@ pub fn apply(ctx: &egui::Context) {
     // buttons at rest
     v.widgets.inactive.bg_fill = Color32::from_rgb(225, 225, 225);
     v.widgets.inactive.weak_bg_fill = Color32::from_rgb(225, 225, 225);
-    v.widgets.inactive.bg_stroke = Stroke::new(1.0, Color32::from_gray(173));
+    v.widgets.inactive.bg_stroke = Stroke::new(EXPANSION, Color32::from_gray(173));
     v.widgets.inactive.fg_stroke = Stroke::new(1.0, ink);
     v.widgets.inactive.corner_radius = r;
-    v.widgets.inactive.expansion = 0.0;
+    v.widgets.inactive.expansion = EXPANSION;
     // hovered: light blue
     v.widgets.hovered.bg_fill = Color32::from_rgb(229, 241, 251);
     v.widgets.hovered.weak_bg_fill = Color32::from_rgb(229, 241, 251);
-    v.widgets.hovered.bg_stroke = Stroke::new(1.0, Color32::from_rgb(0, 120, 215));
+    v.widgets.hovered.bg_stroke = Stroke::new(EXPANSION, Color32::from_rgb(0, 120, 215));
     v.widgets.hovered.fg_stroke = Stroke::new(1.0, ink);
     v.widgets.hovered.corner_radius = r;
-    v.widgets.hovered.expansion = 0.0;
+    v.widgets.hovered.expansion = EXPANSION;
     // pressed
     v.widgets.active.bg_fill = Color32::from_rgb(204, 228, 247);
     v.widgets.active.weak_bg_fill = Color32::from_rgb(204, 228, 247);
-    v.widgets.active.bg_stroke = Stroke::new(1.0, Color32::from_rgb(0, 84, 153));
+    v.widgets.active.bg_stroke = Stroke::new(EXPANSION, Color32::from_rgb(0, 84, 153));
     v.widgets.active.fg_stroke = Stroke::new(1.0, ink);
     v.widgets.active.corner_radius = r;
-    v.widgets.active.expansion = 0.0;
+    v.widgets.active.expansion = EXPANSION;
     // open menus / combo boxes
     v.widgets.open.bg_fill = Color32::from_rgb(204, 228, 247);
     v.widgets.open.weak_bg_fill = Color32::from_rgb(204, 228, 247);
-    v.widgets.open.bg_stroke = Stroke::new(1.0, Color32::from_rgb(0, 120, 215));
+    v.widgets.open.bg_stroke = Stroke::new(EXPANSION, Color32::from_rgb(0, 120, 215));
     v.widgets.open.fg_stroke = Stroke::new(1.0, ink);
     v.widgets.open.corner_radius = r;
+    v.widgets.open.expansion = EXPANSION;
     v.striped = true;
     style.visuals = v;
     ctx.set_style_of(egui::Theme::Light, style);

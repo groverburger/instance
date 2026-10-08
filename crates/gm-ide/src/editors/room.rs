@@ -1157,7 +1157,7 @@ impl RoomEditor {
             cp.rect_stroke(
                 vis,
                 0.0,
-                Stroke::new(1.0, Color32::WHITE),
+                Stroke::new(1.5, Color32::from_rgb(235, 40, 30)),
                 egui::StrokeKind::Inside,
             );
         }
@@ -1665,15 +1665,15 @@ impl Editor for RoomEditor {
         // creation code modal
         if let Some((target, mut code, mut st)) = self.code.take() {
             let mut done: Option<bool> = None;
-            egui::Modal::new(base.with("code")).show(&ctx, |ui| {
+            let title = match target {
+                CodeTarget::Room => "Room Creation Code".to_string(),
+                CodeTarget::Instance(i) => format!(
+                    "Creation Code of Instance {}",
+                    self.work.instances.get(i).map_or(0, |x| x.id)
+                ),
+            };
+            let d = crate::mdi::dialog(&ctx, base.with("code"), &title, |ui| {
                 ui.set_min_size(Vec2::new(640.0, 400.0));
-                ui.heading(match target {
-                    CodeTarget::Room => "Room creation code".to_string(),
-                    CodeTarget::Instance(i) => format!(
-                        "Creation code of instance {}",
-                        self.work.instances.get(i).map_or(0, |x| x.id)
-                    ),
-                });
                 ui.allocate_ui(Vec2::new(640.0, 360.0), |ui| {
                     code_editor(
                         ui,
@@ -1694,6 +1694,9 @@ impl Editor for RoomEditor {
                     }
                 });
             });
+            if d.close {
+                done = Some(false);
+            }
             match done {
                 Some(true) => match target {
                     CodeTarget::Room => self.work.creation_code = code,

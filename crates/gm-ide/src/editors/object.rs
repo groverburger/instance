@@ -143,7 +143,7 @@ impl Editor for ObjectEditor {
             );
         }
         if self.confirm_delete {
-            egui::Modal::new(base_id.with("confirm")).show(&ctx, |ui| {
+            let d = crate::mdi::dialog(&ctx, base_id.with("confirm"), "Confirm", |ui| {
                 ui.label("Delete this event and all its actions?");
                 ui.horizontal(|ui| {
                     if ui.button("Yes").clicked() {
@@ -162,6 +162,9 @@ impl Editor for ObjectEditor {
                     }
                 });
             });
+            if d.close {
+                self.confirm_delete = false;
+            }
         }
 
         let h = ui.available_height();

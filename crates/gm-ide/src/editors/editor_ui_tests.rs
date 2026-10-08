@@ -189,6 +189,7 @@ fn screenshot_image_editor() {
     let frames: Vec<RgbaImage> = (0..4).map(|k| test_face(32, k * 40)).collect();
     let mut h = Harness::builder()
         .with_size(egui::Vec2::new(1400.0, 900.0))
+        .with_theme(egui::Theme::Light)
         .wgpu()
         .build_eframe(|cc| crate::app::IdeApp::new(cc, None));
     h.state_mut().test_set_project(project_with_sprite(frames));

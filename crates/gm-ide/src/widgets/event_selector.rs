@@ -36,8 +36,7 @@ fn key_menu(ui: &mut Ui, title: &str, ty: i32, out: &mut Option<(i32, i32)>) {
 pub fn event_selector(ctx: &egui::Context, id: egui::Id, p: &Project) -> Selection {
     let mut out: Option<(i32, i32)> = None;
     let mut cancel = false;
-    egui::Modal::new(id).show(ctx, |ui| {
-        ui.heading("Choose the Event to Add");
+    let d = crate::mdi::dialog(ctx, id, "Choose the Event to Add", |ui| {
         egui::Grid::new(id.with("grid"))
             .num_columns(2)
             .spacing([8.0, 6.0])
@@ -147,10 +146,11 @@ pub fn event_selector(ctx: &egui::Context, id: egui::Id, p: &Project) -> Selecti
                 ui.end_row();
             });
         ui.separator();
-        if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        if ui.button("Cancel").clicked() {
             cancel = true;
         }
     });
+    cancel |= d.close;
     match (out, cancel) {
         (Some((t, n)), _) => Selection::Chosen(t, n),
         (None, true) => Selection::Cancel,

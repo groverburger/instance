@@ -903,25 +903,26 @@ impl ImageEditor {
     /// Show the editor window. `id` must be stable while the editor is open.
     pub fn show(&mut self, ctx: &Context, id: Id) -> EditorAction {
         let mut action = EditorAction::None;
-        let mut open = true;
         self.upload(ctx);
         let title = match self.frame {
             Some((i, n)) if n > 1 => format!("Image Editor: {} (image {i} of {n})", self.title),
             _ => format!("Image Editor: {}", self.title),
         };
-        egui::Window::new(title)
-            .id(id)
-            .open(&mut open)
-            .default_size([1000.0, 700.0])
-            .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.content_rect().center())
-            .min_size([640.0, 420.0])
-            .resizable(true)
-            .collapsible(false)
-            .show(ctx, |ui| {
+        let modal = self.confirm_close || self.dialog.is_some() || self.new_size.is_some();
+        let out = crate::mdi::floating(
+            ctx,
+            id,
+            &title,
+            crate::icons::Icon::Sprite,
+            Vec2::new(1000.0, 700.0),
+            |ui| {
+                if modal {
+                    ui.disable();
+                }
                 action = self.window_ui(ui);
-            });
-        if !open {
+            },
+        );
+        if out.close {
             if self.modified {
                 self.confirm_close = true;
             } else {
@@ -929,7 +930,7 @@ impl ImageEditor {
             }
         }
         if self.confirm_close {
-            egui::Modal::new(id.with("confirm")).show(ctx, |ui| {
+            let d = crate::mdi::dialog(ctx, id.with("confirm"), "Image Editor", |ui| {
                 ui.label("Save the changes to the image?");
                 ui.horizontal(|ui| {
                     if ui.button("Yes").clicked() {
@@ -943,6 +944,9 @@ impl ImageEditor {
                     }
                 });
             });
+            if d.close {
+                self.confirm_close = false;
+            }
         }
         if let Some(d) = &mut self.dialog {
             match d.show(ctx, id.with("op"), false) {
@@ -957,8 +961,7 @@ impl ImageEditor {
         }
         if let Some((w, h)) = &mut self.new_size {
             let mut res = DialogResult::Open;
-            egui::Modal::new(id.with("new")).show(ctx, |ui| {
-                ui.heading("New image");
+            let d = crate::mdi::dialog(ctx, id.with("new"), "New Image", |ui| {
                 egui::Grid::new("new_size").show(ui, |ui| {
                     ui.label("Width");
                     ui.add(egui::DragValue::new(w).range(1..=8192));
@@ -976,6 +979,9 @@ impl ImageEditor {
                     }
                 });
             });
+            if d.close && res == DialogResult::Open {
+                res = DialogResult::Cancel;
+            }
             match res {
                 DialogResult::Ok => {
                     let (w, h) = (*w, *h);
@@ -1199,7 +1205,7 @@ impl ImageEditor {
                     });
             });
         egui::Panel::right(ui.id().with("colors"))
-            .exact_size(250.0)
+            .exact_size(262.0)
             .resizable(false)
             .show(ui, |ui| {
                 egui::ScrollArea::vertical()
@@ -1553,7 +1559,8 @@ impl ImageEditor {
     }
 
     fn colors_ui(&mut self, ui: &mut Ui) {
-        ui.spacing_mut().slider_width = 200.0;
+        ui.spacing_mut().slider_width = 220.0;
+        ui.spacing_mut().item_spacing.x = 4.0;
         ui.spacing_mut().interact_size.x = 36.0;
         ui.horizontal(|ui| {
             for b in 0..2 {

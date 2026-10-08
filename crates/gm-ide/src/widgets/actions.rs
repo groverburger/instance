@@ -553,11 +553,10 @@ pub fn arg_dialog(
     let def = def_of(&dlg.work);
     let title = def.map_or_else(|| "Action".to_string(), |d| d.palette_title.clone());
     let is_code = dlg.work.kind == ak::CODE;
-    egui::Modal::new(id).show(ctx, |ui| {
+    let d = crate::mdi::dialog(ctx, id, &title, |ui| {
         if is_code {
             ui.set_min_size(Vec2::new(640.0, 420.0));
         }
-        ui.heading(&title);
         let a = &mut dlg.work;
         if a.has_applies_to {
             ui.horizontal(|ui| {
@@ -652,6 +651,9 @@ pub fn arg_dialog(
             }
         });
     });
+    if d.close && result.is_none() {
+        result = Some(false);
+    }
     match result {
         Some(true) => {
             let d = st.dialog.take().expect("open");

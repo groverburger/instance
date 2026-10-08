@@ -498,6 +498,58 @@ fn button_rects(
         .collect()
 }
 
+/// With the IDE theme, every kind of button keeps its size when hovered (egui drops
+/// the frame of unselected selectable buttons at rest, so the frame stroke must not
+/// add to their size).
+#[test]
+fn theme_hover_keeps_widget_sizes() {
+    use eframe::egui;
+    use egui_kittest::kittest::{by, NodeT, Queryable};
+    let mut flag = false;
+    let mut b = false;
+    let mut h = egui_kittest::Harness::builder()
+        .with_size(egui::vec2(700.0, 120.0))
+        .build_ui(move |ui| {
+            if !flag {
+                crate::theme::apply(ui.ctx());
+                flag = true;
+            }
+            ui.horizontal(|ui| {
+                let _ = ui.button("plain");
+                ui.add(egui::Button::selectable(false, "sel-off"));
+                ui.add(egui::Button::selectable(true, "sel-on"));
+                let _ = ui.selectable_label(false, "label-off");
+                ui.checkbox(&mut b, "check");
+                ui.menu_button("menu", |ui| ui.label("x"));
+                ui.add(egui::Button::new("frameless").frame(false));
+                let _ = ui.button("last");
+            });
+        });
+    h.run_steps(3);
+    let rects = |h: &egui_kittest::Harness<'_>| -> Vec<(String, egui::Rect)> {
+        h.query_all(by().recursive(true))
+            .filter_map(|n| {
+                let l = n.accesskit_node().label()?;
+                (!l.is_empty()).then(|| (l, n.rect()))
+            })
+            .collect()
+    };
+    h.hover_at(egui::pos2(690.0, 110.0));
+    h.run_steps(2);
+    let before = rects(&h);
+    assert!(before.len() >= 8, "{before:?}");
+    for (label, r) in &before {
+        h.hover_at(r.center());
+        h.run_steps(2);
+        for ((l0, r0), (_, r1)) in before.iter().zip(&rects(&h)) {
+            assert!(
+                (r0.min - r1.min).length() < 0.01 && (r0.max - r1.max).length() < 0.01,
+                "hovering {label:?} moved {l0:?} from {r0:?} to {r1:?}"
+            );
+        }
+    }
+}
+
 /// Hovering a button must not change its size or move any other widget (the hover
 /// frame is drawn inside the button's rect).
 #[test]
@@ -506,19 +558,21 @@ fn ui_hover_does_not_move_neighbours() {
     let mut p = ops::new_project();
     ops::create_resource(&mut p, ResourceKind::Sprite, &ops::Placement::End);
     ops::create_resource(&mut p, ResourceKind::Object, &ops::Placement::End);
+    ops::create_resource(&mut p, ResourceKind::Room, &ops::Placement::End);
     h.state_mut().test_set_project(p);
-    h.state_mut()
-        .open_form(ResKey::Res(ResourceKind::Sprite, 0));
-    h.run_steps(3);
-    h.state_mut()
-        .open_form(ResKey::Res(ResourceKind::Object, 0));
-    h.run_steps(3);
+    for k in [
+        ResourceKind::Room,
+        ResourceKind::Sprite,
+        ResourceKind::Object,
+    ] {
+        h.state_mut().open_form(ResKey::Res(k, 0));
+        h.run_steps(3);
+    }
     // park the pointer on the empty workspace
     h.hover_at(eframe::egui::pos2(1500.0, 900.0));
     h.run_steps(3);
     let before = button_rects(&h);
     assert!(before.len() > 30, "only {} buttons found", before.len());
-    eprintln!("{:?}", before.iter().map(|b| &b.0).collect::<Vec<_>>());
     for (label, r) in &before {
         h.hover_at(r.center());
         h.run_steps(2);
@@ -531,4 +585,51 @@ fn ui_hover_does_not_move_neighbours() {
             );
         }
     }
+}
+
+/// Renders dialogs to PNGs in `$GM_IDE_SCREENSHOT` (manual check of the chrome; run
+/// with `--ignored`; needs a wgpu adapter).
+#[test]
+#[ignore]
+fn screenshot_dialogs() {
+    use egui_kittest::kittest::Queryable;
+    let Some(out) = std::env::var_os("GM_IDE_SCREENSHOT") else {
+        return;
+    };
+    let out = PathBuf::from(out);
+    std::fs::create_dir_all(&out).unwrap();
+    let mut h = egui_kittest::Harness::builder()
+        .with_size(eframe::egui::Vec2::new(1280.0, 800.0))
+        .with_theme(eframe::egui::Theme::Light)
+        .wgpu()
+        .build_eframe(|cc| crate::app::IdeApp::new(cc, None));
+    let mut p = ops::new_project();
+    ops::create_resource(&mut p, ResourceKind::Object, &ops::Placement::End);
+    h.state_mut().test_set_project(p);
+    h.run_steps(2);
+    h.get_by_label("About gm81-clean").click();
+    h.run_steps(3);
+    h.render()
+        .unwrap()
+        .save(out.join("dialog_about.png"))
+        .unwrap();
+    h.get_by_label("OK").click();
+    h.run_steps(3);
+    h.state_mut()
+        .open_form(ResKey::Res(ResourceKind::Object, 0));
+    h.run_steps(3);
+    h.get_by_label("Add Event").click();
+    h.run_steps(3);
+    h.render()
+        .unwrap()
+        .save(out.join("dialog_event.png"))
+        .unwrap();
+    h.get_by_label("Create").click();
+    h.run_steps(3);
+    h.get_by_label("Move Fixed").click();
+    h.run_steps(3);
+    h.render()
+        .unwrap()
+        .save(out.join("dialog_action.png"))
+        .unwrap();
 }

@@ -866,6 +866,7 @@ impl IdeApp {
         let mut to_commit: Vec<usize> = Vec::new();
         let mut to_close: Vec<usize> = Vec::new();
         self.workspace = area;
+        mdi::set_workspace(ctx, area);
         let mut n_min = 0;
         for (fi, f) in forms.iter_mut().enumerate() {
             let wid = Id::new(("form", f.uid));
@@ -942,7 +943,7 @@ impl IdeApp {
                     to_close.push(fi);
                     continue;
                 }
-                egui::Modal::new(wid.with("close")).show(ctx, |ui| {
+                let d = mdi::dialog(ctx, wid.with("close"), "gm81-clean", |ui| {
                     ui.label(format!("Save changes to \"{}\"?", f.editor.title()));
                     ui.horizontal(|ui| {
                         if ui.button("Yes").clicked() {
@@ -957,6 +958,9 @@ impl IdeApp {
                         }
                     });
                 });
+                if d.close {
+                    f.close_prompt = false;
+                }
             }
         }
         for &i in &to_commit {
@@ -987,18 +991,25 @@ impl IdeApp {
 
     fn dialogs(&mut self, ctx: &Context) {
         if let Some(m) = self.messages.first().cloned() {
-            egui::Modal::new(Id::new("message")).show(ctx, |ui| {
+            let d = mdi::dialog(ctx, Id::new("message"), "gm81-clean", |ui| {
                 ui.set_max_width(420.0);
                 ui.label(m);
-                if ui.button("OK").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    self.messages.remove(0);
-                }
+                ui.add_space(6.0);
+                ui.vertical_centered(|ui| {
+                    ui.add(egui::Button::new("OK").min_size(Vec2::new(75.0, 22.0)))
+                        .clicked()
+                        || ui.input(|i| i.key_pressed(egui::Key::Enter))
+                })
+                .inner
             });
+            if d.inner || d.close {
+                self.messages.remove(0);
+            }
             return;
         }
         if let Some(p) = self.pending.clone() {
             let mut choice = None;
-            egui::Modal::new(Id::new("save_prompt")).show(ctx, |ui| {
+            let d = mdi::dialog(ctx, Id::new("save_prompt"), "gm81-clean", |ui| {
                 ui.label("The game has been changed. Save the changes?");
                 ui.horizontal(|ui| {
                     if ui.button("Yes").clicked() {
@@ -1012,6 +1023,9 @@ impl IdeApp {
                     }
                 });
             });
+            if d.close {
+                choice = Some(2);
+            }
             match choice {
                 Some(0) => {
                     self.pending = None;
@@ -1031,7 +1045,7 @@ impl IdeApp {
         if let Some(path) = self.confirm_delete.clone() {
             let name = ops::node(&self.project.resource_tree, &path).map(|n| n.name.clone());
             let mut choice = None;
-            egui::Modal::new(Id::new("confirm_delete")).show(ctx, |ui| {
+            let d = mdi::dialog(ctx, Id::new("confirm_delete"), "Confirm", |ui| {
                 ui.label(format!(
                     "Are you sure you want to delete \"{}\"? This cannot be undone.",
                     name.as_deref().unwrap_or("?")
@@ -1045,6 +1059,9 @@ impl IdeApp {
                     }
                 });
             });
+            if d.close {
+                choice = Some(false);
+            }
             if let Some(c) = choice {
                 self.confirm_delete = None;
                 if c {
@@ -1061,7 +1078,7 @@ impl IdeApp {
         }
         if let Some((path, mut name)) = self.group_prompt.take() {
             let mut done = None;
-            egui::Modal::new(Id::new("group_prompt")).show(ctx, |ui| {
+            let d = mdi::dialog(ctx, Id::new("group_prompt"), "Create Group", |ui| {
                 ui.label("Name of the new group:");
                 let r = ui.text_edit_singleline(&mut name);
                 r.request_focus();
@@ -1074,6 +1091,9 @@ impl IdeApp {
                     }
                 });
             });
+            if d.close {
+                done = Some(false);
+            }
             match done {
                 Some(true) => {
                     if let Some(np) = ops::add_group(&mut self.project, &path, name.trim()) {
@@ -1086,10 +1106,10 @@ impl IdeApp {
             }
         }
         if self.show_about {
-            egui::Modal::new(Id::new("about")).show(ctx, |ui| {
+            let d = mdi::dialog(ctx, Id::new("about"), "About gm81-clean", |ui| {
                 ui.set_width(360.0);
                 let (r, _) = ui.allocate_exact_size(Vec2::new(360.0, 56.0), egui::Sense::hover());
-                paint_logo(ui.painter(), r);
+                paint_logo(ui.painter(), r, false);
                 ui.label("A clean-room, GameMaker 8.1 compatible game development environment.");
                 ui.label(
                     egui::RichText::new("Not affiliated with or endorsed by YoYo Games.")
@@ -1101,10 +1121,12 @@ impl IdeApp {
                     self.show_about = false;
                 }
             });
+            if d.close {
+                self.show_about = false;
+            }
         }
         if self.show_prefs {
-            let mut open = true;
-            egui::Window::new("Preferences").open(&mut open).show(ctx, |ui| {
+            let d = mdi::dialog(ctx, Id::new("preferences"), "Preferences", |ui| {
                 ui.horizontal(|ui| {
                     ui.label("Runner executable:");
                     ui.text_edit_singleline(&mut self.prefs.runner_path);
@@ -1125,15 +1147,20 @@ impl IdeApp {
                     .small(),
                 );
                 ui.separator();
-                ui.add(egui::Slider::new(&mut self.prefs.code_font_size, 8.0..=28.0).text("Code font size"));
+                ui.add(
+                    egui::Slider::new(&mut self.prefs.code_font_size, 8.0..=28.0)
+                        .text("Code font size"),
+                );
                 ui.checkbox(&mut self.prefs.show_line_numbers, "Show line numbers");
                 ui.checkbox(&mut self.prefs.syntax_colouring, "Use color coding");
-                ui.checkbox(&mut self.prefs.show_origin, "Show the origin in sprite images");
-                if ui.button("Save preferences").clicked() {
-                    self.prefs.save();
-                }
+                ui.checkbox(
+                    &mut self.prefs.show_origin,
+                    "Show the origin in sprite images",
+                );
+                ui.add_space(6.0);
+                ui.horizontal(|ui| ui.button("OK").clicked()).inner
             });
-            if !open {
+            if d.close || d.inner {
                 self.prefs.save();
                 self.show_prefs = false;
             }
@@ -1281,8 +1308,20 @@ impl eframe::App for IdeApp {
                     .stroke(egui::Stroke::new(1.0, theme::SHADOW)),
             )
             .show(ui, |ui| {
-                logo(ui);
-                tree_ui(ui, &self.project, &mut self.tree, &mut self.tex, self.gen)
+                // the tree above, the wordmark banner pinned to the bottom
+                let full = ui.available_rect_before_wrap();
+                let split = full.max.y - LOGO_H;
+                let tree_rect = egui::Rect::from_min_max(full.min, egui::pos2(full.max.x, split));
+                let actions = ui
+                    .scope_builder(egui::UiBuilder::new().max_rect(tree_rect), |ui| {
+                        ui.set_clip_rect(tree_rect);
+                        tree_ui(ui, &self.project, &mut self.tree, &mut self.tex, self.gen)
+                    })
+                    .inner;
+                let logo_r = egui::Rect::from_min_max(egui::pos2(full.min.x, split), full.max);
+                paint_logo(ui.painter(), logo_r, true);
+                ui.allocate_rect(full, egui::Sense::hover());
+                actions
             })
             .inner;
         for a in actions {
@@ -1347,14 +1386,24 @@ fn ok_button(ui: &mut egui::Ui) -> egui::Response {
     ui.add(egui::Button::new(job).min_size(Vec2::new(64.0, 22.0)))
 }
 
-/// Wordmark banner at the top of the resource panel.
-fn logo(ui: &mut egui::Ui) {
-    let w = ui.available_width();
-    let (r, _) = ui.allocate_exact_size(Vec2::new(w, 44.0), egui::Sense::hover());
-    paint_logo(ui.painter(), r);
+/// Height of the wordmark banner at the bottom of the resource panel.
+const LOGO_H: f32 = 46.0;
+
+/// The app icon (gm-brand) as a texture, cached in egui memory.
+fn brand_texture(ctx: &Context) -> egui::TextureHandle {
+    let id = Id::new("brand_icon_texture");
+    if let Some(t) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
+        return t;
+    }
+    let n = 64;
+    let img = egui::ColorImage::from_rgba_unmultiplied([n, n], &gm_brand::icon_rgba(n as u32));
+    let t = ctx.load_texture("brand-icon", img, egui::TextureOptions::LINEAR);
+    ctx.data_mut(|d| d.insert_temp(id, t.clone()));
+    t
 }
 
-fn paint_logo(p: &egui::Painter, r: egui::Rect) {
+/// Paint the wordmark banner; `at_bottom` draws the separator along its top edge.
+fn paint_logo(p: &egui::Painter, r: egui::Rect, at_bottom: bool) {
     use egui::{Color32, Mesh, Shape};
     let mut mesh = Mesh::default();
     let (a, b) = (
@@ -1368,16 +1417,34 @@ fn paint_logo(p: &egui::Painter, r: egui::Rect) {
     mesh.add_triangle(0, 1, 2);
     mesh.add_triangle(0, 2, 3);
     p.add(Shape::mesh(mesh));
-    p.hline(
-        r.x_range(),
-        r.bottom() - 0.5,
-        egui::Stroke::new(1.0, theme::SHADOW),
-    );
+    if at_bottom {
+        p.hline(
+            r.x_range(),
+            r.top() + 0.5,
+            egui::Stroke::new(1.0, theme::SHADOW),
+        );
+        p.hline(
+            r.x_range(),
+            r.top() + 1.5,
+            egui::Stroke::new(1.0, Color32::WHITE),
+        );
+    } else {
+        p.hline(
+            r.x_range(),
+            r.bottom() - 0.5,
+            egui::Stroke::new(1.0, theme::SHADOW),
+        );
+    }
     let icon = egui::Rect::from_min_size(
-        r.min + Vec2::new(8.0, (r.height() - 28.0) / 2.0),
-        Vec2::splat(28.0),
+        r.min + Vec2::new(8.0, (r.height() - 32.0) / 2.0),
+        Vec2::splat(32.0),
     );
-    icons::paint(p, icon, Icon::Sprite, true);
+    p.image(
+        brand_texture(p.ctx()).id(),
+        icon,
+        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+        Color32::WHITE,
+    );
     let x = icon.max.x + 8.0;
     p.text(
         egui::pos2(x, r.center().y - 1.0),

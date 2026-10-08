@@ -397,23 +397,25 @@ impl SpriteFramesEditor {
     /// Show the window (and the image editor, when open).
     pub fn show(&mut self, ctx: &Context, tex: &mut TextureCache, id: Id) -> SpriteEditorAction {
         let mut action = SpriteEditorAction::None;
-        let mut open = true;
-        egui::Window::new(format!("Sprite Editor: {}", self.name))
-            .id(id)
-            .open(&mut open)
-            .default_size([820.0, 560.0])
-            .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.content_rect().center())
-            .min_size([520.0, 360.0])
-            .resizable(true)
-            .collapsible(false)
-            .show(ctx, |ui| {
+        let title = format!("Sprite Editor: {}", self.name);
+        let out = crate::mdi::floating(
+            ctx,
+            id,
+            &title,
+            crate::icons::Icon::Sprite,
+            Vec2::new(820.0, 560.0),
+            |ui| {
                 if self.image_editor.is_some() || self.has_modal() {
                     ui.disable();
                 }
                 action = self.window_ui(ui, tex);
-            });
-        if !open {
+            },
+        );
+        if self.image_editor.is_some() {
+            // the image editor stays above the sprite editor that owns it
+            crate::mdi::bring_to_front(ctx, id.with("image"));
+        }
+        if out.close {
             if self.modified {
                 self.confirm_close = true;
             } else {
@@ -467,7 +469,7 @@ impl SpriteFramesEditor {
 
     fn modals(&mut self, ctx: &Context, id: Id, action: &mut SpriteEditorAction) {
         if self.confirm_close {
-            egui::Modal::new(id.with("confirm")).show(ctx, |ui| {
+            let d = crate::mdi::dialog(ctx, id.with("confirm"), "Sprite Editor", |ui| {
                 ui.label("Save the changes to the sprite?");
                 ui.horizontal(|ui| {
                     if ui.button("Yes").clicked() {
@@ -481,6 +483,9 @@ impl SpriteFramesEditor {
                     }
                 });
             });
+            if d.close {
+                self.confirm_close = false;
+            }
         }
         let multi = self.frames.len() > 1;
         if let Some(d) = &mut self.dialog {
@@ -496,9 +501,9 @@ impl SpriteFramesEditor {
         }
         if let Some(op) = &mut self.anim_dialog {
             let mut res = DialogResult::Open;
-            let m = egui::Modal::new(id.with("anim")).show(ctx, |ui| {
+            let title = op.name().to_string();
+            let m = crate::mdi::dialog(ctx, id.with("anim"), &title, |ui| {
                 ui.set_min_width(280.0);
-                ui.heading(op.name());
                 op.ui(ui);
                 ui.separator();
                 ui.horizontal(|ui| {
@@ -525,8 +530,7 @@ impl SpriteFramesEditor {
         }
         if let Some((w, h)) = &mut self.new_size {
             let mut res = DialogResult::Open;
-            egui::Modal::new(id.with("new")).show(ctx, |ui| {
-                ui.heading("New sprite");
+            let d = crate::mdi::dialog(ctx, id.with("new"), "New Sprite", |ui| {
                 egui::Grid::new("new_sprite").show(ui, |ui| {
                     ui.label("Width");
                     ui.add(egui::DragValue::new(w).range(1..=4096));
@@ -544,6 +548,9 @@ impl SpriteFramesEditor {
                     }
                 });
             });
+            if d.close && res == DialogResult::Open {
+                res = DialogResult::Cancel;
+            }
             match res {
                 DialogResult::Ok => {
                     let (w, h) = (*w, *h);
@@ -556,8 +563,7 @@ impl SpriteFramesEditor {
         }
         if let Some((c, all)) = &mut self.erase {
             let mut res = DialogResult::Open;
-            egui::Modal::new(id.with("erase")).show(ctx, |ui| {
-                ui.heading("Erase");
+            let d = crate::mdi::dialog(ctx, id.with("erase"), "Erase", |ui| {
                 ui.horizontal(|ui| {
                     ui.label("Fill colour (with alpha)");
                     ui.color_edit_button_srgba_unmultiplied(c);
@@ -575,6 +581,9 @@ impl SpriteFramesEditor {
                     }
                 });
             });
+            if d.close && res == DialogResult::Open {
+                res = DialogResult::Cancel;
+            }
             match res {
                 DialogResult::Ok => {
                     let (c, all) = (*c, *all);
@@ -599,7 +608,7 @@ impl SpriteFramesEditor {
             let mut res = None;
             let (w, h) = self.size();
             let (nw, nh) = (frames[0].width, frames[0].height);
-            egui::Modal::new(id.with("fit")).show(ctx, |ui| {
+            let d = crate::mdi::dialog(ctx, id.with("fit"), "Image Size", |ui| {
                 ui.label(format!(
                     "The image ({nw}×{nh}) differs from the sprite size ({w}×{h})."
                 ));
@@ -618,6 +627,9 @@ impl SpriteFramesEditor {
                     }
                 });
             });
+            if d.close && res.is_none() {
+                res = Some(None);
+            }
             if let Some(r) = res {
                 let (frames, at) = (frames.clone(), *insert_at);
                 self.pending = None;
@@ -648,12 +660,12 @@ impl SpriteFramesEditor {
                 )
             })
             .id();
-        egui::Modal::new(id.with("strip")).show(ctx, |ui| {
-            ui.heading(if sd.add {
-                "Add from Strip"
-            } else {
-                "Create from Strip"
-            });
+        let title = if sd.add {
+            "Add from Strip"
+        } else {
+            "Create from Strip"
+        };
+        let d = crate::mdi::dialog(ctx, id.with("strip"), title, |ui| {
             ui.horizontal_top(|ui| {
                 ui.vertical(|ui| {
                     let p = &mut sd.params;
@@ -737,6 +749,9 @@ impl SpriteFramesEditor {
                 }
             });
         });
+        if d.close && res == DialogResult::Open {
+            res = DialogResult::Cancel;
+        }
         match res {
             DialogResult::Ok => {
                 let sd = self.strip.take().expect("strip dialog");
