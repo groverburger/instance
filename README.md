@@ -4,6 +4,7 @@ A clean-room reimplementation of the GameMaker 8.1 runner and IDE in Rust.
 Not affiliated with YoYo Games. See CLEANROOM.md for how this was built.
 
 - `crates/gm-format` – read/write .gmk (v800) / .gm81 (v810) project files
+- `crates/gm-gmx` – convert GameMaker: Studio 1.x projects (.gmx folders, .gmz zip/7z) to .gm81 (`gmx2gm81`, specs/gmx-format.md)
 - `crates/gml` – GML lexer, parser, compiler and interpreter
 - `crates/gm-runner` – the game engine (`gm-runner game.gm81`)
 - `crates/gm-ide` – the editor
@@ -22,6 +23,7 @@ target/release/gm-runner game.gm81 --renderer software   # force the CPU rendere
 target/release/gm-runner game.gm81 --compare-renderers DIR --frames 300 --screenshot-every 50 DIR
                                               # render with both renderers and diff the frames
 target/release/gmk-info game.gm81 [--tree]    # print a resource summary
+target/release/gmx2gm81 Game.gmx -o game.gm81  # convert a Studio project (folder, .project.gmx or .gmz)
 cargo test --workspace                        # sample tests read $GM81_SAMPLES
 target/release/gm-runner game.gm81 --headless --frames 600 --random-input 1 --max-seconds 60
 GM_PROFILE=1 target/release/gm-runner game.gm81 --headless   # per-phase/event/function timings
