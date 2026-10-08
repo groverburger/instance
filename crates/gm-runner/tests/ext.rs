@@ -171,8 +171,9 @@ fn built() -> &'static Built {
     B.get_or_init(|| {
         let td = workspace().join("target").join("gm-ext-test");
         assert!(cargo_build(&["-p", "gm-testdll"], &td), "building gm-testdll");
-        let dll64 = td.join("debug").join("gm_testdll.dll");
-        let dll86 = if cargo_build(&["-p", "gm-testdll", "-p", "gm81-dllhost32", "--target", "i686-pc-windows-msvc"], &td) {
+        // native library of this platform: gm_testdll.dll, libgm_testdll.dylib or libgm_testdll.so
+        let dll64 = td.join("debug").join(format!("{}gm_testdll{}", std::env::consts::DLL_PREFIX, std::env::consts::DLL_SUFFIX));
+        let dll86 = if cfg!(windows) && cargo_build(&["-p", "gm-testdll", "-p", "gm81-dllhost32", "--target", "i686-pc-windows-msvc"], &td) {
             let d = td.join("i686-pc-windows-msvc").join("debug");
             std::env::set_var("GM81_DLLHOST32", d.join("gm81-dllhost32.exe"));
             Some(d.join("gm_testdll.dll"))

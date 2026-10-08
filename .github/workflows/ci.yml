@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev \
+            libx11-dev libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev libegl1-mesa-dev \
+            libgtk-3-dev mesa-vulkan-drivers xvfb
+      - name: Build
+        run: cargo build --workspace --all-targets
+      - name: 32-bit DLL helper (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          rustup target add i686-pc-windows-msvc
+          cargo build -p gm81-dllhost32 -p gm-testdll --target i686-pc-windows-msvc
+      - name: Test (Windows, macOS)
+        if: runner.os != 'Linux'
+        run: cargo test --workspace
+      - name: Test (Linux, virtual X display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a cargo test --workspace
+
+  macos-bundles:
+    name: macOS app bundles
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build .app bundles
+        run: bash scripts/macos-bundle.sh dist/macos
+      - name: Zip
+        run: cd dist/macos && ditto -c -k --keepParent "GM81 Clean IDE.app" gm81-clean-ide-macos.zip && ditto -c -k --keepParent "GM81 Clean Runner.app" gm81-clean-runner-macos.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gm81-clean-macos-${{ runner.arch }}
+          path: dist/macos/*.zip
+
+  wasm:
+    name: web (wasm32)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Check
+        run: cargo check -p gm-runner -p gm-ide --target wasm32-unknown-unknown
+      - name: Install wasm-bindgen-cli (version from Cargo.lock)
+        run: |
+          v=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')
+          cargo install wasm-bindgen-cli --version "$v" --locked
+      - name: Build the static site
+        run: bash scripts/build-web.sh dist/web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gm81-clean-web
+          path: dist/web

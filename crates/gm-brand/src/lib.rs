@@ -10,9 +10,11 @@
 //! compiler), an `.ico` decoder for game icons, and detection of the stock icon that
 //! GameMaker 8.1 projects carry by default (by SHA-1 of the icon bytes).
 
+mod icns;
 mod ico;
 mod sha1;
 
+pub use icns::{icns_file, icon_png};
 pub use ico::{decode_ico, ico_file, res_file};
 pub use sha1::sha1;
 
