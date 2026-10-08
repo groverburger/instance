@@ -86,7 +86,7 @@ pub fn compute_bbox(
     let lx1 = (r as f64 + 1.0 - ox) * xs - 1.0;
     let ly0 = (t as f64 - oy) * ys;
     let ly1 = (b as f64 + 1.0 - oy) * ys - 1.0;
-    let (minx, maxx, miny, maxy) = if angle.rem_euclid(360.0) == 0.0 {
+    let (minx, maxx, miny, maxy) = if angle == 0.0 || angle.rem_euclid(360.0) == 0.0 {
         (x + lx0.min(lx1), x + lx0.max(lx1), y + ly0.min(ly1), y + ly0.max(ly1))
     } else {
         let a = angle.to_radians();
@@ -104,12 +104,20 @@ pub fn compute_bbox(
             ys_.iter().cloned().fold(f64::MIN, f64::max),
         )
     };
-    [
-        minx.round_ties_even() as i32,
-        miny.round_ties_even() as i32,
-        maxx.round_ties_even() as i32,
-        maxy.round_ties_even() as i32,
-    ]
+    [round_even(minx), round_even(miny), round_even(maxx), round_even(maxy)]
+}
+
+/// `x.round_ties_even() as i32`, without a library call for ordinary values:
+/// adding and subtracting 1.5·2^52 rounds to an integer in the default
+/// (nearest, ties to even) mode.
+#[inline]
+fn round_even(x: f64) -> i32 {
+    const MAGIC: f64 = 6755399441055744.0;
+    if x.abs() < 1e15 {
+        ((x + MAGIC) - MAGIC) as i32
+    } else {
+        x.round_ties_even() as i32
+    }
 }
 
 /// Room pixel columns `[a, b]` whose centres map into the local range
@@ -199,8 +207,14 @@ impl Game {
         let spr_i = if i.mask_index >= 0 { i.mask_index } else { i.sprite_index };
         let spr = self.sprite(spr_i)?;
         let mask = spr.mask_for(i.image_index)?;
-        let rotated = i.image_angle.rem_euclid(360.0) != 0.0;
-        let a = i.image_angle.to_radians();
+        let rotated = i.image_angle != 0.0 && i.image_angle.rem_euclid(360.0) != 0.0;
+        // (cos/sin are only used for rotated geometry)
+        let (cos, sin) = if rotated {
+            let a = i.image_angle.to_radians();
+            (a.cos(), a.sin())
+        } else {
+            (1.0, 0.0)
+        };
         let bbox = compute_bbox(
             x,
             y,
@@ -220,8 +234,8 @@ impl Game {
             y,
             xs: i.image_xscale,
             ys: i.image_yscale,
-            cos: a.cos(),
-            sin: a.sin(),
+            cos,
+            sin,
             rotated,
             ox: spr.origin_x as f64,
             oy: spr.origin_y as f64,
@@ -234,10 +248,29 @@ impl Game {
     /// (x, y).
     pub fn bbox_of(&self, id: i32) -> (f64, f64, f64, f64) {
         let Some(i) = self.inst(id) else { return (0.0, 0.0, 0.0, 0.0) };
-        match self.geo_at(i, i.x, i.y) {
-            Some(g) => (g.bbox[0] as f64, g.bbox[1] as f64, g.bbox[2] as f64, g.bbox[3] as f64),
-            None => (i.x, i.y, i.x, i.y),
-        }
+        self.bbox_inst(i)
+    }
+
+    /// [`Game::bbox_of`] for an instance record.
+    pub fn bbox_inst(&self, i: &Instance) -> (f64, f64, f64, f64) {
+        let spr_i = if i.mask_index >= 0 { i.mask_index } else { i.sprite_index };
+        let Some((spr, mask)) = self.sprite(spr_i).and_then(|s| Some((s, s.mask_for(i.image_index)?))) else {
+            return (i.x, i.y, i.x, i.y);
+        };
+        let b = compute_bbox(
+            i.x,
+            i.y,
+            i.image_xscale,
+            i.image_yscale,
+            i.image_angle,
+            spr.origin_x as f64,
+            spr.origin_y as f64,
+            mask.left,
+            mask.top,
+            mask.right,
+            mask.bottom,
+        );
+        (b[0] as f64, b[1] as f64, b[2] as f64, b[3] as f64)
     }
 
     /// Geometry-level collision test.
@@ -453,8 +486,12 @@ impl Game {
 
     /// Distance between two instance bboxes.
     pub fn bbox_distance(&self, a: i32, b: i32) -> f64 {
-        let (l1, t1, r1, b1) = self.bbox_of(a);
-        let (l2, t2, r2, b2) = self.bbox_of(b);
+        Self::box_distance(self.bbox_of(a), self.bbox_of(b))
+    }
+
+    /// Distance between two boxes (l, t, r, b).
+    #[inline]
+    pub fn box_distance((l1, t1, r1, b1): (f64, f64, f64, f64), (l2, t2, r2, b2): (f64, f64, f64, f64)) -> f64 {
         let dx = if r1 < l2 { l2 - r1 } else if r2 < l1 { l1 - r2 } else { 0.0 };
         let dy = if b1 < t2 { t2 - b1 } else if b2 < t1 { t1 - b2 } else { 0.0 };
         (dx * dx + dy * dy).sqrt()
@@ -464,6 +501,13 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn round_even_matches_round_ties_even() {
+        for x in [0.5, 1.5, 2.5, -0.5, -1.5, -2.5, 3.49999, -7.5000001, 1e14 + 0.5, -1e14 - 0.5, 2e15 + 1.0, 0.0, -0.0] {
+            assert_eq!(round_even(x), x.round_ties_even() as i32, "{x}");
+        }
+    }
 
     #[test]
     fn bbox_rules() {

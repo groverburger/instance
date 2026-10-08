@@ -38,12 +38,20 @@ pub fn register(l: &mut Reg) {
     }));
     l.push(("distance_to_point", |g, _, c, a| r(g.bbox_distance_point(c.self_id, a.r(0)?, a.r(1)?))));
     l.push(("distance_to_object", |g, _, c, a| {
-        let t = g.select_ctx(c, a.i(0)?);
-        let d = t
-            .into_iter()
-            .filter(|&id| id != c.self_id)
-            .map(|id| g.bbox_distance(c.self_id, id))
-            .fold(f64::INFINITY, f64::min);
+        let me = g.bbox_of(c.self_id);
+        let mut d = f64::INFINITY;
+        // the collision index holds every instance's current bounding box
+        let mut sp = g.spatial.borrow_mut();
+        sp.flush(g);
+        g.for_each_target(c, a.i(0)?, |k, i| {
+            if i.id != c.self_id {
+                let b = match sp.cached_bbox(k) {
+                    Some(b) => (b[0] as f64, b[1] as f64, b[2] as f64, b[3] as f64),
+                    None => (i.x, i.y, i.x, i.y),
+                };
+                d = d.min(Game::box_distance(me, b));
+            }
+        });
         r(if d.is_finite() { d } else { 1000000.0 })
     }));
     // collision_* queries
@@ -77,17 +85,16 @@ pub fn register(l: &mut Reg) {
     l.push(("instance_number", |g, _, c, a| r(count_ctx(g, c, a.i(0)?) as f64)));
     fn nearest(g: &Game, c: &Ctx, a: &A, far: bool) -> Result<Value, Error> {
         let (x, y) = (a.r(0)?, a.r(1)?);
-        let t = g.select_ctx(c, a.i(2)?);
         let mut best = special::NOONE;
         let mut bd = if far { -1.0 } else { f64::INFINITY };
-        for id in t {
-            let i = g.inst(id).unwrap();
-            let d = (i.x - x).hypot(i.y - y);
+        g.for_each_target(c, a.i(2)?, |_, i| {
+            let (dx, dy) = (i.x - x, i.y - y);
+            let d = (dx * dx + dy * dy).sqrt();
             if (far && d > bd) || (!far && d < bd) {
                 bd = d;
-                best = id;
+                best = i.id;
             }
-        }
+        });
         r(best as f64)
     }
     l.push(("instance_nearest", |g, _, c, a| nearest(g, c, a, false)));

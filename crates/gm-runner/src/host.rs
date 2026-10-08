@@ -576,6 +576,83 @@ impl Host for Game {
         }
     }
 
+    fn builtin_real_mut(&mut self, inst: i32, var: VariableId) -> Option<&mut f64> {
+        // only variables whose write is a plain store (see set_inst_var); the
+        // instance is marked for the collision index by inst_mut
+        if !matches!(
+            var,
+            v::X | v::Y
+                | v::XPREVIOUS
+                | v::YPREVIOUS
+                | v::XSTART
+                | v::YSTART
+                | v::FRICTION
+                | v::GRAVITY
+                | v::GRAVITY_DIRECTION
+                | v::PATH_SPEED
+                | v::PATH_SCALE
+                | v::PATH_ORIENTATION
+                | v::IMAGE_INDEX
+                | v::IMAGE_SPEED
+                | v::DEPTH
+                | v::IMAGE_XSCALE
+                | v::IMAGE_YSCALE
+                | v::IMAGE_ANGLE
+                | v::IMAGE_ALPHA
+        ) {
+            return None;
+        }
+        let i = self.inst_mut(inst)?;
+        Some(match var {
+            v::X => &mut i.x,
+            v::Y => &mut i.y,
+            v::XPREVIOUS => &mut i.xprevious,
+            v::YPREVIOUS => &mut i.yprevious,
+            v::XSTART => &mut i.xstart,
+            v::YSTART => &mut i.ystart,
+            v::FRICTION => &mut i.friction,
+            v::GRAVITY => &mut i.gravity,
+            v::GRAVITY_DIRECTION => &mut i.gravity_direction,
+            v::PATH_SPEED => &mut i.path_speed,
+            v::PATH_SCALE => &mut i.path_scale,
+            v::PATH_ORIENTATION => &mut i.path_orientation,
+            v::IMAGE_INDEX => &mut i.image_index,
+            v::IMAGE_SPEED => &mut i.image_speed,
+            v::DEPTH => &mut i.depth,
+            v::IMAGE_XSCALE => &mut i.image_xscale,
+            v::IMAGE_YSCALE => &mut i.image_yscale,
+            v::IMAGE_ANGLE => &mut i.image_angle,
+            _ => &mut i.image_alpha,
+        })
+    }
+
+    fn builtin_real(&mut self, inst: i32, var: VariableId) -> Option<f64> {
+        let i = self.inst(inst)?;
+        Some(match var {
+            v::X => i.x,
+            v::Y => i.y,
+            v::XPREVIOUS => i.xprevious,
+            v::YPREVIOUS => i.yprevious,
+            v::XSTART => i.xstart,
+            v::YSTART => i.ystart,
+            v::HSPEED => i.hspeed,
+            v::VSPEED => i.vspeed,
+            v::DIRECTION => i.direction,
+            v::SPEED => i.speed,
+            v::FRICTION => i.friction,
+            v::GRAVITY => i.gravity,
+            v::GRAVITY_DIRECTION => i.gravity_direction,
+            v::IMAGE_INDEX => i.image_index,
+            v::IMAGE_SPEED => i.image_speed,
+            v::DEPTH => i.depth,
+            v::IMAGE_XSCALE => i.image_xscale,
+            v::IMAGE_YSCALE => i.image_yscale,
+            v::IMAGE_ANGLE => i.image_angle,
+            v::IMAGE_ALPHA => i.image_alpha,
+            _ => return None,
+        })
+    }
+
     fn instance_exists(&mut self, id: i32) -> bool {
         self.inst(id).map(|i| i.alive()).unwrap_or(false)
     }

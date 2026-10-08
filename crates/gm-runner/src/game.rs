@@ -862,6 +862,41 @@ impl Game {
         }
     }
 
+    /// Calls `f` for every live instance designated by `target` (object incl.
+    /// descendants, id, all, self, other), in instance order, without collecting
+    /// ids (the same instances as [`Game::select_ctx`]).
+    /// `f` gets the instance's position in [`Game::instances`] and the instance.
+    pub fn for_each_target(&self, ctx: &gml::Ctx, target: i32, mut f: impl FnMut(usize, &Instance)) {
+        let one = |id: i32, f: &mut dyn FnMut(usize, &Instance)| {
+            if let Some(&k) = self.inst_index.get(&id) {
+                let i = &self.instances[k];
+                if i.alive() {
+                    f(k, i)
+                }
+            }
+        };
+        match target {
+            gml::special::SELF => one(ctx.self_id, &mut f),
+            gml::special::OTHER => one(ctx.other_id, &mut f),
+            gml::special::ALL => {
+                for (k, i) in self.instances.iter().enumerate() {
+                    if i.alive() {
+                        f(k, i)
+                    }
+                }
+            }
+            t if t >= gml::special::FIRST_INSTANCE_ID => one(t, &mut f),
+            t if t >= 0 => self.objlists.borrow_mut().for_each(self, t, |k| {
+                let i = &self.instances[k];
+                if i.alive() {
+                    f(k, i);
+                }
+                true
+            }),
+            _ => {}
+        }
+    }
+
     /// The first live instance designated by `target` (object, id or all).
     pub fn first_of(&self, target: i32) -> Option<i32> {
         if target == gml::special::ALL {

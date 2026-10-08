@@ -188,6 +188,16 @@ impl SpatialIndex {
         self.dirty = dirty;
     }
 
+    /// The bounding box of the instance at position `k` as of the last
+    /// [`flush`](Self::flush), or `None` if it has no collision mask (or is dead).
+    #[inline]
+    pub fn cached_bbox(&self, k: usize) -> Option<[i32; 4]> {
+        match self.slots.get(k) {
+            Some(Slot::Grid(b) | Slot::Big(b)) => Some(*b),
+            _ => None,
+        }
+    }
+
     /// Positions of indexed instances whose box overlaps `b` (inclusive),
     /// sorted ascending. Call [`flush`](Self::flush) first.
     pub fn query(&mut self, b: [i32; 4], out: &mut Vec<u32>) {
