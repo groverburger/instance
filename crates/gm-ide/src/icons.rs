@@ -4,8 +4,8 @@
 //! design grid scaled to the target rect); no third-party images are used.
 
 use eframe::egui::{
-    self, epaint::PathShape, pos2, vec2, Align2, Color32, FontId, Painter, Pos2, Rect, Response,
-    Sense, Shape, Stroke, Ui, Vec2,
+    self, epaint::PathShape, vec2, Align2, Color32, FontId, Painter, Pos2, Rect, Response,
+    Shape, Stroke, Ui, Vec2,
 };
 use gm_format::ResourceKind;
 
@@ -37,6 +37,7 @@ pub enum Icon {
     Folder,
     FolderOpen,
     Constants,
+    OutputLog,
 }
 
 impl Icon {
@@ -197,6 +198,7 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, enabled: bool) {
                 g.stroke(0.6, Color32::from_rgb(190, 130, 0)),
             );
         }
+        Icon::OutputLog => gm_ui::icons::paint(p, rect, gm_ui::icons::Glyph::Log, true),
         Icon::Open => folder(p, &g, true),
         Icon::Save => {
             let body = Color32::from_rgb(52, 92, 170);
@@ -613,57 +615,18 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, enabled: bool) {
     }
 }
 
-/// A flat toolbar button showing `icon`, raised on hover and sunken when pressed.
+/// A flat toolbar button showing `icon`, raised on hover and sunken when pressed
+/// (the shared `gm-ui` toolbar button: fixed size, no reflow on hover).
 pub fn tool_button(ui: &mut Ui, icon: Icon, tip: &str, enabled: bool) -> Response {
-    let size = Vec2::splat(24.0);
-    let (rect, resp) = ui.allocate_exact_size(
-        size,
-        if enabled {
-            Sense::click()
-        } else {
-            Sense::hover()
-        },
-    );
-    let resp = resp.on_hover_text(tip);
-    if ui.is_rect_visible(rect) {
-        let p = ui.painter();
-        if enabled && (resp.hovered() || resp.is_pointer_button_down_on()) {
-            let down = resp.is_pointer_button_down_on();
-            p.rect(
-                rect,
-                2.0,
-                if down {
-                    Color32::from_rgb(204, 228, 247)
-                } else {
-                    Color32::from_rgb(229, 241, 251)
-                },
-                Stroke::new(1.0, Color32::from_rgb(0, 120, 215)),
-                egui::StrokeKind::Inside,
-            );
-        }
-        paint(p, rect.shrink(4.0), icon, enabled);
-    }
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, tip));
-    resp
+    gm_ui::icons::tool_button_with(ui, tip, enabled, |p, r, en| paint(p, r, icon, en))
+}
+
+/// A toolbar button showing one of the shared `gm-ui` glyphs.
+pub fn glyph_button(ui: &mut Ui, glyph: gm_ui::icons::Glyph, tip: &str, enabled: bool) -> Response {
+    gm_ui::icons::tool_button(ui, glyph, tip, enabled)
 }
 
 /// Vertical etched separator for toolbars.
 pub fn tool_separator(ui: &mut Ui) {
-    let (rect, _) = ui.allocate_exact_size(vec2(6.0, 24.0), Sense::hover());
-    let x = rect.center().x.round();
-    let p = ui.painter();
-    p.line_segment(
-        [
-            pos2(x - 0.5, rect.top() + 2.0),
-            pos2(x - 0.5, rect.bottom() - 2.0),
-        ],
-        Stroke::new(1.0, Color32::from_gray(160)),
-    );
-    p.line_segment(
-        [
-            pos2(x + 0.5, rect.top() + 2.0),
-            pos2(x + 0.5, rect.bottom() - 2.0),
-        ],
-        Stroke::new(1.0, Color32::WHITE),
-    );
+    gm_ui::icons::tool_separator(ui)
 }

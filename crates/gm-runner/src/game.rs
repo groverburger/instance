@@ -1182,9 +1182,9 @@ impl Game {
             }
         }
         if !self.settings.display_errors && !fatal {
-            if self.headless {
-                eprintln!("ERROR (not displayed): {}", msg);
-            }
+            // (still on stderr: the IDE's Output Log shows it)
+            #[cfg(not(target_arch = "wasm32"))]
+            eprintln!("ERROR (not displayed): {}", msg);
             return false;
         }
         self.ui.error(msg, fatal) || fatal

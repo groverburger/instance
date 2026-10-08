@@ -4,13 +4,11 @@
 //! [`Command`]s and shows the [`Snapshot`]s the game thread publishes between
 //! steps (see [`service`]).
 
+use crate::egui_window::EguiWindow;
 use gm_runner::debug::{Command, InstanceRow, Scope, Snapshot, Wants};
 use gm_runner::Game;
-use glutin::config::{ConfigTemplateBuilder, GlConfig};
-use glutin::context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContext, PossiblyCurrentContext, PossiblyCurrentGlContext, Version};
-use glutin::display::{Display, DisplayApiPreference, GlDisplay};
-use glutin::surface::{GlSurface, Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface};
-use std::num::NonZeroU32;
+use gm_ui::icons::{tool_button, tool_separator, Glyph};
+use gm_ui::theme;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use web_time::Instant;
@@ -100,57 +98,29 @@ struct State {
 }
 
 pub struct DebugWindow {
-    // field order matters for drop: GL objects before the context, the context
-    // before the display and the window
-    egui: egui_glow::EguiGlow,
-    gl: Arc<glow::Context>,
-    surface: Surface<WindowSurface>,
-    context: PossiblyCurrentContext,
-    _display: Display,
-    window: Arc<Window>,
+    win: EguiWindow,
     link: SharedLink,
     st: State,
 }
 
-const W: u32 = 520;
-const H: u32 = 520;
+const W: u32 = 560;
+const H: u32 = 540;
 
-/// Classic light look, matching the IDE.
-fn style(ctx: &egui::Context) {
-    #[cfg_attr(not(windows), allow(unused_mut))]
-    let mut fonts = egui::FontDefinitions::default();
-    #[cfg(windows)]
-    {
-        let dir = std::env::var_os("WINDIR").map(std::path::PathBuf::from).unwrap_or_else(|| "C:\\Windows".into());
-        for (file, fam, key) in [("segoeui.ttf", egui::FontFamily::Proportional, "ui"), ("consola.ttf", egui::FontFamily::Monospace, "mono")] {
-            if let Ok(b) = std::fs::read(dir.join("Fonts").join(file)) {
-                fonts.font_data.insert(key.into(), Arc::new(egui::FontData::from_owned(b)));
-                fonts.families.entry(fam).or_default().insert(0, key.into());
-            }
+impl State {
+    fn new() -> State {
+        State {
+            tab: Tab::Watches,
+            snap: Snapshot::default(),
+            messages: Default::default(),
+            selected: None,
+            dialog: None,
+            exec_code: String::new(),
+            exec_scope: "global".into(),
+            locals_scope: String::new(),
+            follow_messages: true,
+            status: String::new(),
         }
     }
-    ctx.set_fonts(fonts);
-    let mut v = egui::Visuals::light();
-    v.panel_fill = egui::Color32::from_rgb(240, 240, 240);
-    v.window_fill = egui::Color32::from_rgb(240, 240, 240);
-    v.extreme_bg_color = egui::Color32::WHITE;
-    v.faint_bg_color = egui::Color32::from_rgb(245, 245, 245);
-    v.selection.bg_fill = egui::Color32::from_rgb(51, 153, 255);
-    v.selection.stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
-    for w in [&mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.noninteractive] {
-        w.corner_radius = egui::CornerRadius::same(2);
-    }
-    v.widgets.inactive.weak_bg_fill = egui::Color32::from_rgb(225, 225, 225);
-    v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(173, 173, 173));
-    v.widgets.hovered.weak_bg_fill = egui::Color32::from_rgb(229, 241, 251);
-    v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 120, 215));
-    v.window_corner_radius = egui::CornerRadius::same(2);
-    v.menu_corner_radius = egui::CornerRadius::same(2);
-    ctx.set_visuals(v);
-    ctx.global_style_mut(|s| {
-        s.spacing.item_spacing = egui::vec2(6.0, 4.0);
-        s.spacing.button_padding = egui::vec2(6.0, 2.0);
-    });
 }
 
 impl DebugWindow {
@@ -167,36 +137,12 @@ impl DebugWindow {
             let x = mp.x + ms.width as i32 - ((W as f64 + 30.0) * k) as i32;
             attrs = attrs.with_position(winit::dpi::PhysicalPosition::new(x.max(mp.x), mp.y + (60.0 * k) as i32));
         }
-        let window = Arc::new(el.create_window(attrs).map_err(|e| e.to_string())?);
-        let (surface, context, display, gl) = create_gl(&window)?;
-        let gl = Arc::new(gl);
-        let egui = egui_glow::EguiGlow::new(el, gl.clone(), None, Some(window.scale_factor() as f32), false);
-        style(&egui.egui_ctx);
-        Ok(DebugWindow {
-            egui,
-            gl,
-            surface,
-            context,
-            _display: display,
-            window,
-            link,
-            st: State {
-                tab: Tab::Watches,
-                snap: Snapshot::default(),
-                messages: Default::default(),
-                selected: None,
-                dialog: None,
-                exec_code: String::new(),
-                exec_scope: "global".into(),
-                locals_scope: String::new(),
-                follow_messages: true,
-                status: String::new(),
-            },
-        })
+        let win = EguiWindow::new(el, attrs)?;
+        Ok(DebugWindow { win, link, st: State::new() })
     }
 
     pub fn outer_width(&self) -> u32 {
-        self.window.outer_size().width
+        self.win.window.outer_size().width
     }
 
     /// Moves the window to the right of `game` (kept on its monitor).
@@ -205,22 +151,22 @@ impl DebugWindow {
         let mut x = p.x + game.outer_size().width as i32 + gap as i32;
         let mut y = p.y;
         if let Some(mon) = game.current_monitor() {
-            let (mp, ms, os) = (mon.position(), mon.size(), self.window.outer_size());
+            let (mp, ms, os) = (mon.position(), mon.size(), self.win.window.outer_size());
             x = x.min(mp.x + ms.width as i32 - os.width as i32).max(mp.x);
             // keep it above the task bar (about 48 logical pixels)
             let bottom = mp.y + ms.height as i32 - (48.0 * mon.scale_factor()) as i32;
             y = y.min(bottom - os.height as i32).max(mp.y);
         }
-        self.window.set_outer_position(winit::dpi::PhysicalPosition::new(x, y));
+        self.win.window.set_outer_position(winit::dpi::PhysicalPosition::new(x, y));
     }
 
     pub fn id(&self) -> WindowId {
-        self.window.id()
+        self.win.id()
     }
 
     /// New data from the game thread.
     pub fn wake(&self) {
-        self.window.request_redraw();
+        self.win.window.request_redraw();
     }
 
     pub fn event(&mut self, ev: &WindowEvent) {
@@ -234,14 +180,9 @@ impl DebugWindow {
                 self.link.lock().unwrap().commands.push(Command::End);
                 return;
             }
-            WindowEvent::Resized(s) => {
-                self.surface.resize(&self.context, NonZeroU32::new(s.width.max(1)).unwrap(), NonZeroU32::new(s.height.max(1)).unwrap());
-            }
             _ => {}
         }
-        if self.egui.on_window_event(&self.window, ev).repaint {
-            self.window.request_redraw();
-        }
+        self.win.event(ev);
     }
 
     fn redraw(&mut self) {
@@ -257,86 +198,22 @@ impl DebugWindow {
                 self.st.messages.push_back(m);
             }
         }
-        if !self.context.is_current() {
-            let _ = self.context.make_current(&self.surface);
-        }
         let mut cmds = Vec::new();
         let st = &mut self.st;
-        self.egui.run(&self.window, |ui| debug_ui(ui, st, &mut cmds));
+        self.win.redraw(|ui| debug_ui(ui, st, &mut cmds));
         let wants = Wants {
             globals: st.tab == Tab::Globals,
             instances: st.tab == Tab::Instances,
             locals: (st.tab == Tab::Locals && !st.locals_scope.trim().is_empty()).then(|| Scope::parse(&st.locals_scope)),
         };
-        {
-            let mut l = self.link.lock().unwrap();
-            if l.wants != wants {
-                l.wants = wants;
-                l.refresh = true;
-            }
-            if !cmds.is_empty() {
-                l.commands.extend(cmds);
-            }
+        let mut l = self.link.lock().unwrap();
+        if l.wants != wants {
+            l.wants = wants;
+            l.refresh = true;
         }
-        use glow::HasContext;
-        // SAFETY: the context is current on this thread.
-        unsafe {
-            self.gl.clear_color(0.94, 0.94, 0.94, 1.0);
-            self.gl.clear(glow::COLOR_BUFFER_BIT);
+        if !cmds.is_empty() {
+            l.commands.extend(cmds);
         }
-        self.egui.paint(&self.window);
-        let _ = self.surface.swap_buffers(&self.context);
-        if self.egui.egui_ctx.has_requested_repaint() {
-            self.window.request_redraw();
-        }
-    }
-}
-
-impl Drop for DebugWindow {
-    fn drop(&mut self) {
-        if !self.context.is_current() {
-            let _ = self.context.make_current(&self.surface);
-        }
-        self.egui.destroy();
-    }
-}
-
-/// An OpenGL 3.3 context for the window, current on this (the main) thread,
-/// without vsync (the main thread also serves the game window).
-fn create_gl(win: &Window) -> Result<(Surface<WindowSurface>, PossiblyCurrentContext, Display, glow::Context), String> {
-    use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
-    let rwh = win.window_handle().map_err(|e| e.to_string())?.as_raw();
-    let rdh = win.display_handle().map_err(|e| e.to_string())?.as_raw();
-    #[cfg(windows)]
-    let pref = DisplayApiPreference::Wgl(Some(rwh));
-    #[cfg(target_os = "macos")]
-    let pref = DisplayApiPreference::Cgl;
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let pref = DisplayApiPreference::Egl;
-    let size = win.inner_size();
-    let e = |e: glutin::error::Error| e.to_string();
-    // SAFETY: the handles stay valid while the window lives; DebugWindow drops
-    // the surface and context before the window.
-    unsafe {
-        let display = Display::new(rdh, pref).map_err(e)?;
-        let tmpl = ConfigTemplateBuilder::new().compatible_with_native_window(rwh).with_alpha_size(8).build();
-        let config = display
-            .find_configs(tmpl)
-            .map_err(e)?
-            .reduce(|a, b| if b.num_samples() < a.num_samples() { b } else { a })
-            .ok_or("no suitable OpenGL pixel format")?;
-        let attrs = ContextAttributesBuilder::new().with_context_api(ContextApi::OpenGl(Some(Version::new(3, 3)))).build(Some(rwh));
-        let ctx = display.create_context(&config, &attrs).map_err(e)?;
-        let sattrs = SurfaceAttributesBuilder::<WindowSurface>::new().build(
-            rwh,
-            NonZeroU32::new(size.width.max(1)).unwrap(),
-            NonZeroU32::new(size.height.max(1)).unwrap(),
-        );
-        let surface = display.create_window_surface(&config, &sattrs).map_err(e)?;
-        let context = ctx.make_current(&surface).map_err(e)?;
-        let _ = surface.set_swap_interval(&context, SwapInterval::DontWait);
-        let gl = glow::Context::from_loader_function_cstr(|s| display.get_proc_address(s));
-        Ok((surface, context, display, gl))
     }
 }
 
@@ -344,13 +221,23 @@ fn create_gl(win: &Window) -> Result<(Surface<WindowSurface>, PossiblyCurrentCon
 
 fn debug_ui(ui: &mut egui::Ui, st: &mut State, cmds: &mut Vec<Command>) {
     let ctx = ui.ctx().clone();
-    let chrome = egui::Frame::new().fill(egui::Color32::from_rgb(240, 240, 240)).inner_margin(egui::Margin::symmetric(4, 2));
+    // the same chrome as the IDE's main window: grey panels, an etched line under
+    // the menu bar, a classic tab strip and a white, framed list area
+    let chrome = egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(2, 1));
     egui::Panel::top("dbg-menu").frame(chrome).show(ui, |ui| menu_bar(ui, st, cmds));
-    egui::Panel::top("dbg-toolbar").frame(chrome.inner_margin(egui::Margin::symmetric(4, 3))).show(ui, |ui| toolbar(ui, st, cmds));
-    egui::Panel::bottom("dbg-status").frame(chrome.inner_margin(egui::Margin::symmetric(6, 3))).show(ui, |ui| status_bar(ui, st));
+    egui::Panel::top("dbg-toolbar")
+        .frame(chrome.inner_margin(egui::Margin { left: 4, right: 4, top: 2, bottom: 3 }))
+        .show(ui, |ui| {
+            let r = ui.max_rect();
+            ui.painter().hline(r.x_range(), r.top() - 1.5, egui::Stroke::new(1.0, theme::SHADOW));
+            ui.painter().hline(r.x_range(), r.top() - 0.5, egui::Stroke::new(1.0, egui::Color32::WHITE));
+            toolbar(ui, st, cmds)
+        });
+    egui::Panel::bottom("dbg-status").frame(chrome.inner_margin(egui::Margin::symmetric(2, 2))).show(ui, |ui| status_bar(ui, st));
     egui::Panel::bottom("dbg-exec").frame(chrome.inner_margin(egui::Margin::symmetric(6, 4))).show(ui, |ui| exec_bar(ui, st, cmds));
-    egui::Panel::top("dbg-tabs").frame(chrome.inner_margin(egui::Margin { left: 4, right: 4, top: 2, bottom: 0 })).show(ui, |ui| {
+    egui::Panel::top("dbg-tabs").frame(chrome.inner_margin(egui::Margin { left: 6, right: 6, top: 4, bottom: 0 })).show(ui, |ui| {
         ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
             for (t, label) in [
                 (Tab::Watches, "Watches"),
                 (Tab::Messages, "Messages"),
@@ -359,14 +246,20 @@ fn debug_ui(ui: &mut egui::Ui, st: &mut State, cmds: &mut Vec<Command>) {
                 (Tab::Instances, "Instances"),
                 (Tab::Info, "Room info"),
             ] {
-                if ui.selectable_label(st.tab == t, label).clicked() {
+                if tab(ui, st.tab == t, label).clicked() {
                     st.tab = t;
                 }
             }
         });
     });
     egui::CentralPanel::default()
-        .frame(egui::Frame::new().fill(egui::Color32::WHITE).stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(130, 135, 144))).inner_margin(4))
+        .frame(
+            egui::Frame::new()
+                .fill(egui::Color32::WHITE)
+                .stroke(egui::Stroke::new(1.0, theme::LIST_FRAME))
+                .inner_margin(4)
+                .outer_margin(egui::Margin { left: 6, right: 6, top: 0, bottom: 2 }),
+        )
         .show(ui, |ui| match st.tab {
             Tab::Watches => watches(ui, st, cmds),
             Tab::Messages => messages(ui, st),
@@ -456,38 +349,68 @@ fn delete_selected(st: &mut State, cmds: &mut Vec<Command>) {
     }
 }
 
+/// A classic tab of the tab strip: fixed size from its text; the selected tab is
+/// white, taller and joins the list area below. Hover only changes the fill.
+fn tab(ui: &mut egui::Ui, selected: bool, label: &str) -> egui::Response {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let galley = ui.painter().layout_no_wrap(label.to_string(), font, theme::INK);
+    let size = egui::vec2(galley.size().x + 16.0, 22.0);
+    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, selected, label));
+    let p = ui.painter();
+    let r = if selected { rect } else { rect.with_min_y(rect.min.y + 2.0) };
+    let fill = if selected {
+        egui::Color32::WHITE
+    } else if resp.hovered() {
+        theme::HOVER_FILL
+    } else {
+        egui::Color32::from_gray(228)
+    };
+    // extend 1px down so the selected tab covers the list frame below it
+    let body = if selected { r.with_max_y(r.max.y + 1.0) } else { r };
+    p.rect_filled(body, 0.0, fill);
+    let edge = egui::Stroke::new(1.0, theme::LIST_FRAME);
+    let x0 = r.min.x + 0.5;
+    let x1 = r.max.x - 0.5;
+    let y0 = r.min.y + 0.5;
+    p.line_segment([egui::pos2(x0, body.max.y), egui::pos2(x0, y0)], edge);
+    p.line_segment([egui::pos2(x0, y0), egui::pos2(x1, y0)], edge);
+    p.line_segment([egui::pos2(x1, y0), egui::pos2(x1, body.max.y)], edge);
+    let text_pos = egui::pos2(rect.center().x - galley.size().x / 2.0, r.center().y - galley.size().y / 2.0);
+    p.galley(text_pos, galley, theme::INK);
+    resp
+}
+
 fn toolbar(ui: &mut egui::Ui, st: &mut State, cmds: &mut Vec<Command>) {
     ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 1.0;
         let paused = st.snap.info.paused;
-        let tb = |ui: &mut egui::Ui, text: &str, tip: &str, on: bool| ui.add_enabled(on, egui::Button::new(text).min_size(egui::vec2(28.0, 24.0))).on_hover_text(tip);
-        let run = egui::RichText::new("▶").color(egui::Color32::from_rgb(0, 140, 0));
-        if ui.add_enabled(paused, egui::Button::new(run).min_size(egui::vec2(28.0, 24.0))).on_hover_text("Run / continue the game").clicked() {
+        if tool_button(ui, Glyph::Play, "Run / continue the game", paused).clicked() {
             cmds.push(Command::Run);
         }
-        if tb(ui, "⏸", "Pause the game", !paused).clicked() {
+        if tool_button(ui, Glyph::Pause, "Pause the game", !paused).clicked() {
             cmds.push(Command::Pause);
         }
-        if tb(ui, "⏭", "Step (one step while paused)", true).clicked() {
+        if tool_button(ui, Glyph::Step, "Step (one step while paused)", true).clicked() {
             cmds.push(Command::Step);
         }
-        if tb(ui, "⟲", "Restart the game", true).clicked() {
+        if tool_button(ui, Glyph::Restart, "Restart the game", true).clicked() {
             cmds.push(Command::Restart);
         }
-        let end = egui::RichText::new("■").color(egui::Color32::from_rgb(200, 0, 0));
-        if ui.add(egui::Button::new(end).min_size(egui::vec2(28.0, 24.0))).on_hover_text("End the game").clicked() {
+        if tool_button(ui, Glyph::Stop, "End the game", true).clicked() {
             cmds.push(Command::End);
         }
-        ui.separator();
-        if tb(ui, "+", "Add a watch expression", true).clicked() {
+        tool_separator(ui);
+        if tool_button(ui, Glyph::Add, "Add a watch expression", true).clicked() {
             st.dialog = Some(Dialog::Watch(None, String::new(), "global".into()));
         }
-        if tb(ui, "✏", "Change the selected expression", st.selected.is_some()).clicked() {
+        if tool_button(ui, Glyph::Edit, "Change the selected expression", st.selected.is_some()).clicked() {
             change_selected(st);
         }
-        if tb(ui, "✖", "Delete the selected expression", st.selected.is_some()).clicked() {
+        if tool_button(ui, Glyph::Delete, "Delete the selected expression", st.selected.is_some()).clicked() {
             delete_selected(st, cmds);
         }
-        if tb(ui, "🗑", "Clear all expressions", !st.snap.watches.is_empty()).clicked() {
+        if tool_button(ui, Glyph::Clear, "Clear all expressions", !st.snap.watches.is_empty()).clicked() {
             cmds.push(Command::ClearWatches);
             st.selected = None;
         }
@@ -497,6 +420,7 @@ fn toolbar(ui: &mut egui::Ui, st: &mut State, cmds: &mut Vec<Command>) {
 fn status_bar(ui: &mut egui::Ui, st: &State) {
     let i = &st.snap.info;
     ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
         let state = if i.ended {
             "Ended"
         } else if i.paused {
@@ -504,17 +428,17 @@ fn status_bar(ui: &mut egui::Ui, st: &State) {
         } else {
             "Running"
         };
-        ui.label(egui::RichText::new(state).strong());
-        ui.separator();
-        ui.label(format!("FPS: {}", i.fps.round()));
-        ui.separator();
-        ui.label(format!("Instances: {}", i.instances));
-        ui.separator();
-        ui.label(format!("Under mouse: {}", if i.under_mouse < 0 { "none".to_string() } else { i.under_mouse.to_string() }));
-        if !st.status.is_empty() {
-            ui.separator();
-            ui.label(&st.status);
-        }
+        let cell = gm_ui::chrome::status_cell;
+        cell(ui, 70.0, state);
+        cell(ui, 70.0, &format!("FPS: {}", i.fps.round()));
+        cell(ui, 100.0, &format!("Instances: {}", i.instances));
+        let rest = if st.status.is_empty() {
+            format!("Under mouse: {}", if i.under_mouse < 0 { "none".to_string() } else { i.under_mouse.to_string() })
+        } else {
+            st.status.clone()
+        };
+        let w = ui.available_width().max(40.0);
+        cell(ui, w, &rest);
     });
 }
 
@@ -732,13 +656,12 @@ fn info(ui: &mut egui::Ui, st: &State) {
 
 fn dialog(ctx: &egui::Context, st: &mut State, cmds: &mut Vec<Command>) {
     let Some(d) = &mut st.dialog else { return };
-    let mut close = false;
+    let close;
     match d {
         Dialog::Watch(idx, expr, scope) => {
             let title = if idx.is_some() { "Change Watch Expression" } else { "Add Watch Expression" };
-            egui::Modal::new(egui::Id::new("watch-dlg")).show(ctx, |ui| {
+            let d = gm_ui::chrome::dialog(ctx, egui::Id::new("watch-dlg"), title, |ui| {
                 ui.set_width(360.0);
-                ui.heading(title);
                 ui.label("Expression:");
                 let r = ui.add(egui::TextEdit::singleline(expr).font(egui::TextStyle::Monospace).desired_width(f32::INFINITY));
                 if !r.has_focus() && expr.is_empty() {
@@ -746,48 +669,59 @@ fn dialog(ctx: &egui::Context, st: &mut State, cmds: &mut Vec<Command>) {
                 }
                 ui.label("Evaluate in (global, an instance id, or an object name):");
                 ui.add(egui::TextEdit::singleline(scope).desired_width(f32::INFINITY));
+                ui.add_space(6.0);
                 let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
-                ui.horizontal(|ui| {
-                    if ui.button("OK").clicked() || enter {
-                        if !expr.trim().is_empty() {
-                            let s = Scope::parse(scope);
-                            cmds.push(match idx {
-                                Some(i) => Command::ChangeWatch(*i, expr.clone(), s),
-                                None => Command::AddWatch(expr.clone(), s),
-                            });
-                        }
-                        close = true;
-                    }
-                    if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                        close = true;
-                    }
-                });
+                let r = ok_cancel(ui);
+                let ok = r == Some(true) || (r.is_none() && enter);
+                if ok && !expr.trim().is_empty() {
+                    let s = Scope::parse(scope);
+                    cmds.push(match idx {
+                        Some(i) => Command::ChangeWatch(*i, expr.clone(), s),
+                        None => Command::AddWatch(expr.clone(), s),
+                    });
+                }
+                ok || r == Some(false)
             });
+            close = d.inner || d.close;
         }
         Dialog::Speed(text) => {
-            egui::Modal::new(egui::Id::new("speed-dlg")).show(ctx, |ui| {
-                ui.heading("Set Game Speed");
+            let d = gm_ui::chrome::dialog(ctx, egui::Id::new("speed-dlg"), "Set Game Speed", |ui| {
                 ui.horizontal(|ui| {
                     ui.label("Room speed (steps per second):");
                     ui.add(egui::TextEdit::singleline(text).desired_width(60.0));
                 });
-                ui.horizontal(|ui| {
-                    if ui.button("OK").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        if let Ok(v) = text.trim().parse::<f64>() {
-                            cmds.push(Command::SetSpeed(v));
-                        }
-                        close = true;
+                ui.add_space(6.0);
+                let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let r = ok_cancel(ui);
+                if r == Some(true) || (r.is_none() && enter) {
+                    if let Ok(v) = text.trim().parse::<f64>() {
+                        cmds.push(Command::SetSpeed(v));
                     }
-                    if ui.button("Cancel").clicked() {
-                        close = true;
-                    }
-                });
+                }
+                r.is_some() || enter
             });
+            close = d.inner || d.close;
         }
     }
     if close {
         st.dialog = None;
     }
+}
+
+/// Right-aligned OK / Cancel buttons: Some(true) = OK, Some(false) = Cancel.
+fn ok_cancel(ui: &mut egui::Ui) -> Option<bool> {
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        let cancel = gm_ui::chrome::dialog_button(ui, "Cancel", false).clicked();
+        let ok = gm_ui::chrome::dialog_button(ui, "OK", true).clicked();
+        if ok {
+            Some(true)
+        } else if cancel {
+            Some(false)
+        } else {
+            None
+        }
+    })
+    .inner
 }
 
 /// Watch files: one watch per line, `scope<TAB>expression`.
@@ -809,5 +743,94 @@ fn save_watches(st: &mut State) {
     let t: String = st.snap.watches.iter().map(|(e, s, _)| format!("{}\t{}\n", s, e)).collect();
     if let Err(e) = std::fs::write(&p, t) {
         st.status = format!("cannot write {}: {}", p.display(), e);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui_kittest::kittest::{by, NodeT, Queryable};
+
+    fn state(tab: Tab) -> State {
+        let mut st = State::new();
+        st.tab = tab;
+        st.snap.watches = vec![
+            ("x".into(), "global".into(), Ok("12".into())),
+            ("score * 2".into(), "100001".into(), Err("unknown variable".into())),
+        ];
+        st.snap.globals = vec![("score".into(), "10".into()), ("lives".into(), "3".into())];
+        st.snap.instances = (0..4)
+            .map(|k| InstanceRow { id: 100001 + k, object: format!("obj{k}"), x: 1.0, y: 2.0, depth: 0.0, sprite: "spr".into() })
+            .collect();
+        st.messages.extend(["hello".to_string(), "world".to_string()]);
+        st.snap.info.room = "room0".into();
+        st
+    }
+
+    fn harness(tab: Tab) -> egui_kittest::Harness<'static, State> {
+        let mut first = true;
+        egui_kittest::Harness::builder().with_size(egui::vec2(W as f32, H as f32)).build_ui_state(
+            move |ui, st: &mut State| {
+                if first {
+                    gm_ui::theme::apply(ui.ctx());
+                    first = false;
+                }
+                let mut cmds = Vec::new();
+                debug_ui(ui, st, &mut cmds);
+            },
+            state(tab),
+        )
+    }
+
+    fn rects(h: &egui_kittest::Harness<'_, State>) -> Vec<(String, egui::Rect)> {
+        h.query_all(by().recursive(true))
+            .filter_map(|n| {
+                let l = n.accesskit_node().label()?;
+                (!l.is_empty()).then(|| (l, n.rect()))
+            })
+            .collect()
+    }
+
+    /// Hovering any widget of the debug window (toolbar buttons, tabs, list rows,
+    /// buttons) never changes the size or position of any widget.
+    #[test]
+    fn hover_does_not_move_widgets() {
+        for tab in [Tab::Watches, Tab::Messages, Tab::Globals, Tab::Instances, Tab::Info] {
+            let mut h = harness(tab);
+            h.run_steps(3);
+            h.hover_at(egui::pos2(W as f32 - 3.0, H as f32 - 3.0));
+            h.run_steps(2);
+            let before = rects(&h);
+            assert!(before.len() >= 15, "{before:?}");
+            for (label, r) in &before {
+                h.hover_at(r.center());
+                h.run_steps(2);
+                let after = rects(&h);
+                assert_eq!(after.len(), before.len(), "hovering {label:?}");
+                for ((l0, r0), (_, r1)) in before.iter().zip(&after) {
+                    assert!(
+                        (r0.min - r1.min).length() < 0.01 && (r0.max - r1.max).length() < 0.01,
+                        "hovering {label:?} moved {l0:?} from {r0:?} to {r1:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The toolbar's run button continues a paused game; tabs switch.
+    #[test]
+    fn toolbar_and_tabs() {
+        let mut h = harness(Tab::Watches);
+        h.state_mut().snap.info.paused = true;
+        h.run_steps(2);
+        h.get_by_label("Globals").click();
+        h.run_steps(2);
+        assert!(h.state().tab == Tab::Globals);
+        h.get_by_label("Add a watch expression").click();
+        h.run_steps(2);
+        assert!(matches!(h.state().dialog, Some(Dialog::Watch(None, _, _))));
+        h.get_by_label("Cancel").click();
+        h.run_steps(2);
+        assert!(h.state().dialog.is_none());
     }
 }

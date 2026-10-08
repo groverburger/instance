@@ -143,17 +143,18 @@ fn temp_game_file() {
     crate::run::cleanup();
 }
 
-/// Runs from the IDE get their own console; debug runs add `--debug`.
+/// Runs from the IDE never get a console (output goes to the Output Log); debug
+/// runs add `--debug`.
 #[test]
 fn runner_arguments() {
     let g = std::path::Path::new("game.gm81");
     assert_eq!(
         crate::run::runner_args(g, false),
-        ["game.gm81", "--new-console"]
+        ["game.gm81", "--no-console"]
     );
     assert_eq!(
         crate::run::runner_args(g, true),
-        ["game.gm81", "--new-console", "--debug"]
+        ["game.gm81", "--no-console", "--debug"]
     );
 }
 
@@ -179,9 +180,50 @@ fn ui_debug_run_passes_debug_flag() {
     let (args, msgs) = h.state().test_last_run();
     assert!(args[0].ends_with("game.gm81"), "{args:?}");
     assert!(args.iter().any(|a| a == "--debug"), "{args:?}");
-    assert!(args.iter().any(|a| a == "--new-console"), "{args:?}");
+    assert!(args.iter().any(|a| a == "--no-console"), "{args:?}");
     assert!(msgs.iter().any(|m| m.contains("Cannot start")), "{msgs:?}");
     crate::run::cleanup();
+}
+
+/// Runner output with an error: the status bar and toolbar signal it; the Output Log
+/// opens from the status bar (and Window > Output Log), shows every line and marks
+/// the errors as seen; scrolled to the end with many lines it does not panic.
+#[test]
+fn ui_output_log() {
+    use egui_kittest::kittest::Queryable;
+    let mut h = harness();
+    let log = h.state().test_log();
+    {
+        let mut l = log.lock().unwrap();
+        l.ide("--- Running test ---");
+        for i in 0..5000 {
+            l.runner_line(&format!("[debug] line {i}"), true);
+        }
+        for s in ["ERROR in", "action number 1", "of Create Event", "for object o:", "", "boom"] {
+            l.runner_line(s, true);
+        }
+    }
+    h.run_steps(3);
+    assert!(h.query_by_label_contains("1 new error - view log").is_some());
+    h.get_by_label_contains("1 new error - view log").click();
+    h.run_steps(4);
+    assert!(h.state().test_log_open());
+    assert_eq!(log.lock().unwrap().unseen_errors(), 0);
+    assert!(h.query_by_label_contains("1 new error - view log").is_none());
+    assert!(h.query_by_label("boom").is_some(), "the end of the log is shown");
+    // more output while open keeps the view at the end
+    log.lock().unwrap().runner_line("[debug] later", true);
+    h.run_steps(3);
+    assert!(h.query_by_label("[debug] later").is_some());
+    h.get_by_label("Clear the log").click();
+    h.run_steps(2);
+    assert_eq!(log.lock().unwrap().len(), 0);
+    // Window > Output Log toggles it
+    h.get_by_label("Window").click();
+    h.run_steps(2);
+    h.get_by_label("Output Log").click();
+    h.run_steps(2);
+    assert!(!h.state().test_log_open());
 }
 
 /// Render the whole IDE headlessly with every form of a sample open: no panics, and

@@ -1,6 +1,7 @@
 //! Run normally / Run in Debug mode (specs/ide.md §20.1, §20.3): save the project
 //! to a temporary `.gm81` and launch the runner executable with it. The runner
-//! opens a console window of its own for the game's output (`--new-console`);
+//! never shows a console (`--no-console`, and no console window on Windows): its
+//! stdout / stderr are piped into the IDE's Output Log (`output_log.rs`);
 //! debug runs add `--debug` (the runner's Debug Information window).
 
 use std::ffi::OsString;
@@ -63,7 +64,7 @@ pub fn write_temp_game(p: &Project) -> Result<PathBuf, String> {
 
 /// Runner arguments for playing `game`.
 pub fn runner_args(game: &Path, debug: bool) -> Vec<OsString> {
-    let mut a: Vec<OsString> = vec![game.into(), "--new-console".into()];
+    let mut a: Vec<OsString> = vec![game.into(), "--no-console".into()];
     if debug {
         a.push("--debug".into());
     }
@@ -95,7 +96,18 @@ pub fn prepare(
         .map(Path::to_path_buf)
         .unwrap_or_else(temp_dir);
     let mut c = Command::new(&exe);
-    c.args(runner_args(&game, debug)).current_dir(workdir);
+    c.args(runner_args(&game, debug))
+        .current_dir(workdir)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    #[cfg(windows)]
+    {
+        // never a console window, even if the runner were a console program
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        c.creation_flags(CREATE_NO_WINDOW);
+    }
     Ok(c)
 }
 

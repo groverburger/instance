@@ -34,8 +34,10 @@ cargo test --release -p gm-runner --test corpus -- --ignored --nocapture   # run
 
 On Windows the runner is a GUI program: a standalone game made with Create Executable
 never opens a console, while runs of a project file print `show_debug_message` output,
-errors and runner info to the calling console (or a new console window; the IDE always
-gives each run its own console). `--no-console` turns this off. Shells do not wait for
+errors and runner info to the calling console (or a new console window). `--no-console`
+turns this off; the IDE uses it and pipes the output into its Output Log (Window >
+Output Log), so games run from the IDE never show a console. Runtime errors appear in
+a GameMaker-style error dialog (Ignore / Abort) as the game's error settings ask. Shells do not wait for
 GUI programs, so scripts should redirect the output (`2>&1 | ...`) or use
 `Start-Process -Wait`.
 

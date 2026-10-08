@@ -1783,6 +1783,7 @@ dependencies = [
  "fontdue",
  "gm-brand",
  "gm-format",
+ "gm-ui",
  "image",
  "js-sys",
  "rfd",
@@ -1810,6 +1811,7 @@ dependencies = [
  "egui",
  "egui-winit",
  "egui_glow",
+ "egui_kittest",
  "fontdue",
  "gilrs",
  "glow",
@@ -1818,6 +1820,7 @@ dependencies = [
  "gm-dllcall",
  "gm-format",
  "gm-net",
+ "gm-ui",
  "gml",
  "js-sys",
  "libloading",
@@ -1839,6 +1842,14 @@ dependencies = [
 [[package]]
 name = "gm-testdll"
 version = "0.1.0"
+
+[[package]]
+name = "gm-ui"
+version = "0.1.0"
+dependencies = [
+ "egui",
+ "egui_kittest",
+]
 
 [[package]]
 name = "gm81-dllhost32"
