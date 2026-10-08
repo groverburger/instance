@@ -708,6 +708,11 @@ impl Game {
                     let obj = i.object_index;
                     if let Some((owner, list)) = self.handler(obj, ev::DRAW, 0) {
                         self.run_handler(vm, id, owner, &list, ev::DRAW, 0, id)?;
+                        if self.pending.is_some() {
+                            // room change / end: the rest of the step is abandoned (§3.2a)
+                            self.gfx.d3d.depth = 0.0;
+                            return Ok(());
+                        }
                     } else {
                         let i = self.inst(id).unwrap();
                         let (s, ii, x, y, xs, ys, a, c, al) = (
@@ -787,7 +792,7 @@ impl Game {
                 let ext = if vs.angle != 0.0 { (vs.wview.max(vs.hview)) / 2.0 } else { 0.0 };
                 let area = (vs.xview - ext, vs.yview - ext, vs.xview + vs.wview + ext, vs.yview + vs.hview + ext);
                 let r = self.draw_pass(vm, area);
-                if r.is_err() {
+                if r.is_err() || self.pending.is_some() {
                     self.gfx.pass_xf = Xf::IDENTITY;
                     self.gfx.pass_clip = full;
                     return r;
@@ -829,10 +834,11 @@ impl Game {
     }
 
     /// Plays a room transition between the old frame and the new room (§3.4).
-    pub fn play_transition(&mut self, vm: &mut Vm, old: Canvas, kind: i32) -> Result<(), Error> {
+    /// Returns whether it played (the back buffer then holds the new room).
+    pub fn play_transition(&mut self, vm: &mut Vm, old: Canvas, kind: i32) -> Result<bool, Error> {
         // (the browser cannot show frames from inside a step: no transition there)
         if self.gfx.present.is_none() || kind == 0 || cfg!(target_arch = "wasm32") {
-            return Ok(());
+            return Ok(false);
         }
         self.draw_frame(vm)?;
         let new = self.gfx.read_back();
@@ -905,7 +911,7 @@ impl Game {
                 std::thread::sleep(dt - el);
             }
         }
-        Ok(())
+        Ok(true)
     }
 
     /// `surface_set_target`: installs the surface's orthographic projection,

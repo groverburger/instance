@@ -288,14 +288,18 @@ impl Game {
                 self.instances = Vec::new();
             }
         }
-        // 5. carried-over persistent instances
-        self.instances.extend(carried);
+        // 5./6. (runtime.md §3.2a rule 2) the room's placed instances are all added
+        // to the list first, without events; a placed instance whose id already
+        // exists (a carried persistent instance) is not created again. Carried
+        // persistent instances follow the placed (or restored) ones.
         self.reindex();
-        self.compute_region();
-        // 6. create placed instances
+        let mut placed: Vec<(i32, i32, i32)> = Vec::new(); // (id, stored id, object)
         if !restored {
             for pi in &rres.instances {
                 if self.object(pi.object).is_none() {
+                    continue;
+                }
+                if pi.id >= gml::special::FIRST_INSTANCE_ID && carried.iter().any(|c: &crate::instance::Instance| c.id == pi.id) {
                     continue;
                 }
                 let id = if pi.id >= gml::special::FIRST_INSTANCE_ID && !self.inst_index.contains_key(&pi.id) {
@@ -304,26 +308,38 @@ impl Game {
                     self.alloc_id()
                 };
                 self.add_instance(id, pi.object, pi.x as f64, pi.y as f64);
-                let cc = self.rooms[new_room as usize]
-                    .as_ref()
-                    .and_then(|r| r.inst_creation.get(&pi.id).cloned());
-                if let Some(p) = cc {
-                    let saved = self.ev;
-                    self.ev = crate::events::EventCtx {
-                        etype: ev::CREATE,
-                        number: 0,
-                        object: pi.object,
-                        action: 0,
-                    };
-                    let r = vm.run(self, &p, Ctx::new(id, id), &[]);
-                    self.ev = saved;
-                    if let Err(e) = r {
-                        self.report_error(e, 0)?;
-                    }
+                placed.push((id, pi.id, pi.object));
+            }
+        }
+        for c in carried {
+            self.push_instance(c);
+        }
+        self.reindex();
+        self.compute_region();
+        // then per placed instance: its creation code, then its Create event
+        for (id, stored, obj) in placed {
+            if !self.inst(id).map(|i| i.alive()).unwrap_or(false) {
+                continue;
+            }
+            let cc = self.rooms[new_room as usize]
+                .as_ref()
+                .and_then(|r| r.inst_creation.get(&stored).cloned());
+            if let Some(p) = cc {
+                let saved = self.ev;
+                self.ev = crate::events::EventCtx {
+                    etype: ev::CREATE,
+                    number: 0,
+                    object: obj,
+                    action: 0,
+                };
+                let r = vm.run(self, &p, Ctx::new(id, id), &[]);
+                self.ev = saved;
+                if let Err(e) = r {
+                    self.report_error(e, 0)?;
                 }
-                if self.inst(id).map(|i| !i.destroyed).unwrap_or(false) {
-                    self.run_event(vm, id, ev::CREATE, 0, id)?;
-                }
+            }
+            if self.inst(id).map(|i| !i.destroyed).unwrap_or(false) {
+                self.run_event(vm, id, ev::CREATE, 0, id)?;
             }
         }
         // 7. game start
@@ -348,11 +364,20 @@ impl Game {
         // 10. views, caption, transition
         self.update_views();
         self.window_dirty = true;
+        let mut drawn = false;
         if let Some(old) = old_image {
             let kind = std::mem::take(&mut self.transition_kind);
-            self.play_transition(vm, old, kind)?;
+            drawn = self.play_transition(vm, old, kind)?;
         } else {
             self.transition_kind = 0;
+        }
+        // 11. a frame is drawn right after entering the room, before its first
+        // step (runtime.md §3.2a rule 3); not when another change is already
+        // pending (it is performed at once, by the caller).
+        if !drawn && self.pending.is_none() && self.automatic_draw {
+            let t0 = web_time::Instant::now();
+            self.draw_frame(vm)?;
+            self.draw_time += t0.elapsed().as_secs_f64();
         }
         Ok(())
     }

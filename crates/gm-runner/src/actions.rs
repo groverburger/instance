@@ -269,12 +269,29 @@ fn parse_node(
 
 /// Runs an action list for instance `self_id`.
 pub fn execute(g: &mut Game, vm: &mut Vm, list: &ActionList, self_id: i32, other: i32) -> Result<(), Error> {
+    g.list_depth += 1;
+    let mut r = Ok(());
     for n in &list.nodes {
-        if exec_node(g, vm, n, self_id, other)? == Flow::Exit {
-            break;
+        match exec_node(g, vm, n, self_id, other) {
+            Ok(Flow::Next) => {}
+            Ok(Flow::Exit) => break,
+            Err(e) => {
+                r = Err(e);
+                break;
+            }
         }
     }
-    Ok(())
+    g.list_depth -= 1;
+    // lists started from now on at this depth were not running at the request
+    g.abort_at = g.abort_at.min(g.list_depth);
+    r
+}
+
+/// Whether a room change requested while this list was running means its
+/// remaining actions are skipped (runtime.md §3.2a rule 1).
+#[inline]
+fn aborted(g: &Game) -> bool {
+    g.abort_at >= g.list_depth
 }
 
 fn exec_node(g: &mut Game, vm: &mut Vm, n: &Node, self_id: i32, other: i32) -> Result<Flow, Error> {
@@ -291,7 +308,7 @@ fn exec_node(g: &mut Game, vm: &mut Vm, n: &Node, self_id: i32, other: i32) -> R
         }
         Node::Act(a) => {
             run_act(g, vm, a, self_id, other)?;
-            Ok(Flow::Next)
+            Ok(if aborted(g) { Flow::Exit } else { Flow::Next })
         }
         Node::Shared(l) => {
             for c in &l.nodes {
@@ -303,6 +320,9 @@ fn exec_node(g: &mut Game, vm: &mut Vm, n: &Node, self_id: i32, other: i32) -> R
         }
         Node::If { cond, then, els } => {
             let r = run_act(g, vm, cond, self_id, other)?;
+            if aborted(g) {
+                return Ok(Flow::Exit);
+            }
             if r {
                 exec_node(g, vm, then, self_id, other)
             } else if let Some(e) = els {
