@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GM81 Clean IDE</title>
+  <link rel="icon" href="data:,">
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #f0f0f0; }
+    #ide_canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+    #loading {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      font: 15px system-ui, -apple-system, "Segoe UI", sans-serif; color: #333; background: #f0f0f0;
+    }
+    #loading.error { color: #a00; white-space: pre-wrap; padding: 24px; }
+  </style>
+</head>
+<body>
+  <canvas id="ide_canvas"></canvas>
+  <div id="loading">Loading the GM81 Clean IDE&hellip;</div>
+  <script src="ide.js"></script>
+  <script type="module">
+    import init, { start_ide } from "./pkg/gm_ide.js";
+    try {
+      await init();
+      await start_ide("ide_canvas");
+    } catch (e) {
+      console.error(e);
+      const l = document.getElementById("loading");
+      if (l) {
+        l.classList.add("error");
+        l.textContent = "The IDE could not start: " + e +
+          "\n\nIt needs a browser with WebAssembly and WebGL2.";
+      }
+    }
+  </script>
+</body>
+</html>
