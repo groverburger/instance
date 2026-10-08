@@ -93,9 +93,13 @@ pub static SCRIPTS: &[CompatScript] = &[
     s!("is_ptr", &[], "return false;"),
     s!("is_int32", &[], "return false;"),
     s!("is_int64", &[], "return false;"),
-    s!("array_length_1d", &[], "// GM 8.1 arrays are not values; the length cannot be determined.\nreturn 0;"),
+    s!("array_length_1d", &[], "// GM 8.1 arrays are not values; the length cannot be determined here.\nreturn 0;"),
     s!("array_length_2d", &[], "return 0;"),
     s!("array_height_2d", &[], "return 0;"),
+    // array_length_1d(v) with a variable argument is rewritten to these (owner, "name").
+    s!("__gmx_array_length_1d", &[], "// Length of array variable argument1 of instance argument0 (or global): one past the\n// last set, non-zero element, scanning until 64 zeros in a row.\nvar n, i, z, v; n = 0; i = 0; z = 0;\nif (argument0 == global) {\n    while (z < 64) { v = variable_global_array_get(argument1, i); if (is_string(v)) { n = i + 1; z = 0; } else if (v != 0) { n = i + 1; z = 0; } else z += 1; i += 1; }\n} else with (argument0) {\n    while (z < 64) { v = variable_local_array_get(argument1, i); if (is_string(v)) { n = i + 1; z = 0; } else if (v != 0) { n = i + 1; z = 0; } else z += 1; i += 1; }\n}\nreturn n;"),
+    s!("__gmx_array_length_2d", &[], "var n, i, z, v; n = 0; i = 0; z = 0;\nif (argument0 == global) {\n    while (z < 64) { v = variable_global_array2_get(argument1, argument2, i); if (is_string(v)) { n = i + 1; z = 0; } else if (v != 0) { n = i + 1; z = 0; } else z += 1; i += 1; }\n} else with (argument0) {\n    while (z < 64) { v = variable_local_array2_get(argument1, argument2, i); if (is_string(v)) { n = i + 1; z = 0; } else if (v != 0) { n = i + 1; z = 0; } else z += 1; i += 1; }\n}\nreturn n;"),
+    s!("__gmx_array_height_2d", &[], "var n, i, z, v; n = 0; i = 0; z = 0;\nif (argument0 == global) {\n    while (z < 64) { v = variable_global_array2_get(argument1, i, 0); if (is_string(v)) { n = i + 1; z = 0; } else if (v != 0) { n = i + 1; z = 0; } else z += 1; i += 1; }\n} else with (argument0) {\n    while (z < 64) { v = variable_local_array2_get(argument1, i, 0); if (is_string(v)) { n = i + 1; z = 0; } else if (v != 0) { n = i + 1; z = 0; } else z += 1; i += 1; }\n}\nreturn n;"),
     s!("get_timer", &[], "return current_time * 1000;"),
     // ---- strings
     s!("string_byte_at", &[], "return ord(string_char_at(argument0, argument1));"),

@@ -173,6 +173,7 @@ pub fn convert(mut l: Loaded, opts: &Options) -> (Project, Vec<Warning>) {
     let mut tr = Translator {
         string_escapes: opts.string_escapes,
         short_circuit: l.short_circuit,
+        array_funcs: opts.compat,
         ..Default::default()
     };
     visit_code(&mut p, &mut extra, &mut |_, code, kind| {

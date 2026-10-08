@@ -62,6 +62,8 @@ pub struct Translator {
     /// Emulate Studio's short-circuit `&&` / `||` where the right operand could fail
     /// when evaluated unconditionally (it reads a field of another instance).
     pub short_circuit: bool,
+    /// Rewrite `array_length_1d(v)` & co. to `__gmx_array_length_1d(owner, "v")`.
+    pub array_funcs: bool,
 }
 
 /// Whether evaluating `e` may raise a runtime error depending on state: it reads a
@@ -79,6 +81,19 @@ fn risky(e: &Expr) -> bool {
         ExprKind::Index(o, idx) | ExprKind::Access(_, o, idx) => risky(o) || idx.iter().any(risky),
         ExprKind::Ternary(a, b, c) => risky(a) || risky(b) || risky(c),
         ExprKind::IncDec { target, .. } => risky(target),
+    }
+}
+
+/// For `array_length_1d(v)`, `array_length_2d(v, n)`, `array_height_2d(v)` whose first
+/// argument names a variable: (owner expression or None for self, variable name).
+fn array_arg<'e>(name: &str, args: &'e [Expr]) -> Option<(Option<&'e Expr>, &'e str)> {
+    if !matches!(name, "array_length_1d" | "array_length_2d" | "array_height_2d") {
+        return None;
+    }
+    match &args.first()?.kind {
+        ExprKind::Ident(v) if v != "argument" && !v.starts_with("argument") => Some((None, v)),
+        ExprKind::Field(o, v) => Some((Some(o), v)),
+        _ => None,
     }
 }
 
@@ -353,6 +368,13 @@ impl Translator {
 }
 
 fn rename_calls_in_usage(u: &mut Usage, tr: &Translator) {
+    if tr.array_funcs {
+        for f in ["array_length_1d", "array_length_2d", "array_height_2d"] {
+            if u.calls.contains(f) {
+                u.calls.insert(format!("__gmx_{f}"));
+            }
+        }
+    }
     if tr.call_renames.is_empty() {
         return;
     }
@@ -580,7 +602,9 @@ impl Ctx<'_> {
                     || (self.tr.short_circuit && (is_and(op) || is_or(op)) && risky(b))
             }
             ExprKind::Call(n, args) => {
-                self.tr.call_renames.contains_key(n) || args.iter().any(|a| self.needs_expr(a))
+                self.tr.call_renames.contains_key(n)
+                    || (self.tr.array_funcs && array_arg(n, args).is_some())
+                    || args.iter().any(|a| self.needs_expr(a))
             }
             ExprKind::Field(o, m) => {
                 if let ExprKind::Ident(en) = &o.kind {
@@ -658,6 +682,22 @@ impl Ctx<'_> {
                 }
                 let ot = self.expr(o);
                 splice(self.src, e.span, vec![(o.span, ot)])
+            }
+            ExprKind::Call(n, args) if self.tr.array_funcs && array_arg(n, args).is_some() => {
+                // array_length_1d(a) etc.: pass owner and variable name instead of the
+                // value (GM 8.1 arrays are not values).
+                let (owner, var) = array_arg(n, args).unwrap();
+                let owner = match owner {
+                    None => "id".to_string(),
+                    Some(o) => self.expr(o),
+                };
+                let mut out = format!("__gmx_{n}({owner}, \"{var}\"");
+                for a in &args[1..] {
+                    out.push_str(", ");
+                    out.push_str(&self.expr(a));
+                }
+                out.push(')');
+                out
             }
             ExprKind::Call(n, args) => {
                 let mut repl: Vec<(Span, String)> =

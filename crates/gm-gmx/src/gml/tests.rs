@@ -139,6 +139,22 @@ fn short_circuit() {
 }
 
 #[test]
+fn array_length_functions() {
+    let t = Translator {
+        array_funcs: true,
+        ..Default::default()
+    };
+    let out = t.translate("n = array_length_1d(text) + array_length_1d(global.list) + array_length_2d(o.grid, 2);");
+    assert_eq!(
+        out.code,
+        "n = __gmx_array_length_1d(id, \"text\") + __gmx_array_length_1d(global, \"list\") + __gmx_array_length_2d(o, \"grid\", 2);"
+    );
+    assert!(out.usage.calls.contains("__gmx_array_length_1d"));
+    // Not a variable: left to the plain compat script.
+    assert!(!t.translate("n = array_length_1d(f());").changed);
+}
+
+#[test]
 fn renames() {
     let mut t = Translator::default();
     t.var_renames.insert("browser_width".into(), "window_get_width()".into());
