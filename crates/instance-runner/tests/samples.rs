@@ -34,7 +34,14 @@ fn tutorial1_click_fruit_scores() {
     let Some((mut g, mut vm)) = load("tutorial1.gmk") else { return };
     steps(&mut g, &mut vm, 5);
     let apple = obj(&g, "obj_apple");
-    let i = g.instances.iter().find(|i| i.object_index == apple).unwrap();
+    // an apple away from the walls, so it can't bounce during the click (the game
+    // seeds its random generator from the clock, so positions differ per run)
+    let i = g
+        .instances
+        .iter()
+        .find(|i| i.object_index == apple && (96.0..512.0).contains(&i.x) && (96.0..352.0).contains(&i.y))
+        .or_else(|| g.instances.iter().find(|i| i.object_index == apple))
+        .unwrap();
     let (x, y) = (i.x + 16.0 + i.hspeed, i.y + 16.0 + i.vspeed);
     let f = g.frame;
     g.scripted_input = vec![(f, InputEvent::MouseMove(x, y)), (f, InputEvent::MouseDown(1)), (f + 1, InputEvent::MouseUp(1))];
