@@ -42,6 +42,9 @@ impl Editor for BackgroundEditor {
     fn default_size(&self) -> Vec2 {
         Vec2::new(680.0, 480.0)
     }
+    fn own_buttons(&self) -> bool {
+        true
+    }
     fn ui(&mut self, ui: &mut Ui, cx: &mut Cx) {
         if let Some(ed) = &mut self.image_editor {
             match ed.show(&cx.ctx, egui::Id::new(("bg-image-editor", self.uid))) {
@@ -74,53 +77,55 @@ impl Editor for BackgroundEditor {
         ui.horizontal_top(|ui| {
             ui.vertical(|ui| {
                 ui.set_width(230.0);
-                let b = &mut self.work;
-                name_field(ui, &mut b.name);
-                ui.horizontal(|ui| {
-                    if ui.button("Load Background…").clicked() {
-                        dialogs::request_open(load_key, dialogs::IMAGES, false);
-                    }
-                    if ui.button("Edit Background…").clicked() {
-                        let img = if b.image.width == 0 || b.image.height == 0 {
-                            instance_format::RgbaImage::new(64, 64)
-                        } else {
-                            b.image.clone()
-                        };
-                        self.image_editor = Some(ImageEditor::new(img, b.name.clone()));
-                    }
-                    if ui.button("Save…").clicked() {
-                        if let Err(e) = dialogs::save_encoded(
-                            &format!("{}.png", b.name),
-                            dialogs::PNG,
-                            imageio::strip_png_bytes(std::slice::from_ref(&b.image)),
-                        ) {
-                            cx.requests.push(Request::Message(e));
+                super::properties_column(ui, cx, |ui, cx| {
+                    let b = &mut self.work;
+                    name_field(ui, &mut b.name);
+                    ui.horizontal(|ui| {
+                        if ui.button("Load Background…").clicked() {
+                            dialogs::request_open(load_key, dialogs::IMAGES, false);
                         }
-                    }
-                });
-                ui.checkbox(&mut self.opts.remove_background, "Remove background");
-                ui.checkbox(&mut self.opts.smooth_edges, "Smooth edges");
-                ui.checkbox(&mut self.opts.make_opaque, "Make opaque");
-                ui.label(format!(
-                    "Width: {}   Height: {}",
-                    b.image.width, b.image.height
-                ));
-                ui.separator();
-                ui.checkbox(&mut b.use_as_tileset, "Use as tile set");
-                ui.add_enabled_ui(b.use_as_tileset, |ui| {
-                    egui::Grid::new("tileset").num_columns(2).show(ui, |ui| {
-                        for (l, v) in [
-                            ("Tile width", &mut b.tile_width),
-                            ("Tile height", &mut b.tile_height),
-                            ("Horizontal offset", &mut b.tile_h_offset),
-                            ("Vertical offset", &mut b.tile_v_offset),
-                            ("Horizontal sep", &mut b.tile_h_sep),
-                            ("Vertical sep", &mut b.tile_v_sep),
-                        ] {
-                            ui.label(l);
-                            ui.add(egui::DragValue::new(v).range(0..=4096));
-                            ui.end_row();
+                        if ui.button("Edit Background…").clicked() {
+                            let img = if b.image.width == 0 || b.image.height == 0 {
+                                instance_format::RgbaImage::new(64, 64)
+                            } else {
+                                b.image.clone()
+                            };
+                            self.image_editor = Some(ImageEditor::new(img, b.name.clone()));
                         }
+                        if ui.button("Save…").clicked() {
+                            if let Err(e) = dialogs::save_encoded(
+                                &format!("{}.png", b.name),
+                                dialogs::PNG,
+                                imageio::strip_png_bytes(std::slice::from_ref(&b.image)),
+                            ) {
+                                cx.requests.push(Request::Message(e));
+                            }
+                        }
+                    });
+                    ui.checkbox(&mut self.opts.remove_background, "Remove background");
+                    ui.checkbox(&mut self.opts.smooth_edges, "Smooth edges");
+                    ui.checkbox(&mut self.opts.make_opaque, "Make opaque");
+                    ui.label(format!(
+                        "Width: {}   Height: {}",
+                        b.image.width, b.image.height
+                    ));
+                    ui.separator();
+                    ui.checkbox(&mut b.use_as_tileset, "Use as tile set");
+                    ui.add_enabled_ui(b.use_as_tileset, |ui| {
+                        egui::Grid::new("tileset").num_columns(2).show(ui, |ui| {
+                            for (l, v) in [
+                                ("Tile width", &mut b.tile_width),
+                                ("Tile height", &mut b.tile_height),
+                                ("Horizontal offset", &mut b.tile_h_offset),
+                                ("Vertical offset", &mut b.tile_v_offset),
+                                ("Horizontal sep", &mut b.tile_h_sep),
+                                ("Vertical sep", &mut b.tile_v_sep),
+                            ] {
+                                ui.label(l);
+                                ui.add(egui::DragValue::new(v).range(0..=4096));
+                                ui.end_row();
+                            }
+                        });
                     });
                 });
             });

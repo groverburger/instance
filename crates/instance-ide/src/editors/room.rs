@@ -1659,6 +1659,12 @@ impl Editor for RoomEditor {
     fn default_size(&self) -> Vec2 {
         Vec2::new(1000.0, 640.0)
     }
+    fn own_buttons(&self) -> bool {
+        true
+    }
+    fn form_keys(&self) -> bool {
+        self.code.is_none() && self.prompt.is_none()
+    }
     fn ui(&mut self, ui: &mut Ui, cx: &mut Cx) {
         let ctx = cx.ctx.clone();
         let base = ui.id().with(("room", self.idx));
@@ -1769,7 +1775,16 @@ impl Editor for RoomEditor {
         let tabs_h = 46.0;
         let mm_h = (left.height() * 0.38).clamp(80.0, 190.0);
         let tabs = Rect::from_min_size(left.min, vec2(left.width(), tabs_h));
-        let mm = Rect::from_min_max(pos2(left.left(), left.bottom() - mm_h), left.max);
+        // OK / Cancel at the bottom of the left column, the room preview above them
+        let buttons_h = super::FORM_BUTTON_H + 6.0;
+        let buttons = Rect::from_min_max(
+            pos2(left.left(), left.bottom() - super::FORM_BUTTON_H),
+            left.max,
+        );
+        let mm = Rect::from_min_max(
+            pos2(left.left(), left.bottom() - buttons_h - mm_h),
+            pos2(left.right(), left.bottom() - buttons_h),
+        );
         let page = Rect::from_min_max(
             pos2(left.left(), tabs.bottom()),
             pos2(left.right(), mm.top() - 4.0),
@@ -1790,6 +1805,9 @@ impl Editor for RoomEditor {
             },
         );
         self.minimap_ui(ui, cx, mm);
+        ui.scope_builder(UiBuilder::new().max_rect(buttons), |ui| {
+            super::ok_cancel(ui, cx, true)
+        });
         // canvas with a sunken edge
         ui.scope_builder(
             UiBuilder::new()

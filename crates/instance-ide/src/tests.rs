@@ -642,6 +642,150 @@ fn ui_forms_do_not_grow() {
     }
 }
 
+/// Every form has its OK (and, except the object form with its big OK, Cancel)
+/// button at the bottom-left, not in a row along the top.
+#[test]
+fn ui_form_buttons_bottom_left() {
+    use egui_kittest::kittest::Queryable;
+    let proj = synthetic_project();
+    let mut h = harness();
+    h.state_mut().test_set_project(proj.clone());
+    h.run_steps(2);
+    let mut keys = vec![
+        ResKey::GameInfo,
+        ResKey::Settings,
+        ResKey::Extensions,
+        ResKey::Constants,
+        ResKey::Triggers,
+        ResKey::IncludedFiles,
+    ];
+    for (k, _, _) in LIST_KINDS {
+        keys.push(ResKey::Res(k, 0));
+    }
+    for key in keys {
+        h.state_mut().test_close_forms();
+        h.state_mut().open_form(key);
+        h.run_steps(4);
+        let id = h.state().test_form_ids()[0];
+        let win = h.ctx.memory(|m| m.area_rect(id)).expect("form window rect");
+        let ok = h.get_by_label("✔ OK").rect();
+        assert!(win.contains_rect(ok), "{key:?}: OK {ok:?} outside {win:?}");
+        assert!(
+            ok.top() > win.top() + win.height() * 0.6,
+            "{key:?}: OK {ok:?} not at the bottom of {win:?}"
+        );
+        assert!(
+            ok.left() < win.left() + 20.0,
+            "{key:?}: OK {ok:?} not at the left of {win:?}"
+        );
+        if key == ResKey::Res(ResourceKind::Object, 0) {
+            continue;
+        }
+        let cancel = h.get_by_label("✖ Cancel").rect();
+        assert!(
+            (cancel.center().y - ok.center().y).abs() < 1.0 && cancel.left() > ok.right(),
+            "{key:?}: Cancel {cancel:?} not right of OK {ok:?}"
+        );
+        assert!(ok.height() <= 26.0 && ok.width() <= 130.0, "{key:?}: OK {ok:?} not compact");
+    }
+}
+
+/// Cancel discards, the close prompt still asks for dirty forms, Escape closes and
+/// Enter commits.
+#[test]
+fn ui_form_cancel_and_keys() {
+    use eframe::egui::Key;
+    use egui_kittest::kittest::Queryable;
+    let mut h = harness();
+    let proj = synthetic_project();
+    h.state_mut().test_set_project(proj.clone());
+    h.run_steps(2);
+    let sound = ResKey::Res(ResourceKind::Sound, 0);
+    let path = ResKey::Res(ResourceKind::Path, 0);
+    let kind = |h: &egui_kittest::Harness<'_, crate::app::IdeApp>| {
+        h.state().test_state().0.sounds[0].as_ref().unwrap().kind
+    };
+    let closed = |h: &egui_kittest::Harness<'_, crate::app::IdeApp>| {
+        h.state().test_state().0.paths[0].as_ref().unwrap().closed
+    };
+    assert_eq!(kind(&h), 0);
+    // Cancel discards the change
+    h.state_mut().open_form(sound);
+    h.run_steps(3);
+    h.get_by_label("Background Music").click();
+    h.run_steps(2);
+    h.get_by_label("✖ Cancel").click();
+    h.run_steps(3);
+    assert_eq!(h.state().test_state().2, 0, "Cancel closes");
+    assert_eq!(kind(&h), 0, "Cancel discards");
+    assert!(!h.state().test_state().1);
+    // Escape on a clean form closes it
+    h.state_mut().open_form(sound);
+    h.run_steps(3);
+    h.key_press(Key::Escape);
+    h.run_steps(3);
+    assert_eq!(h.state().test_state().2, 0, "Escape closes a clean form");
+    // Escape on a dirty form asks first; "No" discards
+    h.state_mut().open_form(sound);
+    h.run_steps(3);
+    h.get_by_label("Background Music").click();
+    h.run_steps(2);
+    h.key_press(Key::Escape);
+    h.run_steps(3);
+    assert_eq!(h.state().test_state().2, 1, "the prompt keeps the form open");
+    h.get_by_label("No").click();
+    h.run_steps(3);
+    assert_eq!((h.state().test_state().2, kind(&h)), (0, 0));
+    // Enter commits (bottom-row form)
+    h.state_mut().open_form(sound);
+    h.run_steps(3);
+    h.get_by_label("Background Music").click();
+    h.run_steps(2);
+    h.key_press(Key::Enter);
+    h.run_steps(3);
+    assert_eq!((h.state().test_state().2, kind(&h)), (0, 1), "Enter commits");
+    // OK in a properties column commits; the X button still asks
+    h.state_mut().open_form(path);
+    h.run_steps(3);
+    h.get_by_label("Closed").click();
+    h.run_steps(2);
+    h.get_by_label("✔ OK").click();
+    h.run_steps(3);
+    assert_eq!(h.state().test_state().2, 0);
+    assert_eq!(closed(&h), !proj.paths[0].as_ref().unwrap().closed);
+    // Enter in a text field does not commit the form
+    h.state_mut().open_form(ResKey::Res(ResourceKind::Script, 0));
+    h.run_steps(3);
+    {
+        use egui_kittest::kittest::{by, NodeT};
+        let name = h
+            .query_all(by().role(eframe::egui::accesskit::Role::TextInput))
+            .next()
+            .expect("name field")
+            .rect();
+        h.hover_at(name.center());
+        h.run_steps(1);
+        h.event(eframe::egui::Event::PointerButton {
+            pos: name.center(),
+            button: eframe::egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: Default::default(),
+        });
+        h.run_steps(1);
+        h.event(eframe::egui::Event::PointerButton {
+            pos: name.center(),
+            button: eframe::egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: Default::default(),
+        });
+        h.run_steps(2);
+    }
+    assert!(h.ctx.egui_wants_keyboard_input(), "the name field has focus");
+    h.key_press(Key::Enter);
+    h.run_steps(3);
+    assert_eq!(h.state().test_state().2, 1, "Enter in a text field keeps the form");
+}
+
 /// Rects of every button in the accessibility tree, in tree order.
 fn button_rects(
     h: &egui_kittest::Harness<'_, crate::app::IdeApp>,
@@ -738,6 +882,57 @@ fn ui_hover_does_not_move_neighbours() {
                 "hovering {label:?} moved {l0:?} from {r0:?} to {r1:?}"
             );
         }
+    }
+}
+
+/// Renders each form (alone, at its default size) to `form_<kind>.png` in
+/// `$GM_IDE_SCREENSHOT` (manual check of the layout; run with `--ignored`; needs a
+/// wgpu adapter). Uses a sample project when available.
+#[test]
+#[ignore]
+fn screenshot_forms() {
+    let Some(out) = std::env::var_os("GM_IDE_SCREENSHOT") else {
+        return;
+    };
+    let out = PathBuf::from(out);
+    std::fs::create_dir_all(&out).unwrap();
+    let mut proj = sample_path("treasure.gm81")
+        .map(|p| ops::load_project(&p).unwrap())
+        .unwrap_or_else(synthetic_project);
+    for (k, _, _) in LIST_KINDS {
+        if !(0..ops::slot_count(&proj, k)).any(|i| ops::res_exists(&proj, k, i)) {
+            ops::create_resource(&mut proj, k, &ops::Placement::End);
+        }
+    }
+    let mut h = egui_kittest::Harness::builder()
+        .with_size(eframe::egui::Vec2::new(1280.0, 800.0))
+        .with_theme(eframe::egui::Theme::Light)
+        .wgpu()
+        .build_eframe(|cc| crate::app::IdeApp::new(cc, None));
+    h.state_mut().test_set_project(proj.clone());
+    h.run_steps(2);
+    let mut keys = vec![
+        ("settings", ResKey::Settings),
+        ("gameinfo", ResKey::GameInfo),
+        ("constants", ResKey::Constants),
+        ("triggers", ResKey::Triggers),
+        ("included", ResKey::IncludedFiles),
+    ];
+    for (k, label, _) in LIST_KINDS {
+        if let Some(i) = (0..ops::slot_count(&proj, k)).find(|&i| ops::res_exists(&proj, k, i)) {
+            keys.push((label, ResKey::Res(k, i)));
+        }
+    }
+    for (label, key) in keys {
+        h.state_mut().test_close_forms();
+        h.state_mut().open_form(key);
+        h.run_steps(4);
+        h.hover_at(eframe::egui::pos2(1270.0, 790.0));
+        h.run_steps(2);
+        h.render()
+            .unwrap()
+            .save(out.join(format!("form_{}.png", label.to_lowercase())))
+            .unwrap();
     }
 }
 

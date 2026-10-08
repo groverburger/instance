@@ -182,6 +182,9 @@ impl Editor for TimelineEditor {
     fn default_size(&self) -> Vec2 {
         Vec2::new(960.0, 520.0)
     }
+    fn own_buttons(&self) -> bool {
+        true
+    }
     fn ui(&mut self, ui: &mut Ui, cx: &mut Cx) {
         let ctx = cx.ctx.clone();
         let base_id = ui.id().with(("timeline", self.idx));
@@ -210,70 +213,72 @@ impl Editor for TimelineEditor {
         ui.horizontal_top(|ui| {
             ui.vertical(|ui| {
                 ui.set_width(130.0);
-                ui.label("Name:");
-                ui.text_edit_singleline(&mut self.work.name);
-                ui.separator();
-                if ui.button("Add").clicked() {
-                    self.ask(Op::Add, "Add moment", &[("Step:", cur.clone())]);
-                }
-                if ui
-                    .add_enabled(self.moment.is_some(), egui::Button::new("Change"))
-                    .clicked()
-                {
-                    self.ask(Op::Change, "Change moment", &[("New step:", cur.clone())]);
-                }
-                if ui.button("Delete").clicked() {
-                    self.ask(
-                        Op::Delete,
-                        "Delete moments",
-                        &[("From:", cur.clone()), ("Till:", cur.clone())],
-                    );
-                }
-                if ui.button("Clear").clicked() {
-                    self.work.moments.clear();
-                    self.moment = None;
-                }
-                ui.separator();
-                if ui.button("Shift").clicked() {
-                    self.ask(
-                        Op::Shift,
-                        "Shift moments",
-                        &[
-                            ("From:", cur.clone()),
-                            ("Till:", cur.clone()),
-                            ("Shift to:", cur.clone()),
-                        ],
-                    );
-                }
-                if ui.button("Duplicate").clicked() {
-                    self.ask(
-                        Op::Duplicate,
-                        "Duplicate moments",
-                        &[
-                            ("From:", cur.clone()),
-                            ("Till:", cur.clone()),
-                            ("Copy to:", cur.clone()),
-                        ],
-                    );
-                }
-                if ui.button("Spread").clicked() {
-                    self.ask(
-                        Op::Spread,
-                        "Spread moments",
-                        &[
-                            ("From:", cur.clone()),
-                            ("Till:", cur.clone()),
-                            ("Percentage:", "100".into()),
-                        ],
-                    );
-                }
-                if ui.button("Merge").clicked() {
-                    self.ask(
-                        Op::Merge,
-                        "Merge moments",
-                        &[("From:", cur.clone()), ("Till:", cur.clone())],
-                    );
-                }
+                super::properties_column(ui, cx, |ui, _cx| {
+                    ui.label("Name:");
+                    ui.text_edit_singleline(&mut self.work.name);
+                    ui.separator();
+                    if ui.button("Add").clicked() {
+                        self.ask(Op::Add, "Add moment", &[("Step:", cur.clone())]);
+                    }
+                    if ui
+                        .add_enabled(self.moment.is_some(), egui::Button::new("Change"))
+                        .clicked()
+                    {
+                        self.ask(Op::Change, "Change moment", &[("New step:", cur.clone())]);
+                    }
+                    if ui.button("Delete").clicked() {
+                        self.ask(
+                            Op::Delete,
+                            "Delete moments",
+                            &[("From:", cur.clone()), ("Till:", cur.clone())],
+                        );
+                    }
+                    if ui.button("Clear").clicked() {
+                        self.work.moments.clear();
+                        self.moment = None;
+                    }
+                    ui.separator();
+                    if ui.button("Shift").clicked() {
+                        self.ask(
+                            Op::Shift,
+                            "Shift moments",
+                            &[
+                                ("From:", cur.clone()),
+                                ("Till:", cur.clone()),
+                                ("Shift to:", cur.clone()),
+                            ],
+                        );
+                    }
+                    if ui.button("Duplicate").clicked() {
+                        self.ask(
+                            Op::Duplicate,
+                            "Duplicate moments",
+                            &[
+                                ("From:", cur.clone()),
+                                ("Till:", cur.clone()),
+                                ("Copy to:", cur.clone()),
+                            ],
+                        );
+                    }
+                    if ui.button("Spread").clicked() {
+                        self.ask(
+                            Op::Spread,
+                            "Spread moments",
+                            &[
+                                ("From:", cur.clone()),
+                                ("Till:", cur.clone()),
+                                ("Percentage:", "100".into()),
+                            ],
+                        );
+                    }
+                    if ui.button("Merge").clicked() {
+                        self.ask(
+                            Op::Merge,
+                            "Merge moments",
+                            &[("From:", cur.clone()), ("Till:", cur.clone())],
+                        );
+                    }
+                });
             });
             ui.separator();
             ui.vertical(|ui| {

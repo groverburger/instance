@@ -300,6 +300,9 @@ impl Editor for PathEditor {
     fn default_size(&self) -> Vec2 {
         Vec2::new(860.0, 560.0)
     }
+    fn own_buttons(&self) -> bool {
+        true
+    }
     fn ui(&mut self, ui: &mut Ui, cx: &mut Cx) {
         let ctx = cx.ctx.clone();
         if let Some((op, mut pr)) = self.prompt.take() {
@@ -424,60 +427,62 @@ impl Editor for PathEditor {
         ui.horizontal_top(|ui| {
             ui.vertical(|ui| {
                 ui.set_width(200.0);
-                ui.horizontal(|ui| {
-                    ui.label("Name:");
-                    ui.text_edit_singleline(&mut self.work.name);
-                });
-                egui::ScrollArea::vertical().id_salt("pts").max_height(200.0).auto_shrink([false, true]).show(ui, |ui| {
-                    for (i, p) in self.work.points.iter().enumerate() {
-                        let t = format!("({}, {})   sp: {}", p.x, p.y, p.speed);
-                        if ui.selectable_label(self.sel == Some(i), t).clicked() {
-                            self.sel = Some(i);
-                        }
-                    }
-                });
-                if let Some(p) = self.sel.and_then(|i| self.work.points.get_mut(i)) {
+                super::properties_column(ui, cx, |ui, _cx| {
                     ui.horizontal(|ui| {
-                        ui.label("X");
-                        ui.add(egui::DragValue::new(&mut p.x));
-                        ui.label("Y");
-                        ui.add(egui::DragValue::new(&mut p.y));
-                        ui.label("sp");
-                        ui.add(egui::DragValue::new(&mut p.speed));
+                        ui.label("Name:");
+                        ui.text_edit_singleline(&mut self.work.name);
                     });
-                }
-                ui.horizontal(|ui| {
-                    if ui.button("Add").clicked() {
-                        self.snapshot();
-                        let p = self.sel.and_then(|i| self.work.points.get(i).copied()).unwrap_or(PathPoint { x: 0.0, y: 0.0, speed: 100.0 });
-                        self.work.points.push(p);
-                        self.sel = Some(self.work.points.len() - 1);
-                    }
-                    if ui.add_enabled(self.sel.is_some(), egui::Button::new("Insert")).clicked() {
-                        self.snapshot();
-                        let i = self.sel.unwrap_or(0).min(self.work.points.len().saturating_sub(1));
-                        if let Some(&p) = self.work.points.get(i) {
-                            self.work.points.insert(i, p);
+                    egui::ScrollArea::vertical().id_salt("pts").max_height(200.0).auto_shrink([false, true]).show(ui, |ui| {
+                        for (i, p) in self.work.points.iter().enumerate() {
+                            let t = format!("({}, {})   sp: {}", p.x, p.y, p.speed);
+                            if ui.selectable_label(self.sel == Some(i), t).clicked() {
+                                self.sel = Some(i);
+                            }
                         }
+                    });
+                    if let Some(p) = self.sel.and_then(|i| self.work.points.get_mut(i)) {
+                        ui.horizontal(|ui| {
+                            ui.label("X");
+                            ui.add(egui::DragValue::new(&mut p.x));
+                            ui.label("Y");
+                            ui.add(egui::DragValue::new(&mut p.y));
+                            ui.label("sp");
+                            ui.add(egui::DragValue::new(&mut p.speed));
+                        });
                     }
-                    if ui.add_enabled(self.sel.is_some(), egui::Button::new("Delete")).clicked() {
-                        if let Some(i) = self.sel.filter(|&i| i < self.work.points.len()) {
+                    ui.horizontal(|ui| {
+                        if ui.button("Add").clicked() {
                             self.snapshot();
-                            self.work.points.remove(i);
-                            self.sel = None;
+                            let p = self.sel.and_then(|i| self.work.points.get(i).copied()).unwrap_or(PathPoint { x: 0.0, y: 0.0, speed: 100.0 });
+                            self.work.points.push(p);
+                            self.sel = Some(self.work.points.len() - 1);
                         }
-                    }
+                        if ui.add_enabled(self.sel.is_some(), egui::Button::new("Insert")).clicked() {
+                            self.snapshot();
+                            let i = self.sel.unwrap_or(0).min(self.work.points.len().saturating_sub(1));
+                            if let Some(&p) = self.work.points.get(i) {
+                                self.work.points.insert(i, p);
+                            }
+                        }
+                        if ui.add_enabled(self.sel.is_some(), egui::Button::new("Delete")).clicked() {
+                            if let Some(i) = self.sel.filter(|&i| i < self.work.points.len()) {
+                                self.snapshot();
+                                self.work.points.remove(i);
+                                self.sel = None;
+                            }
+                        }
+                    });
+                    ui.separator();
+                    ui.label("Connection kind");
+                    ui.radio_value(&mut self.work.connection_kind, 0, "Straight lines");
+                    ui.radio_value(&mut self.work.connection_kind, 1, "Smooth curve");
+                    ui.checkbox(&mut self.work.closed, "Closed");
+                    ui.horizontal(|ui| {
+                        ui.label("Precision:");
+                        ui.add(egui::DragValue::new(&mut self.work.precision).range(1..=8));
+                    });
+                    ui.label(egui::RichText::new("Click: add · drag: move · Shift+click: insert · right-click: delete · Alt: no snap · middle-drag: pan · wheel: zoom").small().weak());
                 });
-                ui.separator();
-                ui.label("Connection kind");
-                ui.radio_value(&mut self.work.connection_kind, 0, "Straight lines");
-                ui.radio_value(&mut self.work.connection_kind, 1, "Smooth curve");
-                ui.checkbox(&mut self.work.closed, "Closed");
-                ui.horizontal(|ui| {
-                    ui.label("Precision:");
-                    ui.add(egui::DragValue::new(&mut self.work.precision).range(1..=8));
-                });
-                ui.label(egui::RichText::new("Click: add · drag: move · Shift+click: insert · right-click: delete · Alt: no snap · middle-drag: pan · wheel: zoom").small().weak());
             });
             ui.separator();
             self.canvas(ui, cx);

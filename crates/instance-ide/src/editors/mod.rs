@@ -67,6 +67,79 @@ pub struct Cx<'a> {
     pub prefs: &'a Prefs,
     /// Project-wide id allocators for room instances and tiles (spec §15.4).
     pub alloc: &'a mut IdAlloc,
+    /// OK or Cancel pressed in the form this frame (see [`ok_cancel`]).
+    pub action: Option<FormAction>,
+}
+
+/// The form's OK / Cancel buttons.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FormAction {
+    /// Commit the working copy and close.
+    Ok,
+    /// Discard the working copy and close.
+    Cancel,
+}
+
+/// Height of the OK / Cancel buttons.
+pub const FORM_BUTTON_H: f32 = 24.0;
+/// Width of the OK / Cancel buttons in a button row.
+pub const FORM_BUTTON_W: f32 = 80.0;
+
+/// The form's OK (green check) and Cancel (red cross) buttons side by side, left
+/// aligned. `fill` stretches them over the available width (a properties column);
+/// otherwise they have a fixed compact width. The press is recorded in `cx.action`.
+pub fn ok_cancel(ui: &mut Ui, cx: &mut Cx, fill: bool) {
+    use instance_ui::icons::{glyph_button, Glyph};
+    ui.horizontal(|ui| {
+        let gap = 6.0;
+        ui.spacing_mut().item_spacing.x = gap;
+        let w = if fill {
+            ((ui.available_width() - gap) / 2.0).floor().clamp(56.0, 125.0)
+        } else {
+            FORM_BUTTON_W
+        };
+        let size = Vec2::new(w, FORM_BUTTON_H);
+        if glyph_button(ui, Glyph::Check, "OK", "✔ OK", size)
+            .on_hover_text("Save the changes and close the form")
+            .clicked()
+        {
+            cx.action = Some(FormAction::Ok);
+        }
+        if glyph_button(ui, Glyph::Delete, "Cancel", "✖ Cancel", size)
+            .on_hover_text("Discard the changes and close the form")
+            .clicked()
+        {
+            cx.action = Some(FormAction::Cancel);
+        }
+    });
+}
+
+/// A form's left properties column: `add` fills it (scrolling when it does not
+/// fit) and OK / Cancel ([`ok_cancel`]) sit at its bottom, across its width.
+pub fn properties_column<R>(
+    ui: &mut Ui,
+    cx: &mut Cx,
+    add: impl FnOnce(&mut Ui, &mut Cx) -> R,
+) -> R {
+    let avail = ui.available_height();
+    let gap = 8.0;
+    let top_h = if avail.is_finite() {
+        (avail - FORM_BUTTON_H - gap).max(0.0)
+    } else {
+        f32::INFINITY
+    };
+    let r = egui::ScrollArea::vertical()
+        .id_salt("properties_column")
+        .max_height(top_h)
+        .auto_shrink([false, true])
+        .show(ui, |ui| add(ui, cx))
+        .inner;
+    let rest = ui.available_height() - FORM_BUTTON_H;
+    if rest.is_finite() && rest > 0.0 {
+        ui.add_space(rest);
+    }
+    ok_cancel(ui, cx, true);
+    r
 }
 
 /// Instance/tile id allocator shared by all room forms, so that ids handed out by
@@ -153,7 +226,8 @@ pub trait Editor {
     fn default_size(&self) -> Vec2 {
         Vec2::new(520.0, 420.0)
     }
-    /// Draw the form contents (below the OK/Cancel bar).
+    /// Draw the form contents. Forms whose [`Editor::own_buttons`] is false get the
+    /// OK / Cancel row below the contents.
     fn ui(&mut self, ui: &mut Ui, cx: &mut Cx);
     /// Whether the working copy differs from the project.
     fn is_dirty(&self, p: &Project) -> bool;
@@ -161,13 +235,16 @@ pub trait Editor {
     fn commit(&mut self, p: &mut Project) -> bool;
     /// The resource was renamed from the tree while the form is open.
     fn on_renamed(&mut self, _name: &str) {}
-    /// The form draws its own OK button (no OK/Cancel bar above the contents).
-    fn has_own_ok(&self) -> bool {
+    /// The form draws its own OK / Cancel buttons (with [`ok_cancel`], at the
+    /// bottom of its properties column) and reports them in `cx.action`; otherwise
+    /// the window adds a compact OK / Cancel row at the bottom-left.
+    fn own_buttons(&self) -> bool {
         false
     }
-    /// Whether the form's own OK button was pressed since the last call.
-    fn take_ok(&mut self) -> bool {
-        false
+    /// Whether Enter (OK) and Escape (close) act on the form now; false while one
+    /// of its own windows (e.g. an image editor) uses the keyboard.
+    fn form_keys(&self) -> bool {
+        true
     }
 }
 

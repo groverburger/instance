@@ -8,7 +8,7 @@ use eframe::egui::{self, Context, Id, Vec2};
 use instance_format::{Action, NodeStatus, Project, ResourceKind};
 
 use crate::dialogs;
-use crate::editors::{open_editor, Cx, Editor, IdAlloc, Request, ResKey};
+use crate::editors::{open_editor, Cx, Editor, FormAction, IdAlloc, Request, ResKey};
 use crate::icons::{self, Icon};
 use crate::mdi::{self, MdiState};
 use crate::prefs::Prefs;
@@ -1201,9 +1201,19 @@ Restore it?"
             let title = format!("{}{}", f.editor.title(), if dirty { " *" } else { "" });
             let icon = form_icon(f.editor.key());
             let active = self.active == Some(f.uid);
-            let mut ok = false;
-            let mut cancel = false;
-            let out = {
+            // Enter / Escape act on the active form unless something else takes the
+            // keyboard: a text field, a popup, a modal dialog or a window of the form
+            // (checked before the form runs, as a text field drops focus on Escape)
+            let keys = active
+                && !f.mdi.minimised
+                && !f.close_prompt
+                && f.editor.form_keys()
+                && !ctx.egui_wants_keyboard_input()
+                && !egui::Popup::is_any_open(ctx)
+                && ctx.memory(|m| m.top_modal_layer().is_none());
+            let nothing_focused = ctx.memory(|m| m.focused().is_none());
+            let own_buttons = f.editor.own_buttons();
+            let (out, mut action) = {
                 let mut cx = Cx {
                     ctx: ctx.clone(),
                     project: &self.project,
@@ -1214,8 +1224,9 @@ Restore it?"
                     names: &self.names,
                     prefs: &self.prefs,
                     alloc: &mut self.alloc,
+                    action: None,
                 };
-                mdi::show(
+                let out = mdi::show(
                     ctx,
                     wid,
                     area,
@@ -1225,22 +1236,30 @@ Restore it?"
                     icon,
                     active,
                     |ui| {
-                        if !f.editor.has_own_ok() {
-                            ui.horizontal(|ui| {
-                                if ok_button(ui).clicked() {
-                                    ok = true;
-                                }
-                                if ui.button("Cancel").clicked() {
-                                    cancel = true;
-                                }
-                            });
-                            ui.separator();
+                        if own_buttons {
+                            f.editor.ui(ui, &mut cx);
+                        } else {
+                            form_with_button_row(ui, f.editor.as_mut(), &mut cx);
                         }
-                        f.editor.ui(ui, &mut cx);
                     },
-                )
+                );
+                (out, cx.action)
             };
-            ok |= f.editor.take_ok();
+            if keys && action.is_none() && !ctx.egui_wants_keyboard_input() {
+                if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+                    f.close_prompt = f.editor.is_dirty(&self.project);
+                    if !f.close_prompt {
+                        action = Some(FormAction::Cancel);
+                    }
+                } else if nothing_focused
+                    && ctx.memory(|m| m.focused().is_none())
+                    && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter))
+                {
+                    action = Some(FormAction::Ok);
+                }
+            }
+            let ok = action == Some(FormAction::Ok);
+            let cancel = action == Some(FormAction::Cancel);
             if out.activated {
                 self.active = Some(f.uid);
                 mdi::bring_to_front(ctx, wid);
@@ -1727,21 +1746,32 @@ fn form_icon(key: ResKey) -> Icon {
     }
 }
 
-/// The form's "OK" button with a green check mark.
-fn ok_button(ui: &mut egui::Ui) -> egui::Response {
-    let mut job = egui::text::LayoutJob::default();
-    let font = egui::TextStyle::Button.resolve(ui.style());
-    job.append(
-        "✔",
-        0.0,
-        egui::TextFormat::simple(font.clone(), egui::Color32::from_rgb(20, 140, 40)),
+/// A form without its own buttons: the contents above a compact OK / Cancel row at
+/// the bottom-left of the window. The row has a fixed height; the contents get the
+/// rest (clipped), so nothing sizes the window from its contents.
+fn form_with_button_row(ui: &mut egui::Ui, editor: &mut dyn Editor, cx: &mut Cx) {
+    use crate::editors::{ok_cancel, FORM_BUTTON_H};
+    let full = ui.available_rect_before_wrap();
+    let row_h = FORM_BUTTON_H + 8.0;
+    let content = egui::Rect::from_min_max(
+        full.min,
+        egui::pos2(full.max.x, (full.max.y - row_h).max(full.min.y)),
     );
-    job.append(
-        " OK",
-        0.0,
-        egui::TextFormat::simple(font, egui::Color32::from_gray(10)),
+    let row = egui::Rect::from_min_max(egui::pos2(full.min.x, content.max.y), full.max);
+    ui.scope_builder(egui::UiBuilder::new().max_rect(content), |ui| {
+        ui.set_clip_rect(ui.clip_rect().intersect(content.expand2(Vec2::new(6.0, 1.0))));
+        editor.ui(ui, cx);
+    });
+    let p = ui.painter();
+    let y = row.min.y + 3.5;
+    p.hline(full.x_range(), y, egui::Stroke::new(1.0, theme::SHADOW));
+    p.hline(full.x_range(), y + 1.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
+    let buttons = egui::Rect::from_min_size(
+        egui::pos2(row.min.x, row.max.y - FORM_BUTTON_H),
+        Vec2::new(row.width(), FORM_BUTTON_H),
     );
-    ui.add(egui::Button::new(job).min_size(Vec2::new(64.0, 22.0)))
+    ui.scope_builder(egui::UiBuilder::new().max_rect(buttons), |ui| ok_cancel(ui, cx, false));
+    ui.advance_cursor_after_rect(full);
 }
 
 /// Height of the wordmark banner at the bottom of the resource panel.

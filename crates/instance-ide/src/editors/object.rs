@@ -30,8 +30,6 @@ pub struct ObjectEditor {
     confirm_delete: bool,
     /// The "Show Information" window is open.
     info_open: bool,
-    /// The form's OK button was pressed (see [`Editor::take_ok`]).
-    ok_pressed: bool,
     /// "New" sprite was requested: the slot the new sprite will get.
     pending_sprite: Option<usize>,
 }
@@ -51,7 +49,6 @@ impl ObjectEditor {
             selector: None,
             confirm_delete: false,
             info_open: false,
-            ok_pressed: false,
             pending_sprite: None,
         }
     }
@@ -271,7 +268,7 @@ impl ObjectEditor {
             ui.add_space(rest);
         }
         if icon_button(ui, "✔ OK", Vec2::new(w, ok_h), |_, _| {}).clicked() {
-            self.ok_pressed = true;
+            cx.action = Some(super::FormAction::Ok);
         }
     }
 
@@ -656,11 +653,11 @@ impl Editor for ObjectEditor {
     fn default_size(&self) -> Vec2 {
         Vec2::new(FORM_W, FORM_H)
     }
-    fn has_own_ok(&self) -> bool {
+    fn own_buttons(&self) -> bool {
         true
     }
-    fn take_ok(&mut self) -> bool {
-        std::mem::take(&mut self.ok_pressed)
+    fn form_keys(&self) -> bool {
+        !self.info_open && self.selector.is_none() && !self.confirm_delete
     }
     fn ui(&mut self, ui: &mut Ui, cx: &mut Cx) {
         let ctx = cx.ctx.clone();

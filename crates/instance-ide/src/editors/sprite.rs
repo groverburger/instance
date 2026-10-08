@@ -72,6 +72,12 @@ impl Editor for SpriteEditor {
     fn default_size(&self) -> Vec2 {
         Vec2::new(720.0, 520.0)
     }
+    fn own_buttons(&self) -> bool {
+        true
+    }
+    fn form_keys(&self) -> bool {
+        self.frames_editor.is_none()
+    }
     fn ui(&mut self, ui: &mut Ui, cx: &mut Cx) {
         let mut frames_changed = false;
         let mut mask_changed = false;
@@ -151,131 +157,133 @@ impl Editor for SpriteEditor {
             // ---------------- left column: properties
             ui.vertical(|ui| {
                 ui.set_width(250.0);
-                name_field(ui, &mut self.work.name);
-                ui.horizontal(|ui| {
-                    if ui.button("Load Sprite…").clicked() {
-                        crate::dialogs::request_open(
-                            k_load,
-                            &[
-                                ("Images", &["png", "bmp", "gif", "jpg", "jpeg"]),
-                                ("GameMaker sprite", &["gmspr"]),
-                            ],
-                            true,
-                        );
-                    }
-                    if ui.button("Edit Sprite…").clicked() {
-                        self.frames_editor = Some(SpriteFramesEditor::new(
-                            self.work.frames.clone(),
-                            &self.work.name,
-                            self.uid,
-                        ));
-                    }
-                    if ui.button("Save…").clicked() {
-                        let name = format!("{}.png", self.work.name);
-                        if !crate::dialogs::HAS_FILESYSTEM {
-                            // web: download the PNG strip
-                            if let Err(e) = crate::dialogs::save_encoded(
+                super::properties_column(ui, cx, |ui, cx| {
+                    name_field(ui, &mut self.work.name);
+                    ui.horizontal(|ui| {
+                        if ui.button("Load Sprite…").clicked() {
+                            crate::dialogs::request_open(
+                                k_load,
+                                &[
+                                    ("Images", &["png", "bmp", "gif", "jpg", "jpeg"]),
+                                    ("GameMaker sprite", &["gmspr"]),
+                                ],
+                                true,
+                            );
+                        }
+                        if ui.button("Edit Sprite…").clicked() {
+                            self.frames_editor = Some(SpriteFramesEditor::new(
+                                self.work.frames.clone(),
+                                &self.work.name,
+                                self.uid,
+                            ));
+                        }
+                        if ui.button("Save…").clicked() {
+                            let name = format!("{}.png", self.work.name);
+                            if !crate::dialogs::HAS_FILESYSTEM {
+                                // web: download the PNG strip
+                                if let Err(e) = crate::dialogs::save_encoded(
+                                    &name,
+                                    crate::dialogs::PNG,
+                                    imageio::strip_png_bytes(&self.work.frames),
+                                ) {
+                                    cx.requests.push(Request::Message(e));
+                                }
+                            } else if let Some(f) = crate::dialogs::save_path(
                                 &name,
-                                crate::dialogs::PNG,
-                                imageio::strip_png_bytes(&self.work.frames),
+                                None,
+                                &[("PNG strip", &["png"]), ("GameMaker sprite", &["gmspr"])],
                             ) {
-                                cx.requests.push(Request::Message(e));
-                            }
-                        } else if let Some(f) = crate::dialogs::save_path(
-                            &name,
-                            None,
-                            &[("PNG strip", &["png"]), ("GameMaker sprite", &["gmspr"])],
-                        ) {
-                            let r = if f
-                                .extension()
-                                .is_some_and(|e| e.eq_ignore_ascii_case("gmspr"))
-                            {
-                                instance_format::write_sprite_export(&self.work)
-                                    .map_err(|e| e.to_string())
-                                    .and_then(|b| std::fs::write(&f, b).map_err(|e| e.to_string()))
-                            } else {
-                                imageio::save_strip_png(&self.work.frames, &f)
-                            };
-                            if let Err(e) = r {
-                                cx.requests.push(Request::Message(e));
+                                let r = if f
+                                    .extension()
+                                    .is_some_and(|e| e.eq_ignore_ascii_case("gmspr"))
+                                {
+                                    instance_format::write_sprite_export(&self.work)
+                                        .map_err(|e| e.to_string())
+                                        .and_then(|b| std::fs::write(&f, b).map_err(|e| e.to_string()))
+                                } else {
+                                    imageio::save_strip_png(&self.work.frames, &f)
+                                };
+                                if let Err(e) = r {
+                                    cx.requests.push(Request::Message(e));
+                                }
                             }
                         }
-                    }
-                });
-                ui.checkbox(&mut self.opts.remove_background, "Remove background");
-                ui.checkbox(&mut self.opts.smooth_edges, "Smooth edges");
-                ui.checkbox(&mut self.opts.make_opaque, "Make opaque");
-                ui.label(format!(
-                    "Width: {}   Height: {}   Subimages: {}",
-                    self.work.width(),
-                    self.work.height(),
-                    self.work.frames.len()
-                ));
-                ui.separator();
-                ui.label("Origin");
-                ui.horizontal(|ui| {
-                    ui.label("X");
-                    ui.add(egui::DragValue::new(&mut self.work.origin_x));
-                    ui.label("Y");
-                    ui.add(egui::DragValue::new(&mut self.work.origin_y));
-                    if ui.button("Center").clicked() {
-                        self.work.origin_x = self.work.width() as i32 / 2;
-                        self.work.origin_y = self.work.height() as i32 / 2;
-                    }
-                });
-                ui.separator();
-                ui.label("Collision checking");
-                let mut precise = self.work.collision_shape == 0;
-                if ui
-                    .checkbox(&mut precise, "Precise collision checking")
-                    .changed()
-                {
-                    self.work.collision_shape = if precise { 0 } else { 1 };
-                }
-                ui.checkbox(
-                    &mut self.work.separate_collision_masks,
-                    "Separate collision masks",
-                );
-                egui::CollapsingHeader::new("Mask properties")
-                    .default_open(false)
-                    .show(ui, |ui| {
-                        let s = &mut self.work;
-                        ui.label("Bounding box");
-                        ui.horizontal(|ui| {
-                            mask_changed |=
-                                ui.radio_value(&mut s.bbox_mode, 0, "Automatic").changed();
-                            mask_changed |=
-                                ui.radio_value(&mut s.bbox_mode, 1, "Full image").changed();
-                            mask_changed |= ui.radio_value(&mut s.bbox_mode, 2, "Manual").changed();
-                        });
-                        ui.add_enabled_ui(s.bbox_mode == 2, |ui| {
-                            egui::Grid::new("bbox").num_columns(4).show(ui, |ui| {
-                                ui.label("Left");
-                                ui.add(egui::DragValue::new(&mut s.bbox_left));
-                                ui.label("Right");
-                                ui.add(egui::DragValue::new(&mut s.bbox_right));
-                                ui.end_row();
-                                ui.label("Top");
-                                ui.add(egui::DragValue::new(&mut s.bbox_top));
-                                ui.label("Bottom");
-                                ui.add(egui::DragValue::new(&mut s.bbox_bottom));
-                                ui.end_row();
-                            });
-                        });
-                        ui.label("Shape");
-                        ui.horizontal(|ui| {
-                            ui.radio_value(&mut s.collision_shape, 0, "Precise");
-                            ui.radio_value(&mut s.collision_shape, 1, "Rectangle");
-                            ui.radio_value(&mut s.collision_shape, 2, "Disk");
-                            ui.radio_value(&mut s.collision_shape, 3, "Diamond");
-                        });
-                        mask_changed |= ui
-                            .add(
-                                egui::Slider::new(&mut s.alpha_tolerance, 0..=255)
-                                    .text("Alpha tolerance"),
-                            )
-                            .changed();
                     });
+                    ui.checkbox(&mut self.opts.remove_background, "Remove background");
+                    ui.checkbox(&mut self.opts.smooth_edges, "Smooth edges");
+                    ui.checkbox(&mut self.opts.make_opaque, "Make opaque");
+                    ui.label(format!(
+                        "Width: {}   Height: {}   Subimages: {}",
+                        self.work.width(),
+                        self.work.height(),
+                        self.work.frames.len()
+                    ));
+                    ui.separator();
+                    ui.label("Origin");
+                    ui.horizontal(|ui| {
+                        ui.label("X");
+                        ui.add(egui::DragValue::new(&mut self.work.origin_x));
+                        ui.label("Y");
+                        ui.add(egui::DragValue::new(&mut self.work.origin_y));
+                        if ui.button("Center").clicked() {
+                            self.work.origin_x = self.work.width() as i32 / 2;
+                            self.work.origin_y = self.work.height() as i32 / 2;
+                        }
+                    });
+                    ui.separator();
+                    ui.label("Collision checking");
+                    let mut precise = self.work.collision_shape == 0;
+                    if ui
+                        .checkbox(&mut precise, "Precise collision checking")
+                        .changed()
+                    {
+                        self.work.collision_shape = if precise { 0 } else { 1 };
+                    }
+                    ui.checkbox(
+                        &mut self.work.separate_collision_masks,
+                        "Separate collision masks",
+                    );
+                    egui::CollapsingHeader::new("Mask properties")
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            let s = &mut self.work;
+                            ui.label("Bounding box");
+                            ui.horizontal(|ui| {
+                                mask_changed |=
+                                    ui.radio_value(&mut s.bbox_mode, 0, "Automatic").changed();
+                                mask_changed |=
+                                    ui.radio_value(&mut s.bbox_mode, 1, "Full image").changed();
+                                mask_changed |= ui.radio_value(&mut s.bbox_mode, 2, "Manual").changed();
+                            });
+                            ui.add_enabled_ui(s.bbox_mode == 2, |ui| {
+                                egui::Grid::new("bbox").num_columns(4).show(ui, |ui| {
+                                    ui.label("Left");
+                                    ui.add(egui::DragValue::new(&mut s.bbox_left));
+                                    ui.label("Right");
+                                    ui.add(egui::DragValue::new(&mut s.bbox_right));
+                                    ui.end_row();
+                                    ui.label("Top");
+                                    ui.add(egui::DragValue::new(&mut s.bbox_top));
+                                    ui.label("Bottom");
+                                    ui.add(egui::DragValue::new(&mut s.bbox_bottom));
+                                    ui.end_row();
+                                });
+                            });
+                            ui.label("Shape");
+                            ui.horizontal(|ui| {
+                                ui.radio_value(&mut s.collision_shape, 0, "Precise");
+                                ui.radio_value(&mut s.collision_shape, 1, "Rectangle");
+                                ui.radio_value(&mut s.collision_shape, 2, "Disk");
+                                ui.radio_value(&mut s.collision_shape, 3, "Diamond");
+                            });
+                            mask_changed |= ui
+                                .add(
+                                    egui::Slider::new(&mut s.alpha_tolerance, 0..=255)
+                                        .text("Alpha tolerance"),
+                                )
+                                .changed();
+                        });
+                });
             });
             ui.separator();
             // ---------------- right column: frames and preview

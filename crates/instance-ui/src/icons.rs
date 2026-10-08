@@ -39,6 +39,8 @@ pub enum Glyph {
     Save,
     /// A page with text lines (output log).
     Log,
+    /// Green check mark (OK).
+    Check,
 }
 
 const OUTLINE: Color32 = Color32::from_rgb(70, 70, 80);
@@ -184,6 +186,12 @@ pub fn paint(p: &Painter, rect: Rect, glyph: Glyph, enabled: bool) {
             ));
             p.add(g.line(&[(9.5, 3.0), (13.0, 6.5)], g.stroke(0.8, outline)));
         }
+        Glyph::Check => {
+            p.add(g.line(
+                &[(2.5, 8.5), (6.5, 12.5), (13.5, 3.5)],
+                g.stroke(2.6, c(Color32::from_rgb(25, 150, 45))),
+            ));
+        }
         Glyph::Delete => {
             let s = g.stroke(2.6, c(Color32::from_rgb(210, 40, 40)));
             p.add(g.line(&[(3.5, 3.5), (12.5, 12.5)], s));
@@ -317,6 +325,30 @@ pub fn tool_button_with(
 /// A flat toolbar button showing `glyph` (see [`tool_button_with`]).
 pub fn tool_button(ui: &mut Ui, glyph: Glyph, tip: &str, enabled: bool) -> Response {
     tool_button_with(ui, tip, enabled, |p, r, en| paint(p, r, glyph, en))
+}
+
+/// A push button of fixed `size` showing `glyph` (14 px) before `text`, with the
+/// theme's button frame. Its accessible label is `label`.
+pub fn glyph_button(ui: &mut Ui, glyph: Glyph, text: &str, label: &str, size: Vec2) -> Response {
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
+    let enabled = ui.is_enabled();
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, label));
+    if ui.is_rect_visible(rect) {
+        let v = ui.style().interact(&resp);
+        let p = ui.painter();
+        p.rect(rect, v.corner_radius, v.weak_bg_fill, v.bg_stroke, egui::StrokeKind::Inside);
+        let font = egui::TextStyle::Button.resolve(ui.style());
+        let galley = p.layout_no_wrap(text.to_string(), font, v.text_color());
+        let icon = 14.0;
+        let gap = 5.0;
+        let w = icon + gap + galley.size().x;
+        let x0 = (rect.center().x - w / 2.0).round();
+        let icon_rect = Rect::from_min_size(pos2(x0, (rect.center().y - icon / 2.0).round()), Vec2::splat(icon));
+        paint(p, icon_rect, glyph, enabled);
+        let ty = (rect.center().y - galley.size().y / 2.0).round();
+        p.galley(pos2(x0 + icon + gap, ty), galley, v.text_color());
+    }
+    resp
 }
 
 /// Vertical etched separator for toolbars.
