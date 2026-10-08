@@ -862,3 +862,23 @@ resources are inaccessible from code (the built-in meaning wins).
 - `chapter: "yoyo"` marks identifiers in the trailing "YoYo extension stuff" block of
   `fnames`; they are undocumented.
 - Order of entries follows `fnames`.
+
+## RNG — VERIFIED black-box (GM 8.1 Lite, `bb_random`, 191 values reproduced exactly)
+
+- State: a signed 32-bit integer `s`. One step: `s = s * 134775813 + 1` (wrapping
+  mod 2^32). Every random function performs exactly one step per call.
+- `random_set_seed(x)`: `s = x` rounded half-to-even, wrapped to 32 bits
+  (0.5 -> 0, 1.5 -> 2, 2.7 -> 3, 2^31 -> -2^31, 2^32 -> 0).
+- `random_get_seed()`: the current state `s` (not the last seed set).
+- `random(x)`: step, then `u / 2^32 * x` where `u` is `s` read as unsigned.
+  Negative and zero `x` are allowed (no error).
+- `irandom(n)`: step, then `(u * m) >> 32` in unsigned 64-bit arithmetic with
+  `m = (trunc(n) + 1)` taken as unsigned 32-bit (so `irandom(-5)` after seed 4 gives
+  `u - 1`, a huge value). `irandom(2.7)` behaves like `irandom(2)`.
+- `random_range(a, b)`: `a + random(1) * (b - a)`.
+- `irandom_range(a, b)`: truncate both, `lo + irandom(hi - lo)` with `lo <= hi`
+  (argument order doesn't matter).
+- `choose(v0..vk-1)`: step, index `(u * k) >> 32`.
+- The seed at game start differs per run (the game is randomized at start).
+- Open: values >= 2^31 printed via `floor(...)` + `string_format` came out negative;
+  whether `floor()` or `string_format` wraps to 32 bits is answered by `bb_lang`.

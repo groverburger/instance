@@ -113,8 +113,34 @@ fn real_functions() {
 #[test]
 fn random_functions() {
     let (mut vm, mut h) = (Vm::new(), Mock::new());
-    let src = "random_set_seed(42) a = random(10) + irandom(100) + random_range(5, 6) + irandom_range(3, 7) random_set_seed(42) b = random(10) + irandom(100) + random_range(5, 6) + irandom_range(3, 7) return a == b && random_get_seed() == 42";
+    let src = "random_set_seed(42) a = random(10) + irandom(100) + random_range(5, 6) + irandom_range(3, 7) random_set_seed(42) b = random(10) + irandom(100) + random_range(5, 6) + irandom_range(3, 7) return a == b";
     assert_eq!(run_in(&mut vm, &mut h, src).unwrap(), Value::Real(1.0));
+    // exact sequences observed in GM 8.1 (bb_random black-box results)
+    let mut g = |src: &str| run_in(&mut vm, &mut h, src).unwrap();
+    assert_eq!(g("random_set_seed(1) random(1) return random_get_seed()"), Value::Real(134775814.0));
+    assert_eq!(g("random_set_seed(1) random(1) return random_get_seed()"), Value::Real(134775814.0));
+    assert_eq!(g("random_set_seed(1) random(1) random(1) return random_get_seed()"), Value::Real(-596792289.0));
+    assert_eq!(
+        g("random_set_seed(1) s = '' repeat (6) s += string(irandom(100)) + ',' return s"),
+        Value::from("3,86,20,27,67,32,")
+    );
+    assert_eq!(
+        g("random_set_seed(1) s = '' repeat (5) s += string(choose(1, 2, 3, 4, 5)) return s"),
+        Value::from("15224")
+    );
+    assert_eq!(g("random_set_seed(4) return irandom(-5)"), Value::Real(539103252.0));
+    assert_eq!(g("random_set_seed(2.7) return random_get_seed()"), Value::Real(3.0));
+    assert_eq!(g("random_set_seed(0.5) return random_get_seed()"), Value::Real(0.0));
+    assert_eq!(g("random_set_seed(4294967296) return random_get_seed()"), Value::Real(0.0));
+    assert_eq!(g("random_set_seed(2147483648) return random_get_seed()"), Value::Real(-2147483648.0));
+    assert_eq!(
+        g("random_set_seed(2) s = '' repeat (5) s += string(irandom_range(7, 3)) return s"),
+        Value::from("36543")
+    );
+    assert_eq!(
+        g("random_set_seed(3) s = '' repeat (5) s += string(irandom(2.7)) return s"),
+        Value::from("01211")
+    );
     let src = "for (i = 0; i < 2000; i += 1) {
         r = random(5); if r < 0 || r >= 5 return 'random ' + string(r)
         k = irandom(3); if k != floor(k) || k < 0 || k > 3 return 'irandom'

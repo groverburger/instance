@@ -68,16 +68,13 @@ pub(super) fn register(t: &mut Vec<(&'static str, NativeFn)>) {
             Ok(Value::Real(x1 + vm.random() * (x2 - x1)))
         }),
         n("irandom", |vm, _, _, a| {
-            let x = a.real(0)?.floor();
-            if x < 0.0 {
-                return Ok(Value::Real(-((vm.random() * (-x + 1.0)).floor())));
-            }
-            Ok(Value::Real((vm.random() * (x + 1.0)).floor()))
+            let x = a.real(0)?;
+            Ok(Value::Real(vm.irandom(x)))
         }),
         n("irandom_range", |vm, _, _, a| {
-            let (x1, x2) = (a.real(0)?.floor(), a.real(1)?.floor());
+            let (x1, x2) = (a.real(0)?.trunc(), a.real(1)?.trunc());
             let (lo, hi) = if x1 <= x2 { (x1, x2) } else { (x2, x1) };
-            Ok(Value::Real(lo + (vm.random() * (hi - lo + 1.0)).floor()))
+            Ok(Value::Real(lo + vm.irandom(hi - lo)))
         }),
         n("random_set_seed", |vm, _, _, a| {
             let s = a.real(0)?;
@@ -90,7 +87,7 @@ pub(super) fn register(t: &mut Vec<(&'static str, NativeFn)>) {
             Ok(Value::Real(0.0))
         }),
         n("choose", |vm, _, _, a| {
-            let k = ((vm.random() * a.len() as f64) as usize).min(a.len() - 1);
+            let k = vm.random_index(a.len());
             Ok(a.val(k).clone())
         }),
         n("abs", |_, _, _, a| r1(&a, f64::abs)),

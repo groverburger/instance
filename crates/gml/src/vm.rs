@@ -89,8 +89,7 @@ pub struct Vm {
     pub settings: Settings,
     /// Data structures (`ds_*`).
     pub ds: DsStore,
-    pub(crate) rng_state: u64,
-    pub(crate) rng_seed: f64,
+    pub(crate) rng_state: i32,
     pub(crate) depth: u32,
     pub(crate) arg_pool: Vec<Vec<Value>>,
     pub(crate) select_pool: Vec<Vec<i32>>,
@@ -127,7 +126,6 @@ impl Vm {
             settings: Settings::default(),
             ds: DsStore::default(),
             rng_state: 0,
-            rng_seed: 0.0,
             depth: 0,
             arg_pool: Vec::new(),
             select_pool: Vec::new(),
@@ -288,32 +286,45 @@ impl Vm {
 
     // ------------------------------------------------------------ random numbers
 
-    /// Seeds the random generator (`random_set_seed`).
+    /// Seeds the random generator (`random_set_seed`): the argument is rounded half
+    /// to even and wrapped to 32 bits (specs/gml-language.md §RNG, verified in GM 8.1).
     pub fn set_seed(&mut self, seed: f64) {
-        self.rng_seed = seed;
-        self.rng_state = (crate::value::to_int(seed) as u64) ^ 0x853C_49E6_748F_EA9B;
+        self.rng_state = seed.round_ties_even().rem_euclid(4294967296.0) as u32 as i32;
     }
 
-    /// The last seed set (`random_get_seed`).
+    /// The current generator state (`random_get_seed`).
     pub fn seed(&self) -> f64 {
-        self.rng_seed
+        self.rng_state as f64
     }
 
     /// Seeds the generator from the system clock (`randomize`).
     pub fn randomize(&mut self) {
         let t = crate::clock::seed_nanos();
-        self.set_seed((t % 2_147_483_647) as f64);
+        self.rng_state = (t ^ (t >> 32)) as u32 as i32;
     }
 
-    /// A uniformly distributed real in `[0, 1)`.
+    /// Advances the generator one step and returns the new state as unsigned.
+    /// GM 8.1's generator: `state = state * 134775813 + 1` (mod 2^32).
+    pub fn random_u32(&mut self) -> u32 {
+        self.rng_state = self.rng_state.wrapping_mul(134775813).wrapping_add(1);
+        self.rng_state as u32
+    }
+
+    /// A uniformly distributed real in `[0, 1)` (one generator step).
     pub fn random(&mut self) -> f64 {
-        // SplitMix64
-        self.rng_state = self.rng_state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = self.rng_state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^= z >> 31;
-        (z >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
+        self.random_u32() as f64 / 4294967296.0
+    }
+
+    /// `irandom(n)`: one step; `(state * (trunc(n) + 1)) >> 32` in unsigned 32-bit
+    /// arithmetic (so negative `n` wraps exactly as GM 8.1 does).
+    pub fn irandom(&mut self, n: f64) -> f64 {
+        let m = (n.trunc() as i64 + 1) as u32 as u64;
+        ((self.random_u32() as u64 * m) >> 32) as f64
+    }
+
+    /// An index in `0..len` from one generator step (`choose`).
+    pub fn random_index(&mut self, len: usize) -> usize {
+        ((self.random_u32() as u64 * len as u64) >> 32) as usize
     }
 
     // ------------------------------------------------------------ time
