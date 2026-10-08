@@ -1,4 +1,7 @@
-//! OpenGL 3.3 backend (glow + glutin).
+//! OpenGL 3.3 backend (glow + glutin on desktop; WebGL2 in the browser).
+//!
+//! * The shaders are written in the common subset of GLSL 3.30 and GLSL ES 3.00;
+//!   only the `#version` header differs between the two.
 //!
 //! * Every render target (back buffer and surfaces) is a framebuffer object with
 //!   an RGBA8 colour texture and a 24-bit depth renderbuffer. Target pixel row y
@@ -14,16 +17,29 @@
 use super::backend::{Backend, Cull, Prim, RState, Target, Tex, Vertex};
 use super::{Clip, Texture};
 use glow::HasContext;
+#[cfg(not(target_arch = "wasm32"))]
 use glutin::config::{ConfigTemplateBuilder, GlConfig};
+#[cfg(not(target_arch = "wasm32"))]
 use glutin::context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContext, PossiblyCurrentContext, Version};
+#[cfg(not(target_arch = "wasm32"))]
 use glutin::display::{Display, DisplayApiPreference, GlDisplay};
+#[cfg(not(target_arch = "wasm32"))]
 use glutin::surface::{GlSurface, Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface};
+#[cfg(not(target_arch = "wasm32"))]
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
 use std::num::NonZeroU32;
 use std::rc::{Rc, Weak};
 
-const VS: &str = r#"#version 330 core
+/// Shader header: desktop GLSL 3.30 core or GLSL ES 3.00 (WebGL2).
+const HEADER: &str = if cfg!(target_arch = "wasm32") {
+    "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n"
+} else {
+    "#version 330 core\n"
+};
+
+const VS: &str = r#"
 layout(location = 0) in vec4 a_pos;
 layout(location = 1) in vec2 a_uv;
 layout(location = 2) in vec4 a_col;
@@ -45,10 +61,11 @@ void main() {
                        (a_pos.y - e * a_pos.w) * 2.0 / u_size.y - a_pos.w,
                        a_pos.z * 2.0 - a_pos.w,
                        a_pos.w);
+    gl_PointSize = 1.0;
 }
 "#;
 
-const FS: &str = r#"#version 330 core
+const FS: &str = r#"
 in vec2 v_uv;
 in vec4 v_col;
 in float v_fog;
@@ -107,6 +124,7 @@ struct BatchKey {
 }
 
 /// Raw handles of a window, captured on its event-loop thread.
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone, Copy)]
 pub struct WindowHandles {
     pub window: RawWindowHandle,
@@ -115,8 +133,10 @@ pub struct WindowHandles {
 
 // SAFETY: the handles are plain identifiers (an HWND on Windows); the window
 // they name is kept alive by the Arc<Window> passed along with them.
+#[cfg(not(target_arch = "wasm32"))]
 unsafe impl Send for WindowHandles {}
 
+#[cfg(not(target_arch = "wasm32"))]
 impl WindowHandles {
     /// Captures the handles (call on the thread that owns the event loop).
     pub fn of(win: &winit::window::Window) -> Result<WindowHandles, String> {
@@ -129,6 +149,7 @@ impl WindowHandles {
 }
 
 /// What keeps the native window alive.
+#[cfg(not(target_arch = "wasm32"))]
 enum WindowHold {
     #[allow(dead_code)]
     Winit(std::sync::Arc<winit::window::Window>),
@@ -138,6 +159,7 @@ enum WindowHold {
     None,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Drop for WindowHold {
     fn drop(&mut self) {
         #[cfg(windows)]
@@ -147,13 +169,67 @@ impl Drop for WindowHold {
     }
 }
 
+/// Where frames go: a glutin window surface, or the WebGL2 canvas (which the
+/// browser presents by itself).
+enum Host {
+    #[cfg(not(target_arch = "wasm32"))]
+    Native {
+        // field order matters for drop: the surface and context before the window
+        surface: Surface<WindowSurface>,
+        context: PossiblyCurrentContext,
+        _display: Display,
+        _hold: WindowHold,
+    },
+    #[cfg(target_arch = "wasm32")]
+    Web,
+}
+
+impl Host {
+    fn resize(&self, w: u32, h: u32) {
+        match self {
+            #[cfg(not(target_arch = "wasm32"))]
+            Host::Native { surface, context, .. } => {
+                surface.resize(context, NonZeroU32::new(w.max(1)).unwrap(), NonZeroU32::new(h.max(1)).unwrap())
+            }
+            #[cfg(target_arch = "wasm32")]
+            Host::Web => {
+                let _ = (w, h);
+            }
+        }
+    }
+
+    fn swap(&self) {
+        match self {
+            #[cfg(not(target_arch = "wasm32"))]
+            Host::Native { surface, context, .. } => {
+                let _ = surface.swap_buffers(context);
+            }
+            #[cfg(target_arch = "wasm32")]
+            Host::Web => {}
+        }
+    }
+
+    fn set_vsync(&self, on: bool) {
+        match self {
+            #[cfg(not(target_arch = "wasm32"))]
+            Host::Native { surface, context, .. } => {
+                let _ = surface.set_swap_interval(
+                    context,
+                    if on { SwapInterval::Wait(NonZeroU32::new(1).unwrap()) } else { SwapInterval::DontWait },
+                );
+            }
+            #[cfg(target_arch = "wasm32")]
+            Host::Web => {
+                let _ = on;
+            }
+        }
+    }
+}
+
 pub struct GlBackend {
     gl: glow::Context,
-    // field order matters for drop: GL objects die with the context
-    surface: Surface<WindowSurface>,
-    context: PossiblyCurrentContext,
-    _display: Display,
-    _hold: WindowHold,
+    // GL objects are deleted in Drop, before the context goes away with `host`
+    host: Host,
     prog: glow::Program,
     u_size: Option<glow::UniformLocation>,
     u_fog: Option<glow::UniformLocation>,
@@ -190,6 +266,7 @@ impl GlBackend {
     /// Creates a context for a winit window (vsync per `vsync`). The raw
     /// handles must have been obtained on the window's thread (see
     /// [`WindowHandles::of`]); the context may be created on another thread.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn for_window(win: std::sync::Arc<winit::window::Window>, h: WindowHandles, vsync: bool) -> Result<GlBackend, String> {
         let size = win.inner_size();
         Self::create(h.display, h.window, size.width.max(1), size.height.max(1), vsync, WindowHold::Winit(win))
@@ -212,10 +289,22 @@ impl GlBackend {
         Err("hidden OpenGL contexts are only implemented on Windows".into())
     }
 
+    /// Uses a WebGL2 context (browser build). Create it with `antialias: false`
+    /// and `alpha: false` so the back buffer can be blitted to the canvas.
+    #[cfg(target_arch = "wasm32")]
+    pub fn for_webgl2(ctx: web_sys::WebGl2RenderingContext, w: u32, h: u32) -> Result<GlBackend, String> {
+        let gl = glow::Context::from_webgl2_context(ctx);
+        // SAFETY: the context is current (WebGL contexts always are).
+        unsafe { Self::init(gl, Host::Web, w.max(1), h.max(1)) }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn create(rdh: RawDisplayHandle, rwh: RawWindowHandle, w: u32, h: u32, vsync: bool, hold: WindowHold) -> Result<GlBackend, String> {
         #[cfg(windows)]
         let pref = DisplayApiPreference::Wgl(Some(rwh));
-        #[cfg(not(windows))]
+        #[cfg(target_os = "macos")]
+        let pref = DisplayApiPreference::Cgl;
+        #[cfg(all(unix, not(target_os = "macos")))]
         let pref = DisplayApiPreference::Egl;
         // SAFETY: the handles are valid for the lifetime of `hold`, which the
         // backend keeps alive (dropped after the context and surface).
@@ -247,6 +336,14 @@ impl GlBackend {
                 if vsync { SwapInterval::Wait(NonZeroU32::new(1).unwrap()) } else { SwapInterval::DontWait },
             );
             let gl = glow::Context::from_loader_function_cstr(|s| display.get_proc_address(s));
+            let host = Host::Native { surface, context, _display: display, _hold: hold };
+            Self::init(gl, host, w, h)
+        }
+    }
+
+    /// Common setup of a fresh, current context.
+    unsafe fn init(gl: glow::Context, host: Host, w: u32, h: u32) -> Result<GlBackend, String> {
+        {
             let ver = gl.get_parameter_string(glow::VERSION);
             let renderer = gl.get_parameter_string(glow::RENDERER);
             eprintln!("gm-runner: OpenGL {} ({})", ver, renderer);
@@ -293,10 +390,7 @@ impl GlBackend {
             gl.bind_framebuffer(glow::FRAMEBUFFER, Some(back.fbo));
             Ok(GlBackend {
                 gl,
-                surface,
-                context,
-                _display: display,
-                _hold: hold,
+                host,
                 prog,
                 u_size,
                 u_fog,
@@ -327,7 +421,7 @@ impl GlBackend {
         let mut shaders = Vec::new();
         for (kind, src) in [(glow::VERTEX_SHADER, VS), (glow::FRAGMENT_SHADER, FS)] {
             let s = gl.create_shader(kind)?;
-            gl.shader_source(s, src);
+            gl.shader_source(s, &format!("{}{}", HEADER, src));
             gl.compile_shader(s);
             if !gl.get_shader_compile_status(s) {
                 return Err(format!("shader: {}", gl.get_shader_info_log(s)));
@@ -651,7 +745,7 @@ impl GlBackend {
         self.flush_batch();
         let (ww, wh) = (win_w.max(1), win_h.max(1));
         if self.win_size != (ww, wh) {
-            self.surface.resize(&self.context, NonZeroU32::new(ww).unwrap(), NonZeroU32::new(wh).unwrap());
+            self.host.resize(ww, wh);
             self.win_size = (ww, wh);
         }
         let (bw, bh) = (self.back.w as f64, self.back.h as f64);
@@ -684,15 +778,12 @@ impl GlBackend {
             );
             gl.bind_framebuffer(glow::FRAMEBUFFER, None);
         }
-        let _ = self.surface.swap_buffers(&self.context);
+        self.host.swap();
         self.bind_target();
     }
 
     pub fn set_vsync(&mut self, on: bool) {
-        let _ = self.surface.set_swap_interval(
-            &self.context,
-            if on { SwapInterval::Wait(NonZeroU32::new(1).unwrap()) } else { SwapInterval::DontWait },
-        );
+        self.host.set_vsync(on);
     }
 
     /// Clips a rectangle to a target; returns (x, y, w, h) inside it.

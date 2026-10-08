@@ -123,8 +123,7 @@ pub fn rtf_to_text(rtf: &str) -> String {
 }
 
 fn hs_path(g: &Game) -> std::path::PathBuf {
-    let base = std::env::var("APPDATA").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
-    base.join("gm81-runner").join(format!("highscore_{}.txt", g.game_id))
+    crate::vfs::config_dir().join(format!("highscore_{}.txt", g.game_id))
 }
 
 impl Game {
@@ -133,7 +132,7 @@ impl Game {
             return;
         }
         self.hs_loaded = true;
-        if let Ok(t) = std::fs::read_to_string(hs_path(self)) {
+        if let Ok(t) = crate::vfs::read_to_string(&hs_path(self)) {
             for line in t.lines() {
                 if let Some((s, n)) = line.split_once('\t') {
                     if let Ok(v) = s.parse::<f64>() {
@@ -151,10 +150,10 @@ impl Game {
     pub fn save_highscores(&self) {
         let p = hs_path(self);
         if let Some(d) = p.parent() {
-            let _ = std::fs::create_dir_all(d);
+            let _ = crate::vfs::create_dir_all(d);
         }
         let s: String = self.highscores.iter().map(|e| format!("{}\t{}\n", e.score, e.name)).collect();
-        let _ = std::fs::write(p, s);
+        let _ = crate::vfs::write(&p, s.as_bytes());
     }
 
     /// Inserts an entry; returns its rank (0-based) if it made the table.
@@ -207,6 +206,11 @@ impl Game {
             }
             if let Some(v) = step(self, &evs) {
                 result = Some(v);
+                break;
+            }
+            if cfg!(target_arch = "wasm32") {
+                // no input can arrive while a step runs in the browser: cancel
+                result = None;
                 break;
             }
             self.gfx.be.write(crate::draw::Target::Back, 0, 0, &saved);
@@ -457,7 +461,7 @@ pub fn register(l: &mut Reg) {
     }));
     l.push(("load_info", |g, _, _, a| {
         let p = g.resolve_path(&a.s(0)?);
-        if let Ok(b) = std::fs::read(&p) {
+        if let Ok(b) = crate::vfs::read(&p) {
             g.game_info = gm_format::text::decode_cp1252(&b);
         }
         zero()
@@ -465,7 +469,7 @@ pub fn register(l: &mut Reg) {
     // splash screens: text and images are shown as messages / overlays
     l.push(("splash_show_text", |g, _, _, a| {
         let p = g.resolve_path(&a.s(0)?);
-        if let Ok(b) = std::fs::read(&p) {
+        if let Ok(b) = crate::vfs::read(&p) {
             let t = rtf_to_text(&gm_format::text::decode_cp1252(&b));
             g.message(&t);
         }
@@ -476,7 +480,7 @@ pub fn register(l: &mut Reg) {
         let delay = a.r(1)?;
         if let Some(t) = crate::draw::Texture::load_file(&p).map(std::rc::Rc::new) {
             let tt = crate::draw::Tex::Img(t.clone());
-            let start = std::time::Instant::now();
+            let start = web_time::Instant::now();
             g.modal(
                 |_, evs| {
                     let timed_out = delay > 0.0 && start.elapsed().as_secs_f64() * 1000.0 >= delay;

@@ -159,7 +159,7 @@ pub fn dispatch(g: &mut Game, vm: &mut Vm, ctx: &Ctx, f: FunctionId, args: &[Val
                 g.spatial_invalidate();
             }
             if g.prof.is_some() {
-                let t0 = std::time::Instant::now();
+                let t0 = web_time::Instant::now();
                 let r = func(g, vm, ctx, &a);
                 crate::profile::Profiler::add(&mut g.prof.as_mut().unwrap().funcs, f.0, t0);
                 return r;

@@ -1,0 +1,5 @@
+# Browser builds (scripts/build-web.*). GML recursion runs on the wasm main
+# stack: make it 32 MiB (gm_runner::MAX_CALL_DEPTH is sized for this).
+# `getrandom_backend` selects the browser's crypto.getRandomValues for getrandom 0.3.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-arg=-zstack-size=33554432", "--cfg", "getrandom_backend=\"wasm_js\""]

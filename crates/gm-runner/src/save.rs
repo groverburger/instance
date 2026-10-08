@@ -225,12 +225,12 @@ pub fn save_game(g: &Game, vm: &Vm, path: &str) -> Result<(), String> {
     for i in live {
         write_inst(&mut w, vm, i);
     }
-    std::fs::write(path, &w.0).map_err(|e| format!("Cannot save game to {}: {}", path, e))
+    crate::vfs::write(std::path::Path::new(path), &w.0).map_err(|e| format!("Cannot save game to {}: {}", path, e))
 }
 
 /// Loads a save file (applied at the end of a step).
 pub fn load_game(g: &mut Game, vm: &mut Vm, path: &str) -> Result<(), String> {
-    let data = std::fs::read(path).map_err(|e| format!("Cannot load game from {}: {}", path, e))?;
+    let data = crate::vfs::read(std::path::Path::new(path)).map_err(|e| format!("Cannot load game from {}: {}", path, e))?;
     if data.len() < 8 || &data[..8] != MAGIC {
         return Err("Save file is from another game or version.".into());
     }

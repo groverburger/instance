@@ -830,7 +830,8 @@ impl Game {
 
     /// Plays a room transition between the old frame and the new room (§3.4).
     pub fn play_transition(&mut self, vm: &mut Vm, old: Canvas, kind: i32) -> Result<(), Error> {
-        if self.gfx.present.is_none() || kind == 0 {
+        // (the browser cannot show frames from inside a step: no transition there)
+        if self.gfx.present.is_none() || kind == 0 || cfg!(target_arch = "wasm32") {
             return Ok(());
         }
         self.draw_frame(vm)?;
@@ -841,7 +842,7 @@ impl Game {
         let script = self.transitions.get(&kind).copied();
         for k in 1..=steps {
             let f = k as f64 / steps as f64;
-            let t0 = std::time::Instant::now();
+            let t0 = web_time::Instant::now();
             if let Some(scr) = script {
                 // user transition: surfaces with old/new images
                 let sa = self.alloc_surface(old.clone());

@@ -12,14 +12,14 @@ pub struct TextFile {
     /// Read mode: content and cursor; write mode: output handle.
     pub data: Vec<u8>,
     pub pos: usize,
-    pub out: Option<std::fs::File>,
+    pub out: Option<crate::vfs::File>,
 }
 
 /// Open files and other file-related state.
 #[derive(Default)]
 pub struct FileState {
     pub text: Vec<Option<TextFile>>,
-    pub bin: Vec<Option<std::fs::File>>,
+    pub bin: Vec<Option<crate::vfs::File>>,
     /// Open INI file: path and sections.
     pub ini: Option<(std::path::PathBuf, Vec<(String, Vec<(String, String)>)>, bool)>,
     pub find: Vec<String>,
@@ -50,7 +50,7 @@ fn text_file<'a>(g: &'a mut Game, a: &A) -> Result<&'a mut TextFile, Error> {
         .ok_or_else(|| Error::new(format!("File is not opened: {}", i)))
 }
 
-fn bin_file<'a>(g: &'a mut Game, a: &A) -> Result<&'a mut std::fs::File, Error> {
+fn bin_file<'a>(g: &'a mut Game, a: &A) -> Result<&'a mut crate::vfs::File, Error> {
     let i = a.i(0)?;
     g.files
         .bin
@@ -88,7 +88,7 @@ fn ini_flush(g: &mut Game) {
                     s.push_str(&format!("{}={}\r\n", k, v));
                 }
             }
-            let _ = std::fs::write(p, s);
+            let _ = crate::vfs::write(p, s.as_bytes());
             *dirty = false;
         }
     }
@@ -117,15 +117,28 @@ fn ini_set(g: &mut Game, sec: &str, key: &str, val: String) -> Result<(), Error>
     Ok(())
 }
 
+/// The emulated registry of a game: an INI file in the user's config folder
+/// (`registry_<game id>.ini`; the Windows registry itself is never touched).
+/// Each registry key is a section, each value an entry (`s` + text or `r` + real).
 fn reg_path(g: &Game) -> std::path::PathBuf {
-    let base = std::env::var("APPDATA").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
-    base.join("gm81-runner").join(format!("registry_{}.txt", g.game_id))
+    crate::vfs::config_dir().join(format!("registry_{}.ini", g.game_id))
+}
+
+/// Path of the registry file written by earlier versions (key<TAB>value lines).
+fn reg_path_v1(g: &Game) -> std::path::PathBuf {
+    crate::vfs::config_dir().join(format!("registry_{}.txt", g.game_id))
 }
 
 fn registry(g: &mut Game) -> &mut BTreeMap<String, String> {
     if g.files.registry.is_none() {
         let mut m = BTreeMap::new();
-        if let Ok(t) = std::fs::read_to_string(reg_path(g)) {
+        if let Ok(t) = crate::vfs::read_to_string(&reg_path(g)) {
+            for (sec, keys) in parse_ini(&t) {
+                for (k, v) in keys {
+                    m.insert(format!("{}\\{}", sec, k), reg_unescape(&v));
+                }
+            }
+        } else if let Ok(t) = crate::vfs::read_to_string(&reg_path_v1(g)) {
             for l in t.lines() {
                 if let Some((k, v)) = l.split_once('\t') {
                     m.insert(k.to_string(), v.replace("\\n", "\n"));
@@ -137,13 +150,54 @@ fn registry(g: &mut Game) -> &mut BTreeMap<String, String> {
     g.files.registry.as_mut().unwrap()
 }
 
+/// Escapes a registry value for the INI file (backslash, newline, carriage
+/// return, and `\s` for trailing spaces, which INI parsing would trim).
+fn reg_escape(v: &str) -> String {
+    let mut o = v.replace('\\', "\\\\").replace('\n', "\\n").replace('\r', "\\r");
+    let trimmed = o.trim_end_matches(' ').len();
+    let n = o.len() - trimmed;
+    o.truncate(trimmed);
+    o.push_str(&"\\s".repeat(n));
+    o
+}
+
+fn reg_unescape(v: &str) -> String {
+    let mut o = String::with_capacity(v.len());
+    let mut it = v.chars();
+    while let Some(c) = it.next() {
+        if c != '\\' {
+            o.push(c);
+            continue;
+        }
+        match it.next() {
+            Some('n') => o.push('\n'),
+            Some('r') => o.push('\r'),
+            Some('s') => o.push(' '),
+            Some(c) => o.push(c),
+            None => o.push('\\'),
+        }
+    }
+    o
+}
+
 fn reg_save(g: &mut Game) {
     let p = reg_path(g);
-    let s: String = registry(g).iter().map(|(k, v)| format!("{}\t{}\n", k, v.replace('\n', "\\n"))).collect();
-    if let Some(d) = p.parent() {
-        let _ = std::fs::create_dir_all(d);
+    let mut secs: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+    for (k, v) in registry(g).iter() {
+        let (sec, name) = k.rsplit_once('\\').unwrap_or(("", k.as_str()));
+        secs.entry(sec.to_string()).or_default().push((name.to_string(), reg_escape(v)));
     }
-    let _ = std::fs::write(p, s);
+    let mut s = String::new();
+    for (sec, keys) in secs {
+        s.push_str(&format!("[{}]\r\n", sec));
+        for (k, v) in keys {
+            s.push_str(&format!("{}={}\r\n", k, v));
+        }
+    }
+    if let Some(d) = p.parent() {
+        let _ = crate::vfs::create_dir_all(d);
+    }
+    let _ = crate::vfs::write(&p, s.as_bytes());
 }
 
 fn reg_key(g: &Game, key: Option<&str>, name: &str) -> String {
@@ -182,11 +236,11 @@ impl Game {
                 _ => f.export_folder.clone(),
             };
             let p = std::path::Path::new(&dir).join(&f.file_name);
-            if p.exists() && !f.overwrite_existing {
+            if crate::vfs::exists(&p) && !f.overwrite_existing {
                 continue;
             }
             if let Some(d) = &f.data {
-                let _ = std::fs::write(&p, d);
+                let _ = crate::vfs::write(&p, d);
             }
         }
     }
@@ -270,15 +324,43 @@ mod clip {
     }
 }
 
-#[cfg(not(windows))]
+/// macOS / Linux clipboard through arboard (text converted from/to CP-1252).
+#[cfg(all(not(windows), not(target_arch = "wasm32")))]
 mod clip {
     pub fn has_text() -> bool {
-        false
+        arboard::Clipboard::new().and_then(|mut c| c.get_text()).map(|t| !t.is_empty()).unwrap_or(false)
     }
     pub fn get() -> Vec<u8> {
-        Vec::new()
+        arboard::Clipboard::new()
+            .and_then(|mut c| c.get_text())
+            .map(|t| gm_format::text::encode_cp1252(&t))
+            .unwrap_or_default()
     }
-    pub fn set(_: &[u8]) {}
+    pub fn set(b: &[u8]) {
+        if let Ok(mut c) = arboard::Clipboard::new() {
+            let _ = c.set_text(gm_format::text::decode_cp1252(b));
+        }
+    }
+}
+
+/// Browser: the system clipboard can only be read asynchronously, so the game
+/// gets a clipboard of its own (writes are also offered to the system one).
+#[cfg(target_arch = "wasm32")]
+mod clip {
+    use std::cell::RefCell;
+    thread_local! {
+        static CLIP: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+    }
+    pub fn has_text() -> bool {
+        CLIP.with(|c| !c.borrow().is_empty())
+    }
+    pub fn get() -> Vec<u8> {
+        CLIP.with(|c| c.borrow().clone())
+    }
+    pub fn set(b: &[u8]) {
+        CLIP.with(|c| *c.borrow_mut() = b.to_vec());
+        crate::web::copy_text(&gm_format::text::decode_cp1252(b));
+    }
 }
 
 pub fn register(l: &mut Reg) {
@@ -291,21 +373,19 @@ pub fn register(l: &mut Reg) {
     fn open_text(g: &mut Game, a: &A, mode: u8) -> Result<Value, Error> {
         let p = g.resolve_path(&a.s(0)?);
         let tf = match mode {
-            0 => match std::fs::read(&p) {
+            0 => match crate::vfs::read(&p) {
                 Ok(d) => TextFile { data: d, pos: 0, out: None },
                 Err(_) => return Err(Error::new(format!("Could not open file {}", p.display()))),
             },
             1 => TextFile {
                 data: Vec::new(),
                 pos: 0,
-                out: Some(std::fs::File::create(&p).map_err(|e| Error::new(e.to_string()))?),
+                out: Some(crate::vfs::File::open(&p, crate::vfs::Mode::Create).map_err(|e| Error::new(e.to_string()))?),
             },
             _ => TextFile {
                 data: Vec::new(),
                 pos: 0,
-                out: Some(
-                    std::fs::OpenOptions::new().create(true).append(true).open(&p).map_err(|e| Error::new(e.to_string()))?,
-                ),
+                out: Some(crate::vfs::File::open(&p, crate::vfs::Mode::Append).map_err(|e| Error::new(e.to_string()))?),
             },
         };
         r(alloc(&mut g.files.text, tf) as f64)
@@ -382,14 +462,14 @@ pub fn register(l: &mut Reg) {
         let f = text_file(g, a)?;
         bo(f.pos >= f.data.len() || f.data[f.pos] == b'\r' || f.data[f.pos] == b'\n')
     }));
-    l.push(("file_exists", |g, _, _, a| bo(g.resolve_path(&a.s(0)?).is_file())));
-    l.push(("file_delete", |g, _, _, a| bo(std::fs::remove_file(g.resolve_path(&a.s(0)?)).is_ok())));
+    l.push(("file_exists", |g, _, _, a| bo(crate::vfs::is_file(&g.resolve_path(&a.s(0)?)))));
+    l.push(("file_delete", |g, _, _, a| bo(crate::vfs::remove_file(&g.resolve_path(&a.s(0)?)).is_ok())));
     l.push(("file_rename", |g, _, _, a| {
-        bo(std::fs::rename(g.resolve_path(&a.s(0)?), g.resolve_path(&a.s(1)?)).is_ok())
+        bo(crate::vfs::rename(&g.resolve_path(&a.s(0)?), &g.resolve_path(&a.s(1)?)).is_ok())
     }));
-    l.push(("file_copy", |g, _, _, a| bo(std::fs::copy(g.resolve_path(&a.s(0)?), g.resolve_path(&a.s(1)?)).is_ok())));
-    l.push(("directory_exists", |g, _, _, a| bo(g.resolve_path(&a.s(0)?).is_dir())));
-    l.push(("directory_create", |g, _, _, a| bo(std::fs::create_dir_all(g.resolve_path(&a.s(0)?)).is_ok())));
+    l.push(("file_copy", |g, _, _, a| bo(crate::vfs::copy(&g.resolve_path(&a.s(0)?), &g.resolve_path(&a.s(1)?)).is_ok())));
+    l.push(("directory_exists", |g, _, _, a| bo(crate::vfs::is_dir(&g.resolve_path(&a.s(0)?)))));
+    l.push(("directory_create", |g, _, _, a| bo(crate::vfs::create_dir_all(&g.resolve_path(&a.s(0)?)).is_ok())));
     l.push(("file_find_first", |g, _, _, a| {
         let mask = a.s(0)?;
         let attr = a.i(1)?;
@@ -397,10 +477,8 @@ pub fn register(l: &mut Reg) {
         let dir = p.parent().map(|d| d.to_path_buf()).unwrap_or_default();
         let pat = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let mut names = Vec::new();
-        if let Ok(rd) = std::fs::read_dir(if dir.as_os_str().is_empty() { std::path::Path::new(".") } else { &dir }) {
-            for e in rd.flatten() {
-                let n = e.file_name().to_string_lossy().into_owned();
-                let is_dir = e.path().is_dir();
+        if let Ok(rd) = crate::vfs::read_dir(&dir) {
+            for (n, is_dir) in rd {
                 if is_dir && attr & 16 == 0 {
                     continue;
                 }
@@ -428,12 +506,14 @@ pub fn register(l: &mut Reg) {
     l.push(("file_attributes", |g, _, _, a| {
         let p = g.resolve_path(&a.s(0)?);
         let attr = a.i(1)?;
-        let Ok(m) = std::fs::metadata(&p) else { return bo(false) };
+        if !crate::vfs::exists(&p) {
+            return bo(false);
+        }
         let mut have = 0;
-        if m.permissions().readonly() {
+        if crate::vfs::read_only(&p) {
             have |= 1;
         }
-        if m.is_dir() {
+        if crate::vfs::is_dir(&p) {
             have |= 16;
         } else {
             have |= 32;
@@ -470,11 +550,12 @@ pub fn register(l: &mut Reg) {
     l.push(("file_bin_open", |g, _, _, a| {
         let p = g.resolve_path(&a.s(0)?);
         let mode = a.i(1)?;
-        let f = match mode {
-            0 => std::fs::File::open(&p),
-            1 => std::fs::OpenOptions::new().write(true).create(true).truncate(false).open(&p),
-            _ => std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&p),
-        }
+        let mode = match mode {
+            0 => crate::vfs::Mode::Read,
+            1 => crate::vfs::Mode::Write,
+            _ => crate::vfs::Mode::ReadWrite,
+        };
+        let f = crate::vfs::File::open(&p, mode)
         .map_err(|e| Error::new(format!("Cannot open file {}: {}", p.display(), e)))?;
         r(alloc(&mut g.files.bin, f) as f64)
     }));
@@ -497,7 +578,7 @@ pub fn register(l: &mut Reg) {
     }));
     l.push(("file_bin_size", |g, _, _, a| {
         let f = bin_file(g, a)?;
-        r(f.metadata().map(|m| m.len()).unwrap_or(0) as f64)
+        r(f.len() as f64)
     }));
     l.push(("file_bin_seek", |g, _, _, a| {
         let p = a.r(1)?.max(0.0) as u64;
@@ -524,7 +605,7 @@ pub fn register(l: &mut Reg) {
         if let Some(f) = g.included(&n) {
             if let Some(d) = &f.data {
                 let p = std::path::Path::new(&g.working_directory).join(&f.file_name);
-                let _ = std::fs::write(p, d);
+                let _ = crate::vfs::write(&p, d);
             }
         }
         zero()
@@ -534,7 +615,7 @@ pub fn register(l: &mut Reg) {
         let loc = a.s(1)?;
         if let Some(f) = g.included(&n) {
             if let Some(d) = &f.data {
-                let _ = std::fs::write(g.resolve_path(&loc), d);
+                let _ = crate::vfs::write(&g.resolve_path(&loc), d);
             }
         }
         zero()
@@ -625,7 +706,7 @@ pub fn register(l: &mut Reg) {
     l.push(("ini_open", |g, _, _, a| {
         ini_flush(g);
         let p = g.resolve_path(&a.s(0)?);
-        let text = std::fs::read(&p).map(|b| gm_format::text::decode_cp1252(&b)).unwrap_or_default();
+        let text = crate::vfs::read(&p).map(|b| gm_format::text::decode_cp1252(&b)).unwrap_or_default();
         g.files.ini = Some((p, parse_ini(&text), false));
         zero()
     }));
@@ -685,6 +766,10 @@ pub fn register(l: &mut Reg) {
         let prog = a.s(0)?;
         let args = a.s(1)?;
         let wait = a.b(2)?;
+        if cfg!(target_arch = "wasm32") {
+            let _ = (prog, args, wait, &g);
+            return zero();
+        }
         let mut cmd = std::process::Command::new(&prog);
         cmd.args(args.split_whitespace());
         if !g.working_directory.is_empty() {
@@ -700,13 +785,39 @@ pub fn register(l: &mut Reg) {
     l.push(("execute_shell", |_, _, _, a| {
         let prog = a.s(0)?;
         let args = a.s(1)?;
-        let _ = std::process::Command::new("cmd").args(["/C", "start", "", &prog]).args(args.split_whitespace()).spawn();
+        open_shell(&prog, &args);
         zero()
     }));
 }
 
+/// `execute_shell`: opens a document, folder or URL with the system's handler.
+fn open_shell(prog: &str, args: &str) {
+    #[cfg(windows)]
+    let _ = std::process::Command::new("cmd").args(["/C", "start", "", prog]).args(args.split_whitespace()).spawn();
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(prog).args(args.split_whitespace()).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let _ = std::process::Command::new("xdg-open").arg(prog).args(args.split_whitespace()).spawn();
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = args;
+        if prog.starts_with("http://") || prog.starts_with("https://") || prog.starts_with("mailto:") {
+            if let Some(w) = web_sys::window() {
+                let _ = w.open_with_url_and_target(prog, "_blank");
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn registry_escapes() {
+        for v in ["s", "sa\\nb", "sx\ny\r", "rtrailing  ", "s\\\\"] {
+            assert_eq!(super::reg_unescape(&super::reg_escape(v)), v);
+        }
+    }
+
     #[test]
     fn wildcards() {
         assert!(super::wildcard("*.txt", "a.TXT"));

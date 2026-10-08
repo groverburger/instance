@@ -3,7 +3,7 @@
 //! hottest events, functions, scripts and step phases (inclusive times).
 
 use std::collections::HashMap;
-use std::time::Instant;
+use web_time::Instant;
 
 #[derive(Default)]
 pub struct Profiler {

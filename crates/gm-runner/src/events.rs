@@ -181,7 +181,7 @@ impl Game {
             object: owner,
             action: 0,
         };
-        let t0 = self.prof.as_ref().map(|_| std::time::Instant::now());
+        let t0 = self.prof.as_ref().map(|_| web_time::Instant::now());
         let r = actions::execute(self, vm, list, id, other);
         if let (Some(p), Some(t0)) = (self.prof.as_mut(), t0) {
             crate::profile::Profiler::add(&mut p.events, (owner, t, n), t0);

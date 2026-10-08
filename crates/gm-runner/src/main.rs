@@ -17,13 +17,30 @@
 //! Joystick items: `STEP:joy1:button:N:down|up`, `STEP:joy1:axis:x|y|z|r|u|v:VALUE`,
 //! `STEP:joy1:pov:ANGLE` (−1 centred), `STEP:joy1:connect|disconnect` (also `joy2`).
 
+//! (On `wasm32` this binary is empty; the browser runner is `gm_runner::web`.)
+
+#![cfg_attr(target_arch = "wasm32", allow(dead_code, unused_imports))]
+
+#[cfg(not(target_arch = "wasm32"))]
 mod standalone;
+#[cfg(not(target_arch = "wasm32"))]
 mod window;
 
+#[cfg(target_arch = "wasm32")]
+fn main() {}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn main() {
+    desktop::run_main()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+mod desktop {
 use gm_runner::draw::backend::Backend;
 use gm_runner::{Game, InputEvent};
 use std::path::PathBuf;
-use window::Renderer;
+use crate::window::Renderer;
+use crate::{standalone, window};
 
 struct Opts {
     file: PathBuf,
@@ -252,21 +269,21 @@ fn run_headless(o: Opts) -> i32 {
     }
     let sync = g.gfx.be.name() != "software";
     let mut worst = (0u8, 0usize, 0u64);
-    let t0 = std::time::Instant::now();
+    let t0 = web_time::Instant::now();
     let mut slowest = (0.0f64, 0u64);
     for f in 0..o.frames {
         if g.ended {
             eprintln!("game ended at step {}", f);
             break;
         }
-        let ts = std::time::Instant::now();
+        let ts = web_time::Instant::now();
         if let Err(e) = g.step(&mut vm) {
             eprintln!("FATAL: {}", e);
             break;
         }
         if sync {
             // wait for the GPU so timings are honest
-            let t = std::time::Instant::now();
+            let t = web_time::Instant::now();
             let _ = g.gfx.be.pixel(gm_runner::draw::Target::Back, 0, 0);
             g.draw_time += t.elapsed().as_secs_f64();
         }
@@ -346,7 +363,7 @@ fn run_headless(o: Opts) -> i32 {
     }
 }
 
-fn main() {
+pub fn run_main() {
     let o = match parse_args() {
         Ok(Some(o)) => o,
         Ok(None) => return,
@@ -363,8 +380,12 @@ fn main() {
             .expect("spawn game thread");
         h.join().unwrap_or(3)
     } else {
-        let r = o.renderer.unwrap_or(Renderer::Gl);
+        // On macOS the OpenGL context would be created off the main thread, which
+        // AppKit does not allow: default to the software renderer there.
+        let default = if cfg!(target_os = "macos") { Renderer::Software } else { Renderer::Gl };
+        let r = o.renderer.unwrap_or(default);
         window::run(o.file, o.input, r)
     };
     std::process::exit(code);
+}
 }

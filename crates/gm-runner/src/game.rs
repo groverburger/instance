@@ -200,7 +200,7 @@ pub struct Game {
     pub ui: Box<dyn UiHooks>,
     pub frame: u64,
     pub fps: f64,
-    pub start_time: std::time::Instant,
+    pub start_time: web_time::Instant,
     /// Scripted input: (step number, event) applied at the start of that step.
     pub scripted_input: Vec<(u64, InputEvent)>,
     /// The window's region size (decided at room start).
@@ -218,7 +218,7 @@ pub struct Game {
     pub in_timeline: bool,
     /// Steps per second achieved (for fps), counters.
     pub fps_counter: u32,
-    pub fps_time: std::time::Instant,
+    pub fps_time: web_time::Instant,
     /// Sleep requests made during the step (ms), honoured by the window loop.
     pub sleep_ms: f64,
     /// Requested by window functions: (w,h) to resize, centre, etc.
@@ -229,6 +229,8 @@ pub struct Game {
     pub debug_messages: Vec<String>,
     pub save_counter: u32,
     pub close_requested: bool,
+    /// `sleep` time not yet waited (browser build: the frontend delays the next step).
+    pub sleep_debt_ms: f64,
     /// Accumulated seconds spent drawing (diagnostics).
     pub draw_time: f64,
     pub pending_lives_event: bool,
@@ -413,7 +415,7 @@ impl Game {
             ui: Box::new(HeadlessUi),
             frame: 0,
             fps: 0.0,
-            start_time: std::time::Instant::now(),
+            start_time: web_time::Instant::now(),
             scripted_input: Vec::new(),
             region_w: 640,
             region_h: 480,
@@ -421,12 +423,12 @@ impl Game {
             fullscreen: p.settings.start_fullscreen,
             working_directory: String::new(),
             program_directory: String::new(),
-            temp_directory: std::env::temp_dir().to_string_lossy().trim_end_matches('\\').to_string(),
+            temp_directory: crate::vfs::temp_dir().to_string_lossy().trim_end_matches('\\').to_string(),
             files: Default::default(),
             transitions: HashMap::new(),
             in_timeline: false,
             fps_counter: 0,
-            fps_time: std::time::Instant::now(),
+            fps_time: web_time::Instant::now(),
             sleep_ms: 0.0,
             window_dirty: true,
             window_visible: true,
@@ -435,6 +437,7 @@ impl Game {
             debug_messages: Vec::new(),
             save_counter: 0,
             close_requested: false,
+            sleep_debt_ms: 0.0,
             draw_time: 0.0,
             pending_lives_event: false,
             pending_health_event: false,
@@ -988,10 +991,8 @@ impl Game {
         // (while loading, the game folder is not known yet: no log file)
         if self.settings.write_errors_to_log && !self.working_directory.is_empty() {
             use std::io::Write;
-            if let Ok(mut f) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(std::path::Path::new(&self.working_directory).join("game_errors.log"))
+            if let Ok(mut f) =
+                crate::vfs::File::open(&std::path::Path::new(&self.working_directory).join("game_errors.log"), crate::vfs::Mode::Append)
             {
                 let _ = writeln!(f, "{}", msg);
             }
@@ -1090,7 +1091,7 @@ impl Game {
         if el >= 1.0 {
             self.fps = (self.fps_counter as f64 / el).round();
             self.fps_counter = 0;
-            self.fps_time = std::time::Instant::now();
+            self.fps_time = web_time::Instant::now();
         }
         match r {
             Err(e) if e.kind == ErrorKind::Halt => {
@@ -1105,7 +1106,7 @@ impl Game {
         macro_rules! phase {
             ($g:expr, $name:expr, $e:expr) => {{
                 if $g.prof.is_some() {
-                    let t0 = std::time::Instant::now();
+                    let t0 = web_time::Instant::now();
                     let r = $e;
                     let el = t0.elapsed().as_secs_f64();
                     *$g.prof.as_mut().unwrap().phases.entry($name).or_insert(0.0) += el;
@@ -1199,7 +1200,7 @@ impl Game {
             self.update_views();
             // 17. draw
             if self.automatic_draw {
-                let t0 = std::time::Instant::now();
+                let t0 = web_time::Instant::now();
                 phase!(self, "draw", self.draw_frame(vm));
                 self.draw_time += t0.elapsed().as_secs_f64();
             }
@@ -1317,7 +1318,7 @@ impl Game {
             let mut n = 0;
             loop {
                 let p = std::path::Path::new(&self.working_directory).join(format!("screenshot{:03}.png", n));
-                if !p.exists() {
+                if !crate::vfs::exists(&p) {
                     let _ = self.gfx.read_back().save_png(&p, true);
                     break;
                 }

@@ -5,7 +5,7 @@ use super::dsp::{EffectSettings, FxChain};
 use super::midi::{Out, SeqPlayer};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use web_time::Instant;
 
 /// Engine-wide values read by voices and the MIDI thread.
 pub struct Globals {

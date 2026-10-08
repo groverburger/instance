@@ -7,6 +7,7 @@
 //! [`gml::Host::call_script`] dispatches those here.
 
 pub mod bundle;
+#[cfg_attr(target_arch = "wasm32", path = "dll_web.rs")]
 pub mod dll;
 
 use crate::builtins::{r, zero, Reg};
@@ -63,7 +64,7 @@ impl Drop for Extensions {
         if let Some(d) = self.temp_dir.take() {
             // a just-exited helper process may hold the DLL image for a moment
             for _ in 0..50 {
-                if std::fs::remove_dir_all(&d).is_ok() || !d.exists() {
+                if crate::vfs::remove_dir_all(&d).is_ok() || !crate::vfs::exists(&d) || cfg!(target_arch = "wasm32") {
                     break;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(20));
@@ -173,7 +174,7 @@ fn load_into(g: &mut Game, ext: &mut Extensions, vm: &mut Vm, packages: &[String
                 extpkg::FILE_DLL | extpkg::FILE_OTHER => {
                     let dir = temp_dir(g, ext).map_err(|e| format!("extension package {}: {}", pname, e))?;
                     let path = dir.join(&f.file_name);
-                    std::fs::write(&path, &bytes).map_err(|e| format!("cannot write {}: {}", path.display(), e))?;
+                    crate::vfs::write(&path, &bytes).map_err(|e| format!("cannot write {}: {}", path.display(), e))?;
                     if f.kind == extpkg::FILE_DLL {
                         let p = path.to_string_lossy().to_string();
                         for func in &f.functions {
@@ -234,9 +235,10 @@ fn temp_dir(g: &Game, ext: &mut Extensions) -> std::io::Result<PathBuf> {
     }
     static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let base = format!("gm81_{}_{}", g.game_id, std::process::id());
-    let d = std::env::temp_dir().join(if n == 0 { base } else { format!("{base}_{n}") });
-    std::fs::create_dir_all(&d)?;
+    let pid = if cfg!(target_arch = "wasm32") { 0 } else { std::process::id() };
+    let base = format!("gm81_{}_{}", g.game_id, pid);
+    let d = crate::vfs::temp_dir().join(if n == 0 { base } else { format!("{base}_{n}") });
+    crate::vfs::create_dir_all(&d)?;
     ext.temp_dir = Some(d.clone());
     Ok(d)
 }

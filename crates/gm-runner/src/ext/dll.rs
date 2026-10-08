@@ -64,7 +64,7 @@ impl Helper {
 impl Drop for Helper {
     fn drop(&mut self) {
         let _ = proto::write_frame(&mut self.tx, proto::QUIT, &[]);
-        let t0 = std::time::Instant::now();
+        let t0 = web_time::Instant::now();
         while t0.elapsed() < std::time::Duration::from_millis(500) {
             if let Ok(Some(_)) = self.child.try_wait() {
                 return;
@@ -181,6 +181,10 @@ impl Dlls {
         }
         let key = Path::new(dll).file_name().map(|f| f.to_string_lossy().to_lowercase()).unwrap_or_default();
         let machine = path.as_deref().and_then(gm_dllcall::pe_machine_of);
+        if cfg!(not(windows)) && machine.is_some() {
+            // a PE image: Windows-only (native .dylib/.so libraries load in-process below)
+            return Err(format!("cannot load {}: Windows DLLs are not supported on this platform", dll));
+        }
         let in_proc = match machine {
             Some(m) => m == gm_dllcall::host_machine(),
             None => true,

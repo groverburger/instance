@@ -8,12 +8,14 @@ use gm_runner::draw::gl::{GlBackend, WindowHandles};
 /// The window and its raw handles, sent to the game thread for OpenGL.
 type WinMsg = (Arc<Window>, Result<WindowHandles, String>);
 use gm_runner::draw::Backend;
+use gm_runner::frontend::{self, mapping, Mapping, Pacer};
 use gm_runner::{Game, InputEvent, UiHooks};
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
@@ -77,29 +79,6 @@ struct Slot {
     gl: bool,
 }
 
-#[derive(Clone, Copy)]
-struct Mapping {
-    ox: f64,
-    oy: f64,
-    sx: f64,
-    sy: f64,
-}
-
-/// Placement of the region in the window (runtime.md §12.1).
-fn mapping(ww: u32, wh: u32, rw: u32, rh: u32, scale: f64, fullscreen: bool) -> Mapping {
-    let (ww, wh) = (ww.max(1) as f64, wh.max(1) as f64);
-    let (rw, rh) = (rw.max(1) as f64, rh.max(1) as f64);
-    let (sx, sy) = if scale > 0.0 && !fullscreen {
-        (scale, scale)
-    } else if scale == 0.0 {
-        (ww / rw, wh / rh)
-    } else {
-        let k = (ww / rw).min(wh / rh);
-        (k, k)
-    };
-    Mapping { ox: ((ww - rw * sx) / 2.0).floor(), oy: ((wh - rh * sy) / 2.0).floor(), sx, sy }
-}
-
 fn slot_mapping(s: &Slot) -> Mapping {
     mapping(s.win_w, s.win_h, s.w, s.h, s.scale, s.fullscreen)
 }
@@ -116,108 +95,9 @@ struct App {
     shown: bool,
 }
 
+/// Virtual key code of a winit key (its Debug name is the DOM `code` name).
 fn vk(code: KeyCode) -> Option<u8> {
-    use KeyCode::*;
-    Some(match code {
-        ArrowLeft => 37,
-        ArrowUp => 38,
-        ArrowRight => 39,
-        ArrowDown => 40,
-        Space => 32,
-        Enter | NumpadEnter => 13,
-        Escape => 27,
-        Backspace => 8,
-        Tab => 9,
-        ShiftLeft => 16,
-        ShiftRight => 16,
-        ControlLeft | ControlRight => 17,
-        AltLeft | AltRight => 18,
-        Pause => 19,
-        PageUp => 33,
-        PageDown => 34,
-        End => 35,
-        Home => 36,
-        PrintScreen => 44,
-        Insert => 45,
-        Delete => 46,
-        Digit0 => 48,
-        Digit1 => 49,
-        Digit2 => 50,
-        Digit3 => 51,
-        Digit4 => 52,
-        Digit5 => 53,
-        Digit6 => 54,
-        Digit7 => 55,
-        Digit8 => 56,
-        Digit9 => 57,
-        KeyA => 65,
-        KeyB => 66,
-        KeyC => 67,
-        KeyD => 68,
-        KeyE => 69,
-        KeyF => 70,
-        KeyG => 71,
-        KeyH => 72,
-        KeyI => 73,
-        KeyJ => 74,
-        KeyK => 75,
-        KeyL => 76,
-        KeyM => 77,
-        KeyN => 78,
-        KeyO => 79,
-        KeyP => 80,
-        KeyQ => 81,
-        KeyR => 82,
-        KeyS => 83,
-        KeyT => 84,
-        KeyU => 85,
-        KeyV => 86,
-        KeyW => 87,
-        KeyX => 88,
-        KeyY => 89,
-        KeyZ => 90,
-        Numpad0 => 96,
-        Numpad1 => 97,
-        Numpad2 => 98,
-        Numpad3 => 99,
-        Numpad4 => 100,
-        Numpad5 => 101,
-        Numpad6 => 102,
-        Numpad7 => 103,
-        Numpad8 => 104,
-        Numpad9 => 105,
-        NumpadMultiply => 106,
-        NumpadAdd => 107,
-        NumpadSubtract => 109,
-        NumpadDecimal => 110,
-        NumpadDivide => 111,
-        F1 => 112,
-        F2 => 113,
-        F3 => 114,
-        F4 => 115,
-        F5 => 116,
-        F6 => 117,
-        F7 => 118,
-        F8 => 119,
-        F9 => 120,
-        F10 => 121,
-        F11 => 122,
-        F12 => 123,
-        NumLock => 144,
-        ScrollLock => 145,
-        Semicolon => 186,
-        Equal => 187,
-        Comma => 188,
-        Minus => 189,
-        Period => 190,
-        Slash => 191,
-        Backquote => 192,
-        BracketLeft => 219,
-        Backslash => 220,
-        BracketRight => 221,
-        Quote => 222,
-        _ => return None,
-    })
+    gm_runner::input::vk_from_code(&format!("{:?}", code))
 }
 
 impl App {
@@ -357,6 +237,10 @@ fn client_size(s: &Slot) -> (u32, u32) {
     (((s.w.max(1) as f64) * k) as u32, ((s.h.max(1) as f64) * k) as u32)
 }
 
+fn rgb_to_0rgb(c: u32) -> u32 {
+    frontend::rgb_to_0rgb(c)
+}
+
 impl ApplicationHandler<UserEvent> for App {
     fn resumed(&mut self, el: &ActiveEventLoop) {
         self.create_window(el);
@@ -415,9 +299,7 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                let m = slot_mapping(&self.slot.lock().unwrap());
-                let x = (position.x - m.ox) / m.sx.max(1e-9);
-                let y = (position.y - m.oy) / m.sy.max(1e-9);
+                let (x, y) = slot_mapping(&self.slot.lock().unwrap()).to_region(position.x, position.y);
                 let _ = self.input.send(InputEvent::MouseMove(x, y));
             }
             WindowEvent::MouseInput { state, button, .. } => {
@@ -545,10 +427,6 @@ impl UiHooks for RfdUi {
 }
 
 
-fn rgb_to_0rgb(c: u32) -> u32 {
-    ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF)
-}
-
 /// Installs the presentation hook for the chosen renderer.
 fn install_present(g: &mut Game, slot: &Arc<Mutex<Slot>>, proxy: &EventLoopProxy<UserEvent>, gl: bool) {
     let slot = slot.clone();
@@ -634,7 +512,7 @@ fn game_thread(
         eprintln!("gm-runner: {}", e);
         return 1;
     }
-    let mut next = Instant::now();
+    let mut pacer = Pacer::default();
     let mut last_region = (0, 0);
     let mut last_pos = (i32::MIN, i32::MIN);
     let mut last_center = true;
@@ -642,23 +520,21 @@ fn game_thread(
     let report = std::env::var_os("GM_RUNNER_FPS").is_some();
     while !g.ended {
         let t0 = Instant::now();
-        g.pump_input();
-        if let Err(e) = g.step(&mut vm) {
+        if let Err(e) = frontend::tick(&mut g, &mut vm) {
             eprintln!("gm-runner: {}", e);
             break;
         }
         {
             let mut s = slot.lock().unwrap();
-            let cap = g.caption();
-            *title.lock().unwrap() = cap.clone();
-            s.caption = cap;
-            s.scale = g.win.region_scale;
-            s.fullscreen = g.fullscreen;
-            s.outside = rgb_to_0rgb(g.settings.color_outside_room);
-            let (bw, bh) = g.gfx.back_size();
-            s.w = bw;
-            s.h = bh;
-            s.cursor_visible = g.cursor != -1 && g.cursor_sprite < 0 && (g.settings.display_cursor || g.cursor != 0);
+            let v = frontend::view(&g);
+            *title.lock().unwrap() = v.caption.clone();
+            s.caption = v.caption;
+            s.scale = v.scale;
+            s.fullscreen = v.fullscreen;
+            s.outside = v.outside;
+            s.w = v.w;
+            s.h = v.h;
+            s.cursor_visible = v.cursor_visible;
             if g.window_dirty || last_region != (g.region_w, g.region_h) {
                 if last_region != (g.region_w, g.region_h) || g.win.w > 0 {
                     s.resize = true;
@@ -693,13 +569,10 @@ fn game_thread(
             busy = 0.0;
             t_report = Instant::now();
         }
-        let dt = Duration::from_secs_f64(1.0 / g.rs.speed.max(1.0));
-        next += dt;
+        pacer.advance(g.rs.speed);
         let now = Instant::now();
-        if next > now {
-            std::thread::sleep(next - now);
-        } else if now - next > Duration::from_millis(250) {
-            next = now;
+        if pacer.next() > now {
+            std::thread::sleep(pacer.next() - now);
         }
     }
     if g.aborted {

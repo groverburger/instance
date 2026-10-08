@@ -338,13 +338,13 @@ pub fn register(l: &mut Reg) {
     l.push(("d3d_model_save", |g, _, _, a| {
         let p = g.resolve_path(&a.s(1)?);
         let text = g.model_mut(a.i(0)?)?.to_text();
-        bo(std::fs::write(p, text).is_ok())
+        bo(crate::vfs::write(&p, text.as_bytes()).is_ok())
     }));
     l.push(("d3d_model_load", |g, _, _, a| {
         let p = g.resolve_path(&a.s(1)?);
         let m = g.model_mut(a.i(0)?)?;
         m.clear();
-        let Ok(bytes) = std::fs::read(p) else { return bo(false) };
+        let Ok(bytes) = crate::vfs::read(&p) else { return bo(false) };
         match Model::from_text(&String::from_utf8_lossy(&bytes)) {
             Some(nm) => {
                 *m = nm;

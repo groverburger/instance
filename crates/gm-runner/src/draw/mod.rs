@@ -81,9 +81,8 @@ impl Texture {
 
     /// Writes the texture as a PNG file.
     pub fn save_png(&self, path: &std::path::Path, opaque: bool) -> std::io::Result<()> {
-        let f = std::fs::File::create(path)?;
-        let w = std::io::BufWriter::new(f);
-        let mut enc = png::Encoder::new(w, self.w.max(1), self.h.max(1));
+        let mut out = Vec::new();
+        let mut enc = png::Encoder::new(&mut out, self.w.max(1), self.h.max(1));
         enc.set_color(png::ColorType::Rgba);
         enc.set_depth(png::BitDepth::Eight);
         let mut writer = enc.write_header().map_err(std::io::Error::other)?;
@@ -97,12 +96,13 @@ impl Texture {
             data = vec![0, 0, 0, 255];
         }
         writer.write_image_data(&data).map_err(std::io::Error::other)?;
-        Ok(())
+        writer.finish().map_err(std::io::Error::other)?;
+        crate::vfs::write(path, &out)
     }
 
     /// Loads an image file (PNG or BMP) as a texture.
     pub fn load_file(path: &std::path::Path) -> Option<Texture> {
-        let bytes = std::fs::read(path).ok()?;
+        let bytes = crate::vfs::read(path).ok()?;
         Self::load_bytes(&bytes)
     }
 

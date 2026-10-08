@@ -32,7 +32,8 @@ use midi::Sequence;
 use midi_out::{Cmd, MidiThread};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 use voice::{Globals, Pcm, Sound3d, SoundCtl, VoiceState};
 
 /// Maximum simultaneous PCM voices (§2).
@@ -76,6 +77,15 @@ fn detect(d: &[u8]) -> Format {
     } else {
         Format::Pcm
     }
+}
+
+/// SoundFont handed over by the embedding page (the browser build fetches one
+/// from a URL, see web/play.html); takes precedence over the search path.
+static PROVIDED_SOUNDFONT: Mutex<Option<Arc<Vec<u8>>>> = Mutex::new(None);
+
+/// Supplies SoundFont (.sf2) bytes for MIDI playback (used by the web runner).
+pub fn set_soundfont_bytes(data: Vec<u8>) {
+    *PROVIDED_SOUNDFONT.lock().unwrap() = Some(Arc::new(data));
 }
 
 /// Searches the SoundFont path (see module docs).
@@ -381,7 +391,9 @@ impl Audio {
         if let MidiBackend::Untried = self.midi {
             self.midi = MidiBackend::Silent;
             if !self.headless {
-                let force_sf = std::env::var("GM81_MIDI").map(|v| v.eq_ignore_ascii_case("soundfont")).unwrap_or(false);
+                // no OS synthesiser (nor threads) in the browser
+                let force_sf = cfg!(target_arch = "wasm32")
+                    || std::env::var("GM81_MIDI").map(|v| v.eq_ignore_ascii_case("soundfont")).unwrap_or(false);
                 if !force_sf {
                     match MidiThread::start(self.globals.clone()) {
                         Ok(t) => {
@@ -389,6 +401,16 @@ impl Audio {
                             self.midi = MidiBackend::Os(t);
                         }
                         Err(e) => alog!("MIDI: OS synthesiser unavailable ({})", e),
+                    }
+                }
+                let provided = PROVIDED_SOUNDFONT.lock().unwrap().clone();
+                if let (MidiBackend::Silent, Some(data)) = (&self.midi, provided) {
+                    match rustysynth::SoundFont::new(&mut std::io::Cursor::new(&data[..])) {
+                        Ok(sf) => {
+                            alog!("MIDI: SoundFont supplied by the host");
+                            self.midi = MidiBackend::SoundFont(Arc::new(sf));
+                        }
+                        Err(e) => eprintln!("audio: cannot load the supplied SoundFont: {:?}", e),
                     }
                 }
                 if let MidiBackend::Silent = self.midi {
@@ -402,7 +424,11 @@ impl Audio {
                             }
                             Err(e) => eprintln!("audio: cannot load SoundFont {}: {}", p.display(), e),
                         },
-                        None => eprintln!("audio: no MIDI synthesiser (set GM81_SOUNDFONT to a .sf2 file); MIDI music is silent"),
+                        None => crate::warn(if cfg!(target_arch = "wasm32") {
+                            "audio: no SoundFont was loaded (see web/README section in README.md); MIDI music is silent"
+                        } else {
+                            "audio: no MIDI synthesiser (set GM81_SOUNDFONT to a .sf2 file); MIDI music is silent"
+                        }),
                     }
                 }
             }

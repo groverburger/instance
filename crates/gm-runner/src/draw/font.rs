@@ -2,12 +2,16 @@
 //! builtins 405_05.
 //!
 //! GameMaker fonts are identified by a family name, point size and bold/italic
-//! flags. We look the family up in the Windows font directory and rasterise glyphs
-//! at `size * 96 / 72` pixels per em.
+//! flags. We look the family up in the system font folders (Windows `Fonts`,
+//! macOS `/System/Library/Fonts`, `/Library/Fonts`, `~/Library/Fonts`, the
+//! fontconfig folders on Linux) and rasterise glyphs at `size * 96 / 72` pixels
+//! per em. When nothing suitable is installed (always the case in the browser)
+//! the bundled Liberation Sans (SIL Open Font License, metric-compatible with
+//! Arial; see `fonts/LICENSE-LiberationSans.txt`) is used.
 
 use super::Texture;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 /// A rasterised glyph.
@@ -30,9 +34,17 @@ pub struct Face {
     pub antialias: bool,
 }
 
+/// Bundled fallback faces (regular, bold).
+const BUNDLED_REGULAR: &[u8] = include_bytes!("../../fonts/LiberationSans-Regular.ttf");
+const BUNDLED_BOLD: &[u8] = include_bytes!("../../fonts/LiberationSans-Bold.ttf");
+/// Pseudo directory naming the bundled faces in the font-file cache.
+const BUNDLED_DIR: &str = "<bundled>";
+
 /// Font lookup and glyph cache.
 pub struct FontSystem {
     dirs: Vec<PathBuf>,
+    /// Lower-case file name → path of every font file in `dirs` (recursive).
+    listed: Option<HashMap<String, PathBuf>>,
     scanned: Option<HashMap<(String, bool, bool), (PathBuf, u32)>>,
     fonts: Vec<fontdue::Font>,
     by_file: HashMap<(PathBuf, u32), usize>,
@@ -46,48 +58,97 @@ impl Default for FontSystem {
     }
 }
 
-fn known_file(family: &str, bold: bool, italic: bool) -> Option<&'static str> {
+/// File names of well-known families: the Windows names first, then the macOS
+/// ("Arial Bold.ttf") ones.
+fn known_files(family: &str, bold: bool, italic: bool) -> Vec<String> {
     let f = family.to_ascii_lowercase();
-    let sel = |r, b, i, bi| match (bold, italic) {
+    let sel = |r: &'static str, b: &'static str, i: &'static str, bi: &'static str| match (bold, italic) {
         (false, false) => r,
         (true, false) => b,
         (false, true) => i,
         (true, true) => bi,
     };
-    Some(match f.as_str() {
-        "arial" => sel("arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf"),
-        "times new roman" | "times" => sel("times.ttf", "timesbd.ttf", "timesi.ttf", "timesbi.ttf"),
-        "courier new" | "courier" => sel("cour.ttf", "courbd.ttf", "couri.ttf", "courbi.ttf"),
-        "verdana" => sel("verdana.ttf", "verdanab.ttf", "verdanai.ttf", "verdanaz.ttf"),
+    let (win, mac_family) = match f.as_str() {
+        "arial" => (sel("arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf"), "Arial"),
+        "times new roman" | "times" => (sel("times.ttf", "timesbd.ttf", "timesi.ttf", "timesbi.ttf"), "Times New Roman"),
+        "courier new" | "courier" => (sel("cour.ttf", "courbd.ttf", "couri.ttf", "courbi.ttf"), "Courier New"),
+        "verdana" => (sel("verdana.ttf", "verdanab.ttf", "verdanai.ttf", "verdanaz.ttf"), "Verdana"),
         "tahoma" | "ms sans serif" | "microsoft sans serif" | "system" => {
-            sel("tahoma.ttf", "tahomabd.ttf", "tahoma.ttf", "tahomabd.ttf")
+            (sel("tahoma.ttf", "tahomabd.ttf", "tahoma.ttf", "tahomabd.ttf"), "Tahoma")
         }
-        "comic sans ms" => sel("comic.ttf", "comicbd.ttf", "comici.ttf", "comicz.ttf"),
-        "georgia" => sel("georgia.ttf", "georgiab.ttf", "georgiai.ttf", "georgiaz.ttf"),
-        "trebuchet ms" => sel("trebuc.ttf", "trebucbd.ttf", "trebucit.ttf", "trebucbi.ttf"),
-        "impact" => "impact.ttf",
-        "lucida console" => "lucon.ttf",
-        "segoe ui" => sel("segoeui.ttf", "segoeuib.ttf", "segoeuii.ttf", "segoeuiz.ttf"),
-        "calibri" => sel("calibri.ttf", "calibrib.ttf", "calibrii.ttf", "calibriz.ttf"),
-        "consolas" => sel("consola.ttf", "consolab.ttf", "consolai.ttf", "consolaz.ttf"),
-        _ => return None,
-    })
+        "comic sans ms" => (sel("comic.ttf", "comicbd.ttf", "comici.ttf", "comicz.ttf"), "Comic Sans MS"),
+        "georgia" => (sel("georgia.ttf", "georgiab.ttf", "georgiai.ttf", "georgiaz.ttf"), "Georgia"),
+        "trebuchet ms" => (sel("trebuc.ttf", "trebucbd.ttf", "trebucit.ttf", "trebucbi.ttf"), "Trebuchet MS"),
+        "impact" => ("impact.ttf", "Impact"),
+        "lucida console" => ("lucon.ttf", "Lucida Console"),
+        "segoe ui" => (sel("segoeui.ttf", "segoeuib.ttf", "segoeuii.ttf", "segoeuiz.ttf"), "Segoe UI"),
+        "calibri" => (sel("calibri.ttf", "calibrib.ttf", "calibrii.ttf", "calibriz.ttf"), "Calibri"),
+        "consolas" => (sel("consola.ttf", "consolab.ttf", "consolai.ttf", "consolaz.ttf"), "Consolas"),
+        _ => return Vec::new(),
+    };
+    let style = sel("", " Bold", " Italic", " Bold Italic");
+    vec![win.to_string(), format!("{}{}.ttf", mac_family, style).to_ascii_lowercase()]
+}
+
+/// System font folders for this platform.
+fn system_font_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
+    if cfg!(windows) {
+        if let Some(w) = env("WINDIR") {
+            dirs.push(w.join("Fonts"));
+        }
+        dirs.push(PathBuf::from("C:\\Windows\\Fonts"));
+        if let Some(l) = env("LOCALAPPDATA") {
+            dirs.push(l.join("Microsoft\\Windows\\Fonts"));
+        }
+    } else if cfg!(target_os = "macos") {
+        dirs.push(PathBuf::from("/System/Library/Fonts"));
+        dirs.push(PathBuf::from("/System/Library/Fonts/Supplemental"));
+        dirs.push(PathBuf::from("/Library/Fonts"));
+        if let Some(h) = env("HOME") {
+            dirs.push(h.join("Library/Fonts"));
+        }
+    } else if cfg!(unix) {
+        if let Some(d) = env("XDG_DATA_HOME") {
+            dirs.push(d.join("fonts"));
+        }
+        if let Some(h) = env("HOME") {
+            dirs.push(h.join(".local/share/fonts"));
+            dirs.push(h.join(".fonts"));
+        }
+        dirs.push(PathBuf::from("/usr/share/fonts"));
+        dirs.push(PathBuf::from("/usr/local/share/fonts"));
+    }
+    dirs
+}
+
+fn is_font_file(p: &Path) -> bool {
+    let ext = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    ext == "ttf" || ext == "otf" || ext == "ttc"
+}
+
+fn list_fonts(dir: &Path, depth: u32, out: &mut HashMap<String, PathBuf>) {
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    for e in rd.flatten() {
+        let p = e.path();
+        if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            if depth > 0 {
+                list_fonts(&p, depth - 1, out);
+            }
+        } else if is_font_file(&p) {
+            if let Some(n) = p.file_name() {
+                out.entry(n.to_string_lossy().to_ascii_lowercase()).or_insert(p);
+            }
+        }
+    }
 }
 
 impl FontSystem {
     pub fn new() -> Self {
-        let mut dirs = Vec::new();
-        if let Ok(w) = std::env::var("WINDIR") {
-            dirs.push(PathBuf::from(w).join("Fonts"));
-        }
-        dirs.push(PathBuf::from("C:\\Windows\\Fonts"));
-        if let Ok(l) = std::env::var("LOCALAPPDATA") {
-            dirs.push(PathBuf::from(l).join("Microsoft\\Windows\\Fonts"));
-        }
-        dirs.push(PathBuf::from("/usr/share/fonts/truetype/dejavu"));
-        dirs.push(PathBuf::from("/usr/share/fonts/TTF"));
         FontSystem {
-            dirs,
+            dirs: system_font_dirs(),
+            listed: None,
             scanned: None,
             fonts: Vec::new(),
             by_file: HashMap::new(),
@@ -96,37 +157,42 @@ impl FontSystem {
         }
     }
 
+    fn listed(&mut self) -> &HashMap<String, PathBuf> {
+        if self.listed.is_none() {
+            let mut m = HashMap::new();
+            for d in &self.dirs {
+                list_fonts(d, 4, &mut m);
+            }
+            self.listed = Some(m);
+        }
+        self.listed.as_ref().unwrap()
+    }
+
     fn scan(&mut self) -> &HashMap<(String, bool, bool), (PathBuf, u32)> {
         if self.scanned.is_none() {
             let mut map = HashMap::new();
-            for d in &self.dirs {
-                let Ok(rd) = std::fs::read_dir(d) else { continue };
-                for e in rd.flatten() {
-                    let p = e.path();
-                    let ext = p
-                        .extension()
-                        .map(|e| e.to_string_lossy().to_ascii_lowercase())
-                        .unwrap_or_default();
-                    if ext != "ttf" && ext != "otf" && ext != "ttc" {
-                        continue;
-                    }
-                    let Ok(data) = std::fs::read(&p) else { continue };
-                    let n = ttf_parser::fonts_in_collection(&data).unwrap_or(1);
-                    for idx in 0..n {
-                        let Ok(face) = ttf_parser::Face::parse(&data, idx) else { continue };
-                        let mut family = None;
-                        for name in face.names() {
-                            if name.name_id == ttf_parser::name_id::FAMILY && name.is_unicode() {
-                                family = name.to_string();
-                                if family.is_some() {
-                                    break;
-                                }
+            let mut files: Vec<PathBuf> = self.listed().values().cloned().collect();
+            files.sort();
+            for p in files {
+                // very large files are CJK collections etc., not worth reading
+                if std::fs::metadata(&p).map(|m| m.len() > 32 << 20).unwrap_or(true) {
+                    continue;
+                }
+                let Ok(data) = std::fs::read(&p) else { continue };
+                let n = ttf_parser::fonts_in_collection(&data).unwrap_or(1);
+                for idx in 0..n {
+                    let Ok(face) = ttf_parser::Face::parse(&data, idx) else { continue };
+                    let mut family = None;
+                    for name in face.names() {
+                        if name.name_id == ttf_parser::name_id::FAMILY && name.is_unicode() {
+                            family = name.to_string();
+                            if family.is_some() {
+                                break;
                             }
                         }
-                        if let Some(f) = family {
-                            map.entry((f.to_ascii_lowercase(), face.is_bold(), face.is_italic()))
-                                .or_insert((p.clone(), idx));
-                        }
+                    }
+                    if let Some(f) = family {
+                        map.entry((f.to_ascii_lowercase(), face.is_bold(), face.is_italic())).or_insert((p.clone(), idx));
                     }
                 }
             }
@@ -136,11 +202,12 @@ impl FontSystem {
     }
 
     fn find_file(&mut self, family: &str, bold: bool, italic: bool) -> Option<(PathBuf, u32)> {
-        if let Some(f) = known_file(family, bold, italic) {
-            for d in &self.dirs {
-                let p = d.join(f);
-                if p.exists() {
-                    return Some((p, 0));
+        let names = known_files(family, bold, italic);
+        if !names.is_empty() {
+            let listed = self.listed();
+            for n in &names {
+                if let Some(p) = listed.get(n) {
+                    return Some((p.clone(), 0));
                 }
             }
         }
@@ -158,7 +225,11 @@ impl FontSystem {
         if let Some(&i) = self.by_file.get(&(path.clone(), idx)) {
             return Some(i);
         }
-        let data = std::fs::read(&path).ok()?;
+        let data = if path.starts_with(BUNDLED_DIR) {
+            if path.ends_with("bold") { BUNDLED_BOLD } else { BUNDLED_REGULAR }.to_vec()
+        } else {
+            std::fs::read(&path).ok()?
+        };
         let settings = fontdue::FontSettings {
             collection_index: idx,
             ..Default::default()
@@ -170,7 +241,8 @@ impl FontSystem {
         Some(i)
     }
 
-    /// Resolves a font; falls back to Arial and then to any loadable font.
+    /// Resolves a font; falls back to Arial, then to the bundled Liberation Sans,
+    /// then to any loadable font.
     pub fn face(&mut self, family: &str, size: i32, bold: bool, italic: bool, antialias: bool) -> Option<Face> {
         let key = (family.to_ascii_lowercase(), size, bold, italic, antialias);
         if let Some(f) = self.faces.get(&key) {
@@ -180,12 +252,16 @@ impl FontSystem {
         if file.is_none() {
             file = self.find_file("Arial", bold, italic);
         }
-        if file.is_none() {
-            // any font at all
-            let map = self.scan();
-            file = map.values().next().cloned();
+        let mut id = file.and_then(|(p, i)| self.load(p, i));
+        if id.is_none() {
+            id = self.load(Path::new(BUNDLED_DIR).join(if bold { "bold" } else { "regular" }), 0);
         }
-        let face = file.and_then(|(p, i)| self.load(p, i)).map(|id| {
+        if id.is_none() {
+            // any font at all
+            let any = self.scan().values().next().cloned();
+            id = any.and_then(|(p, i)| self.load(p, i));
+        }
+        let face = id.map(|id| {
             let px = (size.max(1) as f32) * 96.0 / 72.0;
             let lm = self.fonts[id].horizontal_line_metrics(px);
             let (ascent, line_height) = match lm {

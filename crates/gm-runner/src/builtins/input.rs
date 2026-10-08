@@ -26,8 +26,10 @@ impl Game {
     }
 
     /// Blocks until `pred` holds on the input state (keyboard_wait / mouse_wait).
+    /// In the browser nothing can arrive while a step runs, so this returns at
+    /// once there (the game continues as if the key had been pressed).
     pub fn wait_input(&mut self, pred: fn(&crate::input::Input) -> bool) {
-        if self.headless || self.pump.is_none() {
+        if self.headless || self.pump.is_none() || cfg!(target_arch = "wasm32") {
             return;
         }
         self.input.end_step();

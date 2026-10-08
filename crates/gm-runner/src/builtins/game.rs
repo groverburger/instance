@@ -308,10 +308,15 @@ pub fn register(l: &mut Reg) {
 }
 
 impl Game {
-    /// Blocks for `ms` milliseconds (not in headless mode).
+    /// Blocks for `ms` milliseconds (not in headless mode). The browser cannot
+    /// block: there the pause is added before the next step instead.
     pub fn do_sleep(&mut self, ms: f64) {
         if ms > 0.0 && !self.headless {
-            std::thread::sleep(std::time::Duration::from_secs_f64(ms / 1000.0));
+            if cfg!(target_arch = "wasm32") {
+                self.sleep_debt_ms += ms;
+            } else {
+                std::thread::sleep(std::time::Duration::from_secs_f64(ms / 1000.0));
+            }
         }
     }
 }

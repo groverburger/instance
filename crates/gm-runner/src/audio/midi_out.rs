@@ -8,7 +8,8 @@ use super::voice::{mix_of, Globals, SoundCtl, VoiceState};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 /// Counters for diagnostics (`GM81_AUDIO_DEBUG`) and tests.
 #[derive(Default)]
@@ -280,7 +281,7 @@ mod win {
                     return;
                 }
                 if midiOutLongMsg(self.h, &hdr, sz) == 0 {
-                    let t0 = std::time::Instant::now();
+                    let t0 = web_time::Instant::now();
                     let done = |h: &mut MIDIHDR| std::ptr::addr_of!(std::hint::black_box(h).dwFlags).read_unaligned() & MHDR_DONE != 0;
                     while !done(&mut hdr) && t0.elapsed().as_millis() < 200 {
                         std::thread::sleep(std::time::Duration::from_millis(1));

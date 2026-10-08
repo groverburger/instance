@@ -303,7 +303,7 @@ pub fn register(l: &mut Reg) {
     }));
     fn gmspr(g: &Game, a: &A, i: usize) -> Result<Option<SpriteRes>, Error> {
         let p = g.resolve_path(&a.s(i)?);
-        let Ok(bytes) = std::fs::read(&p) else { return Ok(None) };
+        let Ok(bytes) = crate::vfs::read(&p) else { return Ok(None) };
         Ok(gm_format::read_sprite_export(&bytes).ok().map(|s| SpriteRes::from_format(&s)))
     }
     l.push(("sprite_add_sprite", |g, _, _, a| match gmspr(g, a, 0)? {
@@ -387,7 +387,7 @@ pub fn register(l: &mut Reg) {
     // ---------------------------------------------------------------- sounds
     fn sound_from_file(g: &Game, a: &A, base: usize) -> Result<Option<SoundRes>, Error> {
         let p = g.resolve_path(&a.s(base)?);
-        let Ok(data) = std::fs::read(&p) else { return Ok(None) };
+        let Ok(data) = crate::vfs::read(&p) else { return Ok(None) };
         let ext = p.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
         Ok(Some(SoundRes {
             name: p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
