@@ -693,3 +693,46 @@ bb_optional `xform.*` keys.
   order; bb_events logs timeline vs alarm vs step tags).
 - Animation (§7.5): negative image_speed never wraps and fires no Animation
   End (mo.an3: −1, −2, −3, ...).
+
+## [RESOLVED-EVENTS] Event dispatch verified in GM 8.1 (bb_events, bb_instances, 2026-10-08)
+
+Evidence: `gm81_blackbox_tests/gm/results_bb_events.txt`, `results_bb_instances.txt`
+(GM 8.1 Lite); rules in runtime.md §4.3a. gm-runner now matches all 59 bb_events keys
+and 72 of 75 bb_instances keys.
+- RT-01: PARTLY RESOLVED (§4.3a rule 1): timelines run after Begin Step, before
+  alarms; Animation End after drawing. The positions of the xprevious capture and of
+  the particle / view updates remain unverified.
+- RT-05: RESOLVED (§4.3a rule 6): Outside Room = box beyond the room by at least one
+  pixel; Intersect Boundary every step while not completely inside (also when fully
+  outside); both repeat every step. Instances without a sprite: unverified.
+- RT-08: RESOLVED (§4.3a rule 4): integer alarms (round half even), fire at 0 and
+  read 0 in the event, 0 becomes -1 next step without firing; alarms only tick when
+  the object has (or inherits) that alarm event; alarm-number-major order.
+- RT-09: RESOLVED (§4.3a rule 2): object-major dispatch; an instance created during
+  a phase runs in it only if its object has not been processed yet.
+- RT-12: No More Lives / Health timing RESOLVED (§4.3a rule 7): at the assignment.
+- RT-13: PARTLY RESOLVED (§4.3a rule 8): simulated keys take effect the next step;
+  held-key events before press events (ev.s06 "a.KB a.KBany a.KP"). Key-major vs
+  instance/object-major nesting is still open.
+- RT-16 / D3D-IMPL-2: equal-depth instance draw order RESOLVED (§4.3a rule 5, stable
+  re-sort of the previous frame's order). Tiles / particle systems at equal depth
+  remain open.
+- GML-10: RESOLVED (§4.3a rule 9): `other` is the instance itself in Create (run by
+  instance_create) and Destroy.
+- runtime.md §5.6: double destroy and reads after destroy RESOLVED (§4.3a rule 10).
+- Still open from these projects:
+  - RT-21 (bb_instances change.props): right after `instance_change(in_ic2, false)`
+    the same code still reads the OLD object_index, sprite, depth, solid, visible,
+    persistent and mask; gm-runner switches all of them at once. New test (added to
+    bb_instances, needs a GM run)
+    `change.later.next_action` / `change.later.counts`: logs the same properties in
+    the following action, plus `instance_number(in_ic1)`,
+    `instance_number(in_ic2)` and the id, to learn whether GM changes the object later
+    (deferred) or replaces the instance record.
+  - Collision event order (in.s01+1 / in.s02+2: GM "cx.COcy1 cy1.COcx" although cy1
+    was placed before cx; gm-runner fires cy1's event first at step 2) belongs with
+    the bb_motion collision work (mo.seq). GM appears to process pairs starting from
+    the lower object index and to fire both sides of a pair together.
+  - Keyboard / mouse phase order: gm-runner assumes object-major as for Step.
+    Proposed test: two objects with Keyboard <K> events whose instances are placed in
+    reverse object order, key press simulated the step before.

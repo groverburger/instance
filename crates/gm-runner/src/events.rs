@@ -207,158 +207,90 @@ impl Game {
         Ok(())
     }
 
+    /// The instances (from list position `from` on) whose object is set in `mask`,
+    /// as (object, id) sorted by object index, instance order within an object.
+    fn object_major(&self, mask: &[bool], from: usize) -> Vec<(i32, i32)> {
+        let mut v: Vec<(i32, i32)> = self.instances[from.min(self.instances.len())..]
+            .iter()
+            .filter(|i| i.alive() && i.object_index >= 0 && mask.get(i.object_index as usize).copied().unwrap_or(false))
+            .map(|i| (i.object_index, i.id))
+            .collect();
+        v.sort_by_key(|e| e.0); // stable: instance order within an object
+        v
+    }
+
     /// Delivers an event to all instances having a handler (§4.3).
+    ///
+    /// VERIFIED black-box (bb_events ev.s02/ev.s03, bb_instances in.s01): GM 8.1
+    /// dispatches object by object (ascending object index; within an object in
+    /// instance order). An instance created during the phase is visited in the same
+    /// phase if its object comes after the object being processed (or is the same
+    /// object).
     pub fn broadcast(&mut self, vm: &mut Vm, t: i32, n: i32) -> Result<(), Error> {
         // objects having a handler for this event (none: nothing to do)
         let Some(mask) = self.event_objs.get(&(t, n)).cloned() else { return Ok(()) };
-        if t == ev::STEP {
-            return self.broadcast_by_object(vm, t, n, &mask);
-        }
-        let mut k = 0;
-        while k < self.instances.len() {
-            let (id, obj, alive) = {
-                let i = &self.instances[k];
-                (i.id, i.object_index, i.alive())
-            };
-            k += 1;
-            if !alive || obj < 0 || !mask.get(obj as usize).copied().unwrap_or(false) {
-                continue;
-            }
-            if let Some((owner, list)) = self.handler(obj, t, n) {
-                self.run_handler(vm, id, owner, &list, t, n, id)?;
-                if self.pending.is_some() {
-                    return Ok(());
-                }
-            }
-        }
-        Ok(())
+        self.broadcast_masked(vm, t, n, &mask)
     }
 
-    /// Object-major delivery (§4.3): objects in index order, each object's
-    /// instances in instance order. VERIFIED black-box for the step events
-    /// (bb_motion mo.seq: `r1m r4m r5m` (object mo_mover) before `r2m r3m`
-    /// (mo_mover_solid) although placed r1..r5). Instances created during the
-    /// phase are visited when their object's turn comes (or at the end of the
-    /// current object's list); those of objects already passed at the end of
-    /// the phase (unverified, keeps the §4.3 recommendation).
-    fn broadcast_by_object(&mut self, vm: &mut Vm, t: i32, n: i32, mask: &[bool]) -> Result<(), Error> {
-        let start = self.instances.len();
-        let mut order: Vec<(i32, usize)> = Vec::new();
-        for (k, i) in self.instances.iter().enumerate() {
-            let o = i.object_index;
-            if i.alive() && o >= 0 && mask.get(o as usize).copied().unwrap_or(false) {
-                order.push((o, k));
-            }
-        }
-        order.sort_by_key(|&(o, _)| o);
-        // new instances already visited during their object's turn
-        let mut seen_new: Vec<bool> = Vec::new();
-        let mut p = 0;
-        for (o, &has) in mask.iter().enumerate() {
-            let o = o as i32;
-            // snapshot instances of o (sorted), then o's instances created since
-            let mut visit: Vec<usize> = Vec::new();
-            while p < order.len() && order[p].0 < o {
-                p += 1;
-            }
-            while p < order.len() && order[p].0 == o {
-                visit.push(order[p].1);
-                p += 1;
-            }
-            if !has && visit.is_empty() {
-                continue;
-            }
-            let mut vi = 0;
-            let mut scan = start;
-            loop {
-                let k = if vi < visit.len() {
-                    vi += 1;
-                    visit[vi - 1]
-                } else {
-                    // newly created instances of this object
-                    let mut found = None;
-                    while scan < self.instances.len() {
-                        scan += 1;
-                        if self.instances[scan - 1].object_index == o {
-                            let j = scan - 1 - start;
-                            if seen_new.len() <= j {
-                                seen_new.resize(j + 1, false);
-                            }
-                            seen_new[j] = true;
-                            found = Some(scan - 1);
-                            break;
-                        }
-                    }
-                    match found {
-                        Some(k) => k,
-                        None => break,
-                    }
-                };
-                let Some(i) = self.instances.get(k) else { continue };
-                if !i.alive() {
-                    continue;
-                }
-                let (id, obj) = (i.id, i.object_index);
-                if let Some((owner, list)) = self.handler(obj, t, n) {
-                    self.run_handler(vm, id, owner, &list, t, n, id)?;
-                    if self.pending.is_some() {
-                        return Ok(());
-                    }
-                }
-            }
-        }
-        // instances created during the phase whose object's turn had passed are
-        // visited at the end (keeps §4.3 "created instances are visited")
-        let mut k = start;
-        while k < self.instances.len() {
-            let j = k - start;
-            k += 1;
-            if seen_new.get(j).copied().unwrap_or(false) {
-                continue;
-            }
-            let i = &self.instances[k - 1];
-            if !i.alive() {
-                continue;
-            }
-            let (id, obj) = (i.id, i.object_index);
+    fn broadcast_masked(&mut self, vm: &mut Vm, t: i32, n: i32, mask: &[bool]) -> Result<(), Error> {
+        let mut order = self.object_major(mask, 0);
+        let mut seen = self.instances.len();
+        let mut idx = 0;
+        while idx < order.len() {
+            let (cur_obj, id) = order[idx];
+            idx += 1;
+            let obj = match self.inst(id) {
+                Some(i) if i.alive() => i.object_index,
+                _ => continue,
+            };
             if let Some((owner, list)) = self.handler(obj, t, n) {
                 self.run_handler(vm, id, owner, &list, t, n, id)?;
                 if self.pending.is_some() {
                     return Ok(());
                 }
+            }
+            if self.instances.len() > seen {
+                for (o, nid) in self.object_major(mask, seen) {
+                    if o < cur_obj {
+                        continue;
+                    }
+                    let at = idx + order[idx..].partition_point(|e| e.0 <= o);
+                    order.insert(at, (o, nid));
+                }
+                seen = self.instances.len();
             }
         }
         Ok(())
     }
 
     /// Alarm phase (§5.3).
+    ///
+    /// VERIFIED black-box (bb_events ev.alarms.*, ev.s02+1, ev.s03+1): alarm by
+    /// alarm (0..11), each object by object as in [`Game::broadcast`]. Only
+    /// instances whose object has (or inherits) the alarm event count down: a
+    /// positive alarm is decremented and fires when it reaches 0; the alarm then
+    /// stays 0 (read as 0 in the event) and becomes -1 one step later without
+    /// firing. Alarm values are integers (assignment rounds, see host.rs).
     pub fn run_alarms(&mut self, vm: &mut Vm) -> Result<(), Error> {
-        let mut k = 0;
-        while k < self.instances.len() {
-            let (id, obj) = (self.instances[k].id, self.instances[k].object_index);
-            k += 1;
-            if !self.instances[k - 1].alarm.iter().any(|&a| a > 0.0) {
-                continue;
-            }
-            for a in 0..crate::instance::ALARMS {
-                let Some(i) = self.inst(id) else { break };
-                if !i.alive() {
-                    break;
-                }
-                if i.alarm[a] <= 0.0 {
-                    continue;
-                }
-                let has = self.has_handler(obj, ev::ALARM, a as i32);
-                if !has {
+        for a in 0..crate::instance::ALARMS {
+            let Some(mask) = self.event_objs.get(&(ev::ALARM, a as i32)).cloned() else { continue };
+            for (_, id) in self.object_major(&mask, 0) {
+                let Some(&kk) = self.inst_index.get(&id) else { continue };
+                let i = &mut self.instances[kk];
+                if !i.alive() || !mask.get(i.object_index.max(0) as usize).copied().unwrap_or(false) {
                     continue;
                 }
                 // (alarms do not affect collision geometry: no need to mark the instance)
-                let kk = self.inst_index[&id];
-                let i = &mut self.instances[kk];
+                if i.alarm[a] == 0.0 {
+                    i.alarm[a] = -1.0;
+                    continue;
+                }
+                if i.alarm[a] < 0.0 {
+                    continue;
+                }
                 i.alarm[a] -= 1.0;
                 if i.alarm[a] <= 0.0 {
-                    i.alarm[a] = -1.0;
-                    // object may have changed during an earlier alarm
+                    i.alarm[a] = 0.0;
                     let obj_now = i.object_index;
                     if let Some((owner, list)) = self.handler(obj_now, ev::ALARM, a as i32) {
                         self.run_handler(vm, id, owner, &list, ev::ALARM, a as i32, id)?;
@@ -646,9 +578,14 @@ impl Game {
             }
             let mut fire = Vec::new();
             let (l, t, r, b) = self.bbox_of(id);
+            // VERIFIED black-box (bb_events c.OR / c.IB, 16 px sprite moving right in a
+            // 1024 wide room): Outside fires once bbox_left > room_width (x 1028, not
+            // 1024); Intersect Boundary fires every step the box is not completely
+            // inside — also while completely outside (x 1012 .. 1036). Outside is
+            // dispatched before Intersect Boundary.
             let test = |x0: f64, y0: f64, x1: f64, y1: f64| -> (bool, bool) {
-                let outside = r < x0 || l >= x1 || b < y0 || t >= y1;
-                let boundary = !outside && (l < x0 || r >= x1 || t < y0 || b >= y1);
+                let outside = r < x0 || l > x1 || b < y0 || t > y1;
+                let boundary = l < x0 || r >= x1 || t < y0 || b >= y1;
                 (outside, boundary)
             };
             let (o, bd) = test(0.0, 0.0, rw, rh);
@@ -930,6 +867,8 @@ impl Game {
 
     /// Broadcast that does not stop at a pending room change (used for events
     /// raised synchronously from code).
+    /// Instance order (VERIFIED black-box for Room Start, bb_events ev.s10+1: the
+    /// placed instances of the new room before the carried persistent ones).
     pub fn broadcast_now(&mut self, vm: &mut Vm, t: i32, n: i32) -> Result<(), Error> {
         let mut k = 0;
         while k < self.instances.len() {

@@ -230,7 +230,9 @@ impl Game {
             v::IMAGE_BLEND => i.image_blend = gml::to_int(real(var, &x)?) as i32,
             v::ALARM => {
                 if (0..12).contains(&index) {
-                    i.alarm[index as usize] = real(var, &x)?;
+                    // VERIFIED black-box (bb_events ev.alarms.s01): alarms hold integers
+                    // (1.5 reads back as 2, 0.5 as 0: round half to even)
+                    i.alarm[index as usize] = gml::to_int(real(var, &x)?) as f64;
                 }
             }
             _ => return Err(Error::new(format!("Cannot assign to the variable {}", var.name()))),
@@ -586,10 +588,17 @@ impl Host for Game {
         self.first_of(target)
     }
 
-    fn get_builtin(&mut self, _ctx: &Ctx, inst: i32, var: VariableId, index: i32) -> Result<Value, Error> {
+    fn get_builtin(&mut self, ctx: &Ctx, inst: i32, var: VariableId, index: i32) -> Result<Value, Error> {
         use gml::builtins::VarScope;
         match var.info().scope {
             VarScope::Instance => {
+                // VERIFIED black-box (bb_instances destroy.read_after vs
+                // with.destroy_self_then_read): a destroyed instance's variables can
+                // still be read as `self`, but `u.x` from elsewhere is the non-fatal
+                // error "Unknown variable x".
+                if inst != ctx.self_id && self.inst(inst).map(|i| i.destroyed).unwrap_or(false) {
+                    return Err(Error::new(format!("Unknown variable {}", var.name())));
+                }
                 if var == v::ALARM {
                     let Some(i) = self.inst(inst) else {
                         return Err(Error::new(format!("Unknown variable alarm (instance {} does not exist)", inst)));
@@ -611,10 +620,20 @@ impl Host for Game {
     }
 
     fn call_function(&mut self, vm: &mut Vm, ctx: &Ctx, func: FunctionId, args: &[Value]) -> Result<Value, Error> {
+        if self.pending_lives_event || self.pending_health_event {
+            self.flush_edge_events(vm)?;
+        }
         crate::builtins::dispatch(self, vm, ctx, func, args)
     }
 
     fn call_script(&mut self, vm: &mut Vm, ctx: &Ctx, script: i32, args: &[Value]) -> Result<Value, Error> {
+        // VERIFIED black-box (bb_events ev.s06+1 / ev.s07+1): No More Lives / Health
+        // run at the assignment, before the next statement of the code. set_builtin
+        // has no VM, so they are dispatched at the next host call (or after the
+        // action).
+        if self.pending_lives_event || self.pending_health_event {
+            self.flush_edge_events(vm)?;
+        }
         if script >= crate::ext::EXT_SCRIPT_BASE {
             return crate::ext::call(self, vm, ctx, (script - crate::ext::EXT_SCRIPT_BASE) as usize, args);
         }

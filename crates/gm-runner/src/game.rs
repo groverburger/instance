@@ -160,6 +160,10 @@ pub struct Game {
     pub has_collision: Vec<bool>,
     /// Per event (type, number): which objects have an effective handler.
     pub event_objs: HashMap<(i32, i32), Rc<Vec<bool>>>,
+    /// Instance draw order (ids), kept between frames: re-sorted by depth with a
+    /// stable sort each frame, new instances appended (VERIFIED black-box,
+    /// bb_instances in.s02..in.s04).
+    pub draw_order: Vec<i32>,
     /// Per object: the objects it has a collision handler with.
     pub collision_partners: Vec<Vec<i32>>,
     /// Per object: has any mouse event / any outside-boundary event.
@@ -386,6 +390,7 @@ impl Game {
             ancestors: Vec::new(),
             has_collision: Vec::new(),
             event_objs: HashMap::new(),
+            draw_order: Vec::new(),
             collision_partners: Vec::new(),
             collision_targets: Vec::new(),
             has_mouse: Vec::new(),
@@ -938,18 +943,25 @@ impl Game {
         }
         let id = self.alloc_id();
         self.add_instance(id, obj, x, y);
-        let other = if caller >= gml::special::FIRST_INSTANCE_ID { caller } else { id };
-        self.run_event(vm, id, ev::CREATE, 0, other)?;
+        // VERIFIED black-box (bb_instances other.create_from_code/_from_with, bb_lang
+        // ref.other_in_driver_create): in the Create event `other` is the new
+        // instance itself, not the caller.
+        let _ = caller;
+        self.run_event(vm, id, ev::CREATE, 0, id)?;
         Ok(id)
     }
 
     /// Destroys an instance: Destroy event then mark (§5.6).
+    ///
+    /// VERIFIED black-box (bb_instances other.in_destroy, destroy.twice): `other` in
+    /// the Destroy event is the instance itself, and destroying an instance again
+    /// before it is removed runs the Destroy event again.
     pub fn destroy_instance(&mut self, vm: &mut Vm, id: i32, other: i32) -> Result<(), Error> {
-        match self.inst(id) {
-            Some(i) if !i.destroyed => {}
-            _ => return Ok(()),
+        let _ = other;
+        if self.inst(id).is_none() {
+            return Ok(());
         }
-        let r = self.run_event(vm, id, ev::DESTROY, 0, other);
+        let r = self.run_event(vm, id, ev::DESTROY, 0, id);
         if let Some(i) = self.inst_mut(id) {
             i.destroyed = true;
         }
@@ -985,6 +997,27 @@ impl Game {
             self.run_event(vm, id, ev::CREATE, 0, id)?;
         }
         Ok(())
+    }
+
+    /// Updates [`Game::draw_order`]: drops dead instances, appends new ones in
+    /// instance order, then sorts stably by depth (higher depth first). Equal-depth
+    /// instances therefore keep their previous relative order, even after a depth
+    /// change and back (VERIFIED black-box, bb_instances in.s04+1).
+    pub fn update_draw_order(&mut self) {
+        let mut order = std::mem::take(&mut self.draw_order);
+        let mut known: std::collections::HashSet<i32> = std::collections::HashSet::with_capacity(order.len());
+        order.retain(|id| match self.inst(*id) {
+            Some(i) if i.alive() => known.insert(*id),
+            _ => false,
+        });
+        for i in &self.instances {
+            if i.alive() && !known.contains(&i.id) {
+                order.push(i.id);
+            }
+        }
+        let depth = |id: &i32| self.inst(*id).map(|i| i.depth).unwrap_or(0.0);
+        order.sort_by(|a, b| depth(b).partial_cmp(&depth(a)).unwrap_or(std::cmp::Ordering::Equal));
+        self.draw_order = order;
     }
 
     /// Removes destroyed instances from the list.
@@ -1188,10 +1221,8 @@ impl Game {
             if self.pending.is_some() {
                 break 'phases;
             }
-            // 5b. timelines. VERIFIED black-box (bb_motion mo.tl.*): moments run
-            // after Begin Step (moment 0 of a timeline started in Create runs in
-            // the first step, after the Begin Step events). The order relative to
-            // alarms / keyboard / mouse / Step is not verified.
+            // 4. timelines: after Begin Step, before alarms (VERIFIED black-box,
+            // bb_events ev.s01+1 "a.TL0 a.A3 a.ST", ev.s02+1 "z.al2 a.TL1 q.A0inh")
             phase!(self, "timelines", self.advance_timelines(vm));
             if self.pending.is_some() {
                 break 'phases;

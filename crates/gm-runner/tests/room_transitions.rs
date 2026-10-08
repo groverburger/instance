@@ -283,7 +283,7 @@ fn goto_in_alarm_timeline_collision_and_draw() {
     let (mut g, mut vm) = b.start();
     take(&mut vm);
     step(&mut g, &mut vm);
-    // timelines advance after Begin Step (bb_motion mo.tl.*)
+    // (timelines run after Begin Step)
     assert_eq!(take(&mut vm), "t.BS tl1 r1.CC");
 
     // collision
