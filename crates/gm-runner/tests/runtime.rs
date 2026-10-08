@@ -255,10 +255,15 @@ fn create_destroy_semantics() {
     b.room(&[(gun, 0, 0)]);
     let (mut g, mut vm) = b.start();
     run(&mut g, &mut vm, 1);
-    // created during the step phase and visited in the same phase
+    // created during gun's Step: bullet's object (index 0) was already processed,
+    // so the bullet gets no Step in this step (runtime.md 4.3a rule 2)
+    assert_eq!(greal(&mut vm, "bsteps"), 0.0);
+    assert_eq!(g.instances.len(), 2);
+    run(&mut g, &mut vm, 1);
+    // bullet steps first and destroys itself; gun then creates a new one
     assert_eq!(greal(&mut vm, "bsteps"), 1.0);
     assert_eq!(greal(&mut vm, "destroyed"), 1.0);
-    assert_eq!(g.instances.len(), 1);
+    assert_eq!(g.instances.len(), 2);
 }
 
 #[test]
