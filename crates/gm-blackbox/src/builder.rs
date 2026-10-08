@@ -75,10 +75,12 @@ impl Gen {
         }
         p.guid = guid;
         let s = &mut p.settings;
-        // Errors are recorded in error_occurred/error_last instead of a dialog, so
-        // tests can observe them without user interaction.
-        s.display_errors = false;
-        s.write_errors_to_log = false;
+        // Errors are always written to game_errors.log next to the game (diagnostics).
+        // bb_lang/bb_args0 raise errors on purpose and record them in
+        // error_occurred/error_last, so they don't show dialogs; every other project
+        // shows errors so an unexpected failure is visible instead of a silent exit.
+        s.display_errors = !matches!(name, "bb_lang" | "bb_args0");
+        s.write_errors_to_log = true;
         s.abort_on_all_errors = false;
         s.treat_uninitialized_as_zero = false;
         s.uninitialized_extra_bits = 2;
