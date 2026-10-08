@@ -92,19 +92,20 @@ pub fn build() -> Spec {
 }
 
 /// Steps per second with 1000 moving, drawn, colliding instances at room_speed 9999.
+/// Lite-safe: no image_blend / image_angle (Pro-only in GM 8.1 Lite).
 pub fn build_fps() -> Spec {
     let mut g = Gen::new("bb_perf_fps", 81031);
     let fw = install(&mut g);
     let s16 = g.sprite("pf_spr", 16, 16, &[RED], (0, 0));
     let inst = g.object("pf_mover");
     g.obj(inst).sprite = s16;
-    g.event(inst, ev::CREATE, &["hspeed = random(4) - 2; vspeed = random(4) - 2;"]);
+    g.event(inst, ev::CREATE, &["hspeed = random(4) - 2; vspeed = random(4) - 2; hits = 0;"]);
     g.event(
         inst,
         ev::STEP,
-        &["if (x < 0 || x > 1000) hspeed = -hspeed; if (y < 0 || y > 740) vspeed = -vspeed; image_angle += 1;"],
+        &["if (x < 0 || x > 1000) hspeed = -hspeed; if (y < 0 || y > 740) vspeed = -vspeed; "],
     );
-    g.event(inst, ev::collision(inst), &["image_blend = c_yellow;"]);
+    g.event(inst, ev::collision(inst), &["hits += 1;"]);
     let ctl = g.object("pf_ctl");
     g.event(
         ctl,
