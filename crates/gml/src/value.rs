@@ -541,23 +541,24 @@ fn shr(a: i64, n: i64) -> i64 {
 }
 
 /// Tolerance of GM 8.1's real equality, see [`same_real`].
-pub const REAL_EPS: f64 = 1e-14;
+pub const REAL_EPS: f64 = 1e-13;
 
-/// GM 8.1's real equality: `|a - b| <= max(min(|a|, |b|), 1) * 1e-14`.
+/// GM 8.1's real equality: `|a - b| < 1e-13` (an absolute tolerance, also for
+/// large values).
 ///
-/// VERIFIED black-box bounds (bb_lang eq.*, math.sin_pi_is0,
-/// math.lengthdir_x_90_is0; bb_lang2 eq2.*): `sin(pi) == 0` (1.2e-16) and
-/// `lengthdir_x(10, 90) == 0` (6.1e-16) are true; `0 == 1e-13`, `1 == 1 + 5e-13`,
-/// `1 == 1.0000000001` and `1000000 == 1000000 + 1e-7` are false (so the tolerance
-/// is below 1e-13 near 0 and 1, and a relative factor is below 1e-13). The
-/// constant 1e-14 is chosen inside those bounds; the bb_lang3 eq3.* keys (no GM results yet) narrow it.
+/// VERIFIED black-box (bb_lang eq.*, math.sin_pi_is0, math.lengthdir_x_90_is0;
+/// bb_lang2 eq2.*; bb_lang3 eq3.*):
+/// * true: `0.1 + 0.2 == 0.3`, `sin(pi) == 0`, `0 == 1e-14` (and 5e-15 ... 5e-16),
+///   `1 == 1 + 1e-14`, `1 == 1 + 5e-14`;
+/// * false: `0 == 1e-13`, `0 == 1e-12`, `1 == 1 + 5e-13`, `100 == 100 + 1.5e-13`,
+///   `1000000 == 1000000 + 5e-10` (a relative tolerance would make this true),
+///   `1000000 == 1000000 + 1e-7`, `100000000 == 100000000.5`.
+///
+/// So the tolerance is absolute and lies in (5e-14, 1e-13]; `0 == power(10, -13)`
+/// being false makes the comparison strict at 1e-13.
 #[inline]
 pub fn same_real(a: f64, b: f64) -> bool {
-    if a == b {
-        return true;
-    }
-    let eps = a.abs().min(b.abs()).max(1.0) * REAL_EPS;
-    (a - b).abs() <= eps
+    a == b || (a - b).abs() < REAL_EPS
 }
 
 /// Real comparison with [`same_real`] equality.

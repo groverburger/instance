@@ -112,6 +112,13 @@ pub trait Host {
         None
     }
 
+    /// The instance that a read through instance id `id` (`id.x`) addresses. The
+    /// default is `id` itself; a host may redirect it (gm-runner: the new record
+    /// made by `instance_change`, which `with (id)` does not find yet).
+    fn read_target(&mut self, id: i32) -> i32 {
+        id
+    }
+
     /// Whether instance `id` still exists and is active (used to skip instances
     /// destroyed or deactivated during a `with` loop).
     fn instance_exists(&mut self, id: i32) -> bool;

@@ -687,7 +687,7 @@ impl Vm {
             },
             special::GLOBAL => ReadOwner::Global,
             special::LOCAL => ReadOwner::Local,
-            x if x >= special::FIRST_INSTANCE_ID => ReadOwner::Inst(x),
+            x if x >= special::FIRST_INSTANCE_ID => ReadOwner::Inst(h.read_target(x)),
             x if x >= 0 => match h.first_instance(x) {
                 Some(i) => ReadOwner::Inst(i),
                 None => return self.fail(f, pos, unknown()),

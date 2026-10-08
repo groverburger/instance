@@ -91,9 +91,11 @@ fn script_argument_check_lang2() {
         h.soft_errors.as_ref().unwrap().as_slice(),
         ["Illegal argument count calling script \"sc_arg0\".\nScript requires 1 arguments, 2 have been supplied."]
     );
-    // too few through script_execute: reported, the call yields 0
+    // too few through script_execute: reported, the script still runs (bb_lang3
+    // args3.execute_few_runs "0/7"), missing arguments read 0
     assert_eq!(go(&mut vm, &mut h, "return script_execute(sc_arg0)").unwrap(), Value::Real(0.0));
     assert_eq!(h.soft_errors.as_ref().unwrap().len(), 2);
+    assert_eq!(go(&mut vm, &mut h, "global.q = 0; script_execute(sc_noreturn); return global.q").unwrap(), Value::Real(1.0));
     // a later direct call with too many arguments is still an aborting error
     assert!(go(&mut vm, &mut h, "return sc_count(1)").is_err());
 }
@@ -139,6 +141,30 @@ fn soft_errors() {
     assert!(log[4].starts_with("COMPILATION ERROR in string to be executed\nError in code at line 1:\n   var x;\n"));
     // operator errors still abandon the code
     assert!(run_in(&mut vm, &mut h, "a = 'a' b = a + 1 return 9").is_err());
+}
+
+/// bb_lang eq.*, bb_lang2 eq2.*, bb_lang3 eq3.*: equality is `|a - b| < 1e-13`,
+/// absolute also for large values.
+#[test]
+fn equality_tolerance() {
+    for (src, want) in [
+        ("0 == power(10, -14)", 1.0),
+        ("0 == 5 * power(10, -16)", 1.0),
+        ("1 == 1 + power(10, -14)", 1.0),
+        ("1 == 1 + 5 * power(10, -14)", 1.0),
+        ("0 == power(10, -13)", 0.0),
+        ("0 == 2 * power(10, -12)", 0.0),
+        ("1 == 1 + 5 * power(10, -13)", 0.0),
+        ("100 == 100 + 1.5 * power(10, -13)", 0.0),
+        ("1000000 == 1000000 + 5 * power(10, -10)", 0.0),
+        ("1000000 == 1000000 + 5 * power(10, -9)", 0.0),
+        ("1000000 == 1000000 + power(10, -7)", 0.0),
+        ("1000000 < 1000000 + power(10, -7)", 1.0),
+        ("0.3 >= 0.1 + 0.2", 1.0),
+        ("0.3 < 0.1 + 0.2", 0.0),
+    ] {
+        assert_eq!(real(&format!("return ({src})")), want, "{src}");
+    }
 }
 
 /// bb_lang syn.*: lexer details.

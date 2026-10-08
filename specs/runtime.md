@@ -562,14 +562,36 @@ Using the instance's bounding box (§8.2) and the room rectangle
     `instance_number(old)` = 0, `instance_number(new)` counts it,
     `instance_exists(id)` = 1 [change.later.counts = "0/2/1"]. But
     `with (id)` runs nothing [change.later.next_action never logged].
-  - This fits GM replacing the instance record: the running code keeps the old
-    record, and the id still finds the old, dead record first until it is purged.
-  - gm-runner: without `perf` the change is applied when the calling action ends;
-    `with (id)` and `id.var = ...` address nothing for an instance changed this
-    step, until the end-step purge. Unverified: when exactly the change becomes
-    visible to other code inside the same action, when `with (id)` works again,
-    whether writes to `self` after the call survive, and whether `perf = true`
-    behaves the same way for `with (id)`.
+  - **Rule (VERIFIED, bb_lang3 change2.\*): GM replaces the instance record.**
+    The call makes a new record of the new object with the same id, a copy of
+    all variables as they are at the call, and the new object's sprite, mask,
+    solid, visible, persistent and depth. The old record dies (no Destroy event
+    without `perf`).
+    - Code still running on the instance keeps the old record: it reads the old
+      object and properties, and its writes after the call are lost
+      [change2.self_write = "0/0/7": `x = 5; myvar = 3` after the call, then
+      the new instance has x 0, no `myvar`, depth 7].
+    - Everything else sees the new record at once, also later in the same code:
+      right after `with (i) instance_change(ch2, false)`,
+      `instance_number(ch1)` = 0, `instance_number(ch2)` = 1, `with (ch2)` runs
+      once, `instance_find(ch2, 0) == i`, `i.depth` = 7 (reads through the id
+      find the new record), but `with (i)` runs nothing
+      [change2.same_action = "0/1/1/0/1/7"].
+    - `with (id)` finds the instance again in the next step
+      [change2.next_step_with_id = 1]: the dead record is purged at the end of
+      the step.
+    - `perf = true` replaces the record the same way: Destroy runs on the old
+      record and Create on the new one, inside the call; the calling code then
+      still reads the old object, and `with (id)` in the next action finds
+      nothing [change2.perf = "ch1/0"].
+  - gm-runner: the old record keeps the id until the end-of-step purge; the new
+    record has an internal id meanwhile, is reported to GML under the real id
+    (`id`, function results), and then takes the old record's place in the
+    instance order. Writes through the id (`i.x = 5`) during that step go to
+    the old record (unverified; recommended because `with (i)` finds nothing).
+    Unverified: the new record's position in the instance order during the step
+    (gm-runner: last), and what `instance_destroy()` in the old code after the
+    call does.
 * `position_destroy(x,y)` destroys every instance whose sprite/mask contains the
   point; `position_change(x,y,obj,perf)` changes them `[403_05]`. (The Destroy-at
   -Position action uses the bounding box `[112_02]`.)

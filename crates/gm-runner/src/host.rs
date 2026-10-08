@@ -154,7 +154,7 @@ impl Game {
             v::PATH_ORIENTATION => Value::Real(i.path_orientation),
             v::PATH_ENDACTION => Value::Real(i.path_endaction as f64),
             v::OBJECT_INDEX => Value::Real(i.object_index as f64),
-            v::ID => Value::Real(i.id as f64),
+            v::ID => Value::Real(self.public_id(i.id) as f64),
             v::SOLID => b(i.solid),
             v::PERSISTENT => b(i.persistent),
             v::MASK_INDEX => Value::Real(i.mask_index as f64),
@@ -658,10 +658,6 @@ impl Host for Game {
     }
 
     fn select_instances(&mut self, target: i32, out: &mut Vec<i32>) {
-        // `with (id)` of an instance changed this step (see Game::change_instance)
-        if !self.changed_ids.is_empty() && self.changed_ids.contains(&target) {
-            return;
-        }
         self.select(target, out);
     }
 
@@ -704,7 +700,20 @@ impl Host for Game {
         if self.pending_lives_event || self.pending_health_event {
             self.flush_edge_events(vm)?;
         }
-        crate::builtins::dispatch(self, vm, ctx, func, args)
+        let r = crate::builtins::dispatch(self, vm, ctx, func, args)?;
+        // a record made by instance_change this step is known to GML by its real id
+        if !self.aliases.is_empty() {
+            if let Value::Real(x) = r {
+                if x >= crate::game::ALIAS_ID_BASE as f64 && x <= i32::MAX as f64 {
+                    return Ok(Value::Real(self.public_id(x as i32) as f64));
+                }
+            }
+        }
+        Ok(r)
+    }
+
+    fn read_target(&mut self, id: i32) -> i32 {
+        self.read_record(id)
     }
 
     fn call_script(&mut self, vm: &mut Vm, ctx: &Ctx, script: i32, args: &[Value]) -> Result<Value, Error> {

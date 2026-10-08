@@ -127,6 +127,10 @@ pub struct HighscoreEntry {
     pub score: f64,
 }
 
+/// First internal id of a record made by `instance_change` (see
+/// [`Game::change_instance`]); far above any id a game reaches.
+pub const ALIAS_ID_BASE: i32 = 0x4000_0000;
+
 /// The whole game.
 pub struct Game {
     // ---------------------------------------------------------- resources
@@ -184,13 +188,11 @@ pub struct Game {
     /// Action lists at this depth or shallower stop after their current action
     /// (a room change was requested while they ran; 0 = none).
     pub abort_at: u32,
-    /// `instance_change(obj, false)` requests not applied yet: (id, object,
-    /// list depth of the request). See [`Game::change_instance`].
-    pub pending_changes: Vec<(i32, i32, u32)>,
-    /// Instances changed by `instance_change(obj, false)` during this step: a
-    /// `with (id)` (or `id.var = ...`) addresses no instance until the step's
-    /// destroyed instances are purged.
-    pub changed_ids: Vec<i32>,
+    /// Records made by `instance_change` during this step: (public id, internal
+    /// id of the new record). See [`Game::change_instance`].
+    pub aliases: Vec<(i32, i32)>,
+    /// Next internal id for a record made by `instance_change`.
+    pub next_alias_id: i32,
     pub transition_kind: i32,
     pub transition_steps: i32,
     pub transition_color: i32,
@@ -412,8 +414,8 @@ impl Game {
             pending: None,
             list_depth: 0,
             abort_at: 0,
-            pending_changes: Vec::new(),
-            changed_ids: Vec::new(),
+            aliases: Vec::new(),
+            next_alias_id: ALIAS_ID_BASE,
             transition_kind: 0,
             transition_steps: 80,
             transition_color: 0,
@@ -1014,68 +1016,114 @@ impl Game {
 
     /// `instance_change` (§5.7).
     ///
-    /// VERIFIED black-box (bb_instances change.*): without events
-    /// (`perf = false`) the code that called it keeps seeing the old object and its
-    /// properties (object_index, sprite, depth, solid, visible, persistent, mask:
-    /// change.props); by the next action the instance belongs to the new object
-    /// (change.later.counts "0/2/1": instance_exists(id) is true) but `with (id)`
-    /// finds nothing (change.later.next_action was never logged). This matches GM
-    /// replacing the instance record: the running code keeps the old record and
-    /// the id addresses the old, dead record until it is purged. gm-runner applies
-    /// the change at the end of the calling action and blocks `with (id)` until the
-    /// end of the step (the exact end of both is unverified). With events
-    /// (`perf = true`) Destroy runs, the change is applied, then Create runs, all
-    /// inside the call (change.events_perf "c1 d1 c2").
+    /// VERIFIED black-box (bb_instances change.*, bb_lang3 change2.*): GM replaces
+    /// the instance record. The call makes a new record of the new object (same id,
+    /// a copy of all variables at the time of the call, the new object's sprite,
+    /// mask, solid, visible, persistent and depth) and kills the old one without a
+    /// Destroy event:
+    /// * the code that is running on the instance keeps the old record: it reads the
+    ///   old object and properties, and its writes after the call are lost
+    ///   (change.props, change2.self_write "0/0/7", change2.perf "ch1/...");
+    /// * everything else sees the new record at once, also inside the same action:
+    ///   `instance_number`, `with (obj)`, `instance_find`, `instance_exists(id)` and
+    ///   `id.var` reads (change2.same_action "0/1/1/0/1/7");
+    /// * `with (id)` finds nothing until the end of the step (the id still finds the
+    ///   dead record first), then the new record (change2.next_step_with_id = 1).
+    ///
+    /// gm-runner keeps the old record under the id and gives the new record an
+    /// internal id (see [`Game::aliases`]) until the end-of-step purge, which puts
+    /// the new record in the old one's place under the real id. With events
+    /// (`perf = true`) the old record's Destroy runs first and the new record's
+    /// Create last, all inside the call (change.events_perf "c1 d1 c2"); the same
+    /// replacement applies (change2.perf: next action `with (id)` finds nothing).
     pub fn change_instance(&mut self, vm: &mut Vm, id: i32, obj: i32, perf: bool) -> Result<(), Error> {
         if self.object(obj).is_none() {
             return Err(Error::new(format!("Changing instance to non-existing object: {}", obj)));
         }
-        if !perf {
-            if self.inst(id).is_some() {
-                self.pending_changes.push((id, obj, self.list_depth));
-                self.changed_ids.push(id);
-            }
+        if !self.inst(id).map(|i| i.alive()).unwrap_or(false) {
             return Ok(());
         }
-        self.run_event(vm, id, ev::DESTROY, 0, id)?;
-        self.apply_change(id, obj);
-        self.run_event(vm, id, ev::CREATE, 0, id)?;
+        if perf {
+            self.run_event(vm, id, ev::DESTROY, 0, id)?;
+            if !self.inst(id).map(|i| i.alive()).unwrap_or(false) {
+                return Ok(());
+            }
+        }
+        let Some(o) = self.object(obj) else { return Ok(()) };
+        let (spr, mask, solid, vis, pers, depth) = (o.sprite, o.mask, o.solid, o.visible, o.persistent, o.depth);
+        let new_id = self.next_alias_id;
+        let public = self.public_id(id);
+        let Some(old) = self.inst_mut(id) else { return Ok(()) };
+        let mut n = old.clone();
+        old.destroyed = true;
+        self.next_alias_id += 1;
+        n.id = new_id;
+        n.object_index = obj;
+        n.sprite_index = spr;
+        n.mask_index = mask;
+        n.solid = solid;
+        n.visible = vis;
+        n.persistent = pers;
+        n.depth = depth as f64;
+        self.aliases.push((public, new_id));
+        self.push_instance(n);
+        if perf {
+            self.run_event(vm, new_id, ev::CREATE, 0, new_id)?;
+        }
         Ok(())
     }
 
-    /// Applies the `instance_change(obj, false)` requests made at list depth
-    /// `depth` or deeper (all with `depth = 0`).
-    pub fn apply_pending_changes(&mut self, depth: u32) {
-        let mut k = 0;
-        while k < self.pending_changes.len() {
-            let (id, obj, d) = self.pending_changes[k];
-            if d >= depth {
-                self.pending_changes.remove(k);
-                self.apply_change(id, obj);
-            } else {
-                k += 1;
-            }
+    /// The id GML sees for instance record `id` (the real id of a record made by
+    /// `instance_change` this step).
+    #[inline]
+    pub fn public_id(&self, id: i32) -> i32 {
+        if self.aliases.is_empty() || id < ALIAS_ID_BASE {
+            return id;
         }
+        self.aliases.iter().find(|a| a.1 == id).map(|a| a.0).unwrap_or(id)
     }
 
-    /// Switches an instance to object `obj` with that object's sprite, mask,
-    /// solid, visible, persistent and depth.
-    fn apply_change(&mut self, id: i32, obj: i32) {
-        let Some(o) = self.object(obj) else { return };
-        let (spr, mask, solid, vis, pers, depth) = (o.sprite, o.mask, o.solid, o.visible, o.persistent, o.depth);
-        let old = self.inst(id).map(|i| i.object_index).unwrap_or(-1);
-        if let Some(i) = self.inst_mut(id) {
-            i.object_index = obj;
-            i.sprite_index = spr;
-            i.mask_index = mask;
-            i.solid = solid;
-            i.visible = vis;
-            i.persistent = pers;
-            i.depth = depth as f64;
+    /// The record that reads through instance id `id` (`id.x`, `instance_exists`)
+    /// address: the live record made by `instance_change` this step, if any.
+    #[inline]
+    pub fn read_record(&self, id: i32) -> i32 {
+        if self.aliases.is_empty() {
+            return id;
         }
-        if let Some(&k) = self.inst_index.get(&id) {
-            self.objlists.borrow_mut().changed(self, k, old);
+        self.aliases
+            .iter()
+            .rev()
+            .find(|a| a.0 == id && self.inst(a.1).map(|i| i.alive()).unwrap_or(false))
+            .map(|a| a.1)
+            .unwrap_or(id)
+    }
+
+    /// End of step: each live record made by `instance_change` takes the place and
+    /// the id of the record it replaced (which is dead and purged).
+    fn settle_aliases(&mut self) {
+        let aliases = std::mem::take(&mut self.aliases);
+        for (public, internal) in aliases {
+            let (Some(&kp), Some(&ki)) = (self.inst_index.get(&public), self.inst_index.get(&internal)) else {
+                continue;
+            };
+            if self.instances[ki].destroyed {
+                continue;
+            }
+            self.instances.swap(kp, ki);
+            self.instances[kp].id = public;
+            self.instances[ki].id = internal;
+            self.instances[ki].destroyed = true;
+            self.inst_index.insert(public, kp);
+            self.inst_index.insert(internal, ki);
+            for d in self.draw_order.iter_mut() {
+                if *d == internal {
+                    *d = public;
+                }
+            }
         }
+        let mut seen = std::collections::HashSet::new();
+        self.draw_order.retain(|d| seen.insert(*d));
+        self.next_alias_id = ALIAS_ID_BASE;
     }
 
     /// Updates [`Game::draw_order`]: drops dead instances, appends new ones in
@@ -1101,10 +1149,9 @@ impl Game {
 
     /// Removes destroyed instances from the list.
     pub fn purge_destroyed(&mut self) {
-        if !self.pending_changes.is_empty() {
-            self.apply_pending_changes(0);
+        if !self.aliases.is_empty() {
+            self.settle_aliases();
         }
-        self.changed_ids.clear();
         if self.instances.iter().any(|i| i.destroyed) {
             self.instances.retain(|i| !i.destroyed);
             self.reindex();

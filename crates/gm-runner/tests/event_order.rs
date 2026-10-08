@@ -358,7 +358,7 @@ fn error_after_a_nested_event_names_the_nested_action_number() {
 }
 
 #[test]
-fn instance_change_without_events_takes_effect_after_the_action() {
+fn instance_change_replaces_the_instance_record() {
     // bb_instances change.props / change.later: the calling code still sees the old
     // object; the next action sees the new one, but `with (id)` finds nothing
     let mut b = B::new();
@@ -388,6 +388,50 @@ fn instance_change_without_events_takes_effect_after_the_action() {
     let me = g.instances[0].id;
     vm.run_code(&mut g, &p, gml::Ctx::new(me, me)).unwrap();
     assert_eq!(global(&mut vm, "w"), Value::Real(1.0));
+}
+
+#[test]
+fn instance_change_same_action_self_writes_and_perf() {
+    // bb_lang3 change2.*: right after the `with`, in the same code, the new record
+    // is counted and found by object and by instance_find, `id.depth` reads it, but
+    // `with (id)` finds nothing; writes of the changed code after the call are lost;
+    // perf = true behaves the same way
+    let mut b = B::new();
+    let ch1 = b.object("ch1", vec![]);
+    let ch2 = b.object("ch2", vec![ev(CREATE, 0, &["global.c2 += 1;"])]);
+    b.p.objects[ch1 as usize].as_mut().unwrap().depth = 3;
+    b.p.objects[ch2 as usize].as_mut().unwrap().depth = 7;
+    let ctl = b.object(
+        "ctl",
+        vec![ev(
+            CREATE,
+            0,
+            &[
+                "global.c2 = 0; var i; i = instance_create(0, 0, ch1); with (i) instance_change(ch2, false); global.v = 0; with (ch2) global.v += 1; global.w = 0; with (i) global.w += 1; global.same = string(instance_number(ch1)) + '/' + string(instance_number(ch2)) + '/' + string(global.v) + '/' + string(global.w) + '/' + string(instance_find(ch2, 0) == i) + '/' + string(i.depth); with (ch2) instance_destroy();",
+                "var i; i = instance_create(0, 0, ch1); with (i) { instance_change(ch2, false); x = 5; myvar = 3; }",
+                "with (ch2) global.sw = string(x) + '/' + string(variable_local_exists('myvar')) + '/' + string(depth); with (ch2) instance_destroy();",
+                "global.p = instance_create(0, 0, ch1); with (global.p) { instance_change(ch2, true); global.pobj = object_index; }",
+                "global.pw = 0; with (global.p) global.pw += 1;",
+            ],
+        )],
+    );
+    b.room(640, &[(ctl, 0, 0)]);
+    let (mut g, mut vm) = b.start();
+    assert_eq!(global(&mut vm, "same"), Value::from("0/1/1/0/1/7"));
+    assert_eq!(global(&mut vm, "sw"), Value::from("0/0/7"));
+    assert_eq!(global(&mut vm, "pobj"), Value::Real(ch1 as f64));
+    assert_eq!(global(&mut vm, "pw"), Value::Real(0.0));
+    assert_eq!(global(&mut vm, "c2"), Value::Real(1.0));
+    // the next step, the id addresses the new record (at the old one's place)
+    g.step(&mut vm).unwrap();
+    let p = vm
+        .compile("t", b"global.pw = 0; with (global.p) global.pw += 1; global.pobj = global.p.object_index;", &g)
+        .unwrap();
+    let me = g.instances[0].id;
+    vm.run_code(&mut g, &p, gml::Ctx::new(me, me)).unwrap();
+    assert_eq!(global(&mut vm, "pw"), Value::Real(1.0));
+    assert_eq!(global(&mut vm, "pobj"), Value::Real(ch2 as f64));
+    assert!(g.instances.iter().all(|i| i.id < gm_runner::game::ALIAS_ID_BASE));
 }
 
 #[test]

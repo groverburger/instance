@@ -81,7 +81,12 @@ pub fn register(l: &mut Reg) {
         let n = a.i(1)?;
         r(if n >= 0 { t.get(n as usize).copied().unwrap_or(special::NOONE) } else { special::NOONE } as f64)
     }));
-    l.push(("instance_exists", |g, _, c, a| bo(count_ctx(g, c, a.i(0)?) > 0)));
+    l.push(("instance_exists", |g, _, c, a| {
+        // an id changed by instance_change this step exists (bb_instances change.later.counts)
+        let t = a.i(0)?;
+        let t = if t >= special::FIRST_INSTANCE_ID { g.read_record(t) } else { t };
+        bo(count_ctx(g, c, t) > 0)
+    }));
     l.push(("instance_number", |g, _, c, a| r(count_ctx(g, c, a.i(0)?) as f64)));
     fn nearest(g: &Game, c: &Ctx, a: &A, far: bool) -> Result<Value, Error> {
         let (x, y) = (a.r(0)?, a.r(1)?);

@@ -939,24 +939,27 @@ take priority. Implemented in `crates/gml` (regression tests in
 - `%` is not an operator. It is a compile error, "Unexpected symbol." [syn.percent]
 
 **Comparison** [eq.*, math.sin_pi_is0, math.lengthdir_x_90_is0]
-- Reals are equal when `|a-b| <= max(min(|a|,|b|), 1) * 1e-14`.
-  VERIFIED bounds [eq.*, eq2.*, math.sin_pi_is0, math.lengthdir_x_90_is0]:
-  - `sin(pi) == 0` (difference 1.2e-16) and `lengthdir_x(10,90) == 0` (6.1e-16)
-    are true, so values that close to 0 compare equal.
-  - `0 == 1e-13`, `0 == 5e-13`, `0 == 2e-12`, `1 == 1 + 5e-13`,
-    `1 == 1.0000000001` and `1000000 == 1000000 + 1e-7` are all false. The
-    tolerance is below 1e-13 near 0 and 1, and a relative tolerance would have
-    to be below 1e-13 (the `1e6` case). Delphi's `SameValue` default (1e-12) is
-    ruled out.
-  - The constant 1e-14 (relative above 1) is a choice inside these bounds;
-    bb_lang3 `eq3.*` narrows it.
+- Reals are equal when `|a-b| < 1e-13`. The tolerance is absolute, also for
+  large values. VERIFIED [eq.*, eq2.*, eq3.*, math.sin_pi_is0,
+  math.lengthdir_x_90_is0]:
+  - True: `sin(pi) == 0` (difference 1.2e-16), `lengthdir_x(10,90) == 0`
+    (6.1e-16), `0 == 1e-14`, `0 == 5e-15`, `0 == 2e-15`, `0 == 1e-15`,
+    `0 == 5e-16`, `1 == 1 + 2e-15`, `1 == 1 + 1e-14`, `1 == 1 + 5e-14`.
+  - False: `0 == 1e-13`, `0 == 5e-13`, `0 == 2e-12`, `1 == 1 + 5e-13`,
+    `100 == 100 + 1.5e-13`, `1 == 1.0000000001`, `1000000 == 1000000 + 5e-10`,
+    `1000000 == 1000000 + 5e-9`, `1000000 == 1000000 + 1e-7`,
+    `100000000 == 100000000.5`.
+  - So the tolerance lies in (5e-14, 1e-13]. It is not relative: a relative
+    tolerance that makes `1 == 1 + 5e-14` true would also make
+    `1e6 == 1e6 + 5e-10` true. `0 == power(10, -13)` is false, so at 1e-13 the
+    comparison is strict. Delphi's `SameValue` default (1e-12) is ruled out.
+  - (The test values are built as `k * power(10, -n)`, so they are the nearest
+    doubles of those decimals.)
 - Examples: `0.1+0.2 == 0.3` is true (exactly equal, see the literal rule above).
 - `<` means "less and not equal", `<=` means "less or equal", and so on.
   So `0.3 < 0.1+0.2` is false and `0.3 >= 0.1+0.2` is true.
 - `switch` cases use the same equality. A case of the other type simply doesn't
   match; there is no error [syn.switch_mixed].
-- Open: whether the tolerance is relative for large values. The data only shows
-  that it is below 1e-12 near 1 and near 0.
 
 **Type errors** [mix.*, truth.str_*]
 - Comparing a string with a real (`== != < <= > >=`) is an error,
@@ -1020,11 +1023,13 @@ take priority. Implemented in `crates/gml` (regression tests in
     array index out of bounds".
   - The message says `Script requires at least N arguments, ...` when the script
     also uses `argument[i]` [bb_lang2 args.mixed_fewer].
-  - `script_execute` is checked the same way. Too few arguments: the error is
-    reported and the call yields 0. Too many: the error is reported as a
-    non-aborting error and the script still runs with all the arguments
-    [bb_lang2 args.script_execute_more = 1 with err = 1]. A direct call with too
-    many arguments is an ordinary (aborting) error.
+  - `script_execute` is checked the same way, but a wrong count is a
+    non-aborting error: it is reported and the script still runs. Too many: it
+    runs with all the arguments [bb_lang2 args.script_execute_more = 1 with
+    err = 1]. Too few: it runs with the missing arguments reading 0, and the
+    call yields the script's result [bb_lang3 args3.execute_few_runs = "0/7"
+    with err = 1: a script that sets `global.q = 7` and returns `argument0`].
+    A direct call with a wrong count is an ordinary (aborting) error.
 - With bit 1 clear, any count is accepted, `argument_count` is the supplied
   count, and missing arguments read 0.
 - Arguments live in **one global array**:
@@ -1099,12 +1104,24 @@ take priority. Implemented in `crates/gml` (regression tests in
   `string_length(chr(192))` = 1, `string_length(string_lower(chr(192)))` = 1,
   `string_length(string_upper('a' + chr(233)))` = 2,
   `string_length(string_lower(chr(195) + chr(137)))` = 2.
-- `ord(s)` returns the first byte of the UTF-8 encoding of the first character:
-  `ord(chr(192))` = 195, `ord(string_upper(chr(233)))` = 195. gm-runner takes
-  bytes 0x80-0xFF as Latin-1 code points (0xC2 / 0xC3). Unverified: bytes
-  0x80-0x9F (code page 1252 maps them elsewhere) and whether `string_lower/upper`
-  map Latin-1 letters (gm-runner maps 0xC0-0xDE <-> 0xE0-0xFE except 0xD7/0xF7).
-  This corrects the earlier reading that the case functions return UTF-8.
+- The characters are those of code page Windows-1252: `chr(n)` (0..255) is the
+  character with that byte, `string_length` counts characters.
+  VERIFIED [bb_lang2 case.*, bb_lang3 case3.*]:
+  - `ord(s)` returns the first byte of the UTF-8 encoding of the first
+    character's Unicode code point: `ord(chr(127))` = 127, `ord(chr(128))` = 226
+    (€ U+20AC), `ord(chr(159))` = 197 (Ÿ U+0178), `ord(chr(160))` = 194,
+    `ord(chr(192))` = 195, `ord(chr(255))` = 195. (The five bytes 0x81, 0x8D,
+    0x8F, 0x90, 0x9D that Windows-1252 leaves undefined are taken as U+0081 ..
+    U+009D, giving 194; unverified.)
+  - `string_lower/upper` apply Unicode case mapping to those characters and keep
+    one character per character: `string_lower(chr(192)) == chr(224)`,
+    `string_upper(chr(233)) == chr(201)`, `string_lower(chr(215)) == chr(215)`
+    (×), and `string_upper(chr(255))` is Ÿ (`ord` 197; byte 0x9F).
+  - Recommended (unverified): a character whose Unicode mapping is not a single
+    Windows-1252 character stays unchanged (µ, ß); š/Š, œ/Œ, ž/Ž map to each
+    other.
+  This corrects the earlier readings that the case functions return UTF-8 and
+  that characters are Latin-1.
 - `real(str)` ignores surrounding whitespace. The rest must be a complete
   `[+-]digits[.digits][e[+-]digits]`; `""` and `"."` give 0. Anything else
   (`"12abc"`, `"0x10"`, `"$10"`, `"1,5"`, `"inf"`, `"-"`) is the function error

@@ -112,26 +112,70 @@ pub(crate) fn real_strict(s: &[u8]) -> Option<f64> {
     Some(parse_real(t))
 }
 
-/// `string_lower/upper` keep one character per character (VERIFIED black-box,
-/// bb_lang2 case.*: `string_length(string_lower(chr(192)))` = 1,
-/// `string_length(string_upper('a' + chr(233)))` = 2). Whether Latin-1 letters
-/// are mapped is not observable through `ord` (see [`ord_byte`]); they are mapped
-/// in the Latin-1 ranges (unverified).
-fn case_map(s: &[u8], f: fn(u8) -> u8) -> Vec<u8> {
-    s.iter().map(|&b| f(b)).collect()
+/// Unicode code points of the Windows-1252 bytes 0x80-0x9F (the five undefined
+/// bytes stay the C1 control code points of the same value).
+const CP1252_HIGH: [u16; 32] = [
+    0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160, 0x2039,
+    0x0152, 0x008D, 0x017D, 0x008F, 0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+    0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178,
+];
+
+/// The character of string byte `b` (Windows-1252).
+pub(crate) fn cp1252_char(b: u8) -> char {
+    match b {
+        0x80..=0x9F => char::from_u32(CP1252_HIGH[(b - 0x80) as usize] as u32).unwrap_or('?'),
+        _ => b as char,
+    }
 }
 
-/// `ord` returns the first byte of the UTF-8 encoding of the first character
-/// (VERIFIED black-box, bb_lang2 case.ord_192: `ord(chr(192))` = 195 while
-/// `string_length(chr(192))` = 1; bb_lang sf.lower_latin1 / sf.upper_latin1 = 195).
-/// Characters 0x80-0xFF are taken as Latin-1 code points, so they give 0xC2 / 0xC3
-/// (the 0x80-0x9F range is unverified: under code page 1252 those characters are
-/// other code points).
+/// The Windows-1252 byte of character `c`, if it has one.
+fn cp1252_byte(c: char) -> Option<u8> {
+    let u = c as u32;
+    if u < 0x80 || (0xA0..=0xFF).contains(&u) {
+        Some(u as u8)
+    } else {
+        CP1252_HIGH.iter().position(|&h| h as u32 == u).map(|i| 0x80 + i as u8)
+    }
+}
+
+/// GML strings are byte strings whose characters are Windows-1252 (`chr(n)` is byte
+/// `n`, `string_length` counts characters = bytes). `string_lower/upper` follow the
+/// Unicode case mapping of those characters and keep one byte per character
+/// (VERIFIED black-box, bb_lang2 case.*, bb_lang3 case3.*):
+/// `string_lower(chr(192)) == chr(224)`, `string_upper(chr(233)) == chr(201)`,
+/// `string_lower(chr(215)) == chr(215)` (×), `string_upper(chr(255))` is Ÿ (byte
+/// 0x9F, `ord` 197), lengths unchanged. A character whose mapping is not a single
+/// Windows-1252 character stays as it is.
+fn case_map(s: &[u8], upper: bool) -> Vec<u8> {
+    s.iter()
+        .map(|&b| {
+            if b < 0x80 {
+                return if upper { b.to_ascii_uppercase() } else { b.to_ascii_lowercase() };
+            }
+            let c = cp1252_char(b);
+            let mut m: Vec<char> = if upper { c.to_uppercase().collect() } else { c.to_lowercase().collect() };
+            match (m.len(), m.pop().and_then(cp1252_byte)) {
+                (1, Some(r)) => r,
+                _ => b,
+            }
+        })
+        .collect()
+}
+
+/// `ord` returns the first byte of the UTF-8 encoding of the first character, read
+/// as Windows-1252 (VERIFIED black-box, bb_lang2 case.ord_192 = 195 with
+/// `string_length(chr(192))` = 1; bb_lang3 case3.ord_*: `ord(chr(127))` = 127,
+/// `ord(chr(128))` = 226 (€ U+20AC), `ord(chr(159))` = 197 (Ÿ U+0178),
+/// `ord(chr(160))` = 194, `ord(chr(255))` = 195).
 pub(crate) fn ord_byte(s: &[u8]) -> u8 {
     match s.first() {
         None => 0,
         Some(&b) if b < 0x80 => b,
-        Some(&b) => 0xC0 | (b >> 6),
+        Some(&b) => {
+            let mut buf = [0u8; 4];
+            cp1252_char(b).encode_utf8(&mut buf);
+            buf[0]
+        }
     }
 }
 
@@ -163,22 +207,6 @@ fn replace(s: &[u8], sub: &[u8], new: &[u8], all: bool) -> Vec<u8> {
     }
     out.extend_from_slice(&s[i..]);
     out
-}
-
-/// Upper/lower-case mapping for ASCII and the Latin-1 letter range.
-fn to_upper(b: u8) -> u8 {
-    match b {
-        b'a'..=b'z' => b - 32,
-        0xE0..=0xFE if b != 0xF7 => b - 32,
-        _ => b,
-    }
-}
-fn to_lower(b: u8) -> u8 {
-    match b {
-        b'A'..=b'Z' => b + 32,
-        0xC0..=0xDE if b != 0xD7 => b + 32,
-        _ => b,
-    }
 }
 
 fn filter(a: &Args, keep: fn(u8) -> bool) -> NResult {
@@ -273,10 +301,10 @@ pub(super) fn register(t: &mut Vec<(&'static str, NativeFn)>) {
             Ok(Value::from(v))
         }),
         n("string_lower", |_, _, _, a| {
-            Ok(Value::from(case_map(a.str(0)?, to_lower)))
+            Ok(Value::from(case_map(a.str(0)?, false)))
         }),
         n("string_upper", |_, _, _, a| {
-            Ok(Value::from(case_map(a.str(0)?, to_upper)))
+            Ok(Value::from(case_map(a.str(0)?, true)))
         }),
         n("string_repeat", |_, _, _, a| {
             let (s, c) = (a.str(0)?, a.int(1)?);

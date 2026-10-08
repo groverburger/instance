@@ -724,6 +724,30 @@ projects with GM results.
   in the next step; `with (id)` in the next step; the same with `perf = true`.
 - GML-18: action numbers in error headers are not restored after a nested event
   (runtime.md, errors): `destroy.read_after` reports "action number 1".
+- (The open points of GML-3, G-24, GML-11 and RT-21 above are settled by bb_lang3, next
+  section.)
+
+## [RESOLVED-LANG3] bb_lang3 follow-up (2026-10-08)
+
+Evidence: `gm81_blackbox_tests/gm/results_bb_lang3.txt` (GM 8.1). gm-runner now matches
+all 29 bb_lang3 keys and still every non-informational key of the other projects.
+- GML-3: RESOLVED. Equality is `|a - b| < 1e-13`, absolute also for large values
+  (gml-language.md, Comparison). `0 == 1e-14`, `1 == 1 + 5e-14` are true;
+  `100 == 100 + 1.5e-13`, `1e6 == 1e6 + 5e-10` and `0 == 1e-13` are false. A relative
+  tolerance cannot give both `1 == 1 + 5e-14` true and `1e6 == 1e6 + 5e-10` false.
+- G-24: RESOLVED. Characters are Windows-1252: `ord()` is the first UTF-8 byte of the
+  character's code point (`ord(chr(128))` = 226 for €, `ord(chr(159))` = 197 for Ÿ,
+  `ord(chr(160))` = 194, `ord(chr(255))` = 195); `string_lower/upper` use Unicode case
+  mapping (`string_lower(chr(192)) == chr(224)`, `string_lower(chr(215))` unchanged,
+  `string_upper(chr(255))` is Ÿ, `ord` 197), one character per character.
+- GML-11: RESOLVED. `script_execute` with too few arguments reports the non-aborting
+  error and still runs the script, missing arguments 0 (args3.execute_few_runs "0/7").
+- RT-21: RESOLVED (runtime.md §5.7). `instance_change` replaces the instance record:
+  the running code keeps the old one (reads old values, its writes are lost); all other
+  code sees the new record at once (instance_number, with (obj), instance_find, `id.var`
+  reads), except `with (id)`, which finds nothing until the end of the step. The same
+  with `perf = true`. Still unverified: the new record's place in the instance order
+  during that step, and `id.var = ...` writes during that step.
 
 ## [RESOLVED-EVENTS] Event dispatch verified in GM 8.1 (bb_events, bb_instances, 2026-10-08)
 

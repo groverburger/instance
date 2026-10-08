@@ -216,9 +216,10 @@ impl Vm {
     /// needs exactly 1 + its highest `argumentN` index arguments (0 if it uses
     /// none); a script that also uses the `argument[i]` form accepts more, and its
     /// message then reads "requires at least N arguments". Through
-    /// `script_execute`, too many arguments is a non-aborting error: it is reported
-    /// and the script still runs with all of them (bb_lang2 args.script_execute_more
-    /// = 1 with err = 1).
+    /// `script_execute`, a wrong count (too many or too few) is a non-aborting
+    /// error: it is reported and the script still runs with the arguments given,
+    /// missing ones reading 0 (bb_lang2 args.script_execute_more = 1 with err = 1;
+    /// bb_lang3 args3.execute_few_runs = "0/7" with err = 1).
     pub fn run_script(
         &mut self,
         host: &mut dyn Host,
@@ -238,7 +239,7 @@ impl Vm {
                 need,
                 args.len()
             ));
-            if via_execute && args.len() > need {
+            if via_execute {
                 host.soft_error(e)?;
             } else {
                 return Err(e);

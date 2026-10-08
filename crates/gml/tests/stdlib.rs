@@ -229,6 +229,20 @@ fn string_functions() {
     assert_eq!(real("return ord(string_char_at(string_lower(chr(192)), 2))"), 0.0);
     assert_eq!(real("return string_length(string_upper('a' + chr(233)))"), 2.0);
     assert_eq!(real("return string_length(string_lower(chr(195) + chr(137)))"), 2.0);
+    // characters are Windows-1252; ord() of 0x80-0x9F follows the code page and
+    // case mapping is Unicode's (VERIFIED black-box, bb_lang3 case3.*)
+    assert_eq!(real("return ord(chr(127))"), 127.0);
+    assert_eq!(real("return ord(chr(128))"), 226.0);
+    assert_eq!(real("return ord(chr(159))"), 197.0);
+    assert_eq!(real("return ord(chr(255))"), 195.0);
+    assert_eq!(real("return string_lower(chr(192)) == chr(224)"), 1.0);
+    assert_eq!(real("return string_upper(chr(233)) == chr(201)"), 1.0);
+    assert_eq!(real("return string_lower(chr(215)) == chr(215)"), 1.0);
+    assert_eq!(real("return ord(string_char_at(string_upper(chr(255)), 1))"), 197.0);
+    assert_eq!(real("return string_upper(chr(255)) == chr(159)"), 1.0);
+    assert_eq!(real("return string_upper(chr(154)) == chr(138)"), 1.0); // š -> Š
+    assert_eq!(real("return string_upper(chr(181)) == chr(181)"), 1.0); // µ has no 1252 upper
+    assert_eq!(real("return string_upper(chr(223)) == chr(223)"), 1.0); // ß
     // mean() counts a string argument as 0 (VERIFIED black-box, bb_lang2 mm.mean_str)
     assert_eq!(real("return mean(1, 'a')"), 0.5);
     assert_eq!(string("return string_lower('AbC')"), "abc");

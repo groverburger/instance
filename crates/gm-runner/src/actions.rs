@@ -310,9 +310,6 @@ fn exec_node(g: &mut Game, vm: &mut Vm, n: &Node, self_id: i32, other: i32) -> R
         }
         Node::Act(a) => {
             let r = run_act(g, vm, a, self_id, other);
-            if !g.pending_changes.is_empty() {
-                g.apply_pending_changes(g.list_depth);
-            }
             r?;
             Ok(if aborted(g) { Flow::Exit } else { Flow::Next })
         }
