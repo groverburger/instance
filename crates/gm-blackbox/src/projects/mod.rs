@@ -37,6 +37,7 @@ pub fn all() -> Vec<Spec> {
         perf::build_fps(),
         followup::build_lang2(),
         followup::build_restart2(),
+        followup::build_lang3(),
     ];
     v.extend(lang::diagnostics());
     v

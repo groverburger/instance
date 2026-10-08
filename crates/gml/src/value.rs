@@ -402,7 +402,7 @@ pub const REAL_EPS: f64 = 1e-14;
 /// `lengthdir_x(10, 90) == 0` (6.1e-16) are true; `0 == 1e-13`, `1 == 1 + 5e-13`,
 /// `1 == 1.0000000001` and `1000000 == 1000000 + 1e-7` are false (so the tolerance
 /// is below 1e-13 near 0 and 1, and a relative factor is below 1e-13). The
-/// constant 1e-14 is chosen inside those bounds; the bb_lang3 eq3.* keys pin it.
+/// constant 1e-14 is chosen inside those bounds; the bb_lang3 eq3.* keys (no GM results yet) narrow it.
 #[inline]
 pub fn same_real(a: f64, b: f64) -> bool {
     if a == b {

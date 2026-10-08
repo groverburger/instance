@@ -75,6 +75,97 @@ pub fn build_lang2() -> Spec {
     }
 }
 
+/// bb_lang3: narrows what bb_lang2 left open (tolerance constant, Latin-1 case
+/// mapping, ord of 0x80-0x9F, script_execute with too few arguments) and probes
+/// instance_change timing further.
+pub fn build_lang3() -> Spec {
+    let mut g = Gen::new("bb_lang3", 81033);
+    let fw = install(&mut g);
+    g.script("sc_side", "global.q = 7; return argument0;");
+    let ch1 = g.object("ch1");
+    let ch2 = g.object("ch2");
+    g.obj(ch1).depth = 3;
+    g.obj(ch2).depth = 7;
+    let mut t = vec![vals(
+        "eq3",
+        &[
+            ("eq3.0_vs_1e-14", "(0 == power(10, -14))"),
+            ("eq3.0_vs_5e-15", "(0 == 5 * power(10, -15))"),
+            ("eq3.0_vs_2e-15", "(0 == 2 * power(10, -15))"),
+            ("eq3.0_vs_1e-15", "(0 == power(10, -15))"),
+            ("eq3.0_vs_5e-16", "(0 == 5 * power(10, -16))"),
+            ("eq3.1_vs_2e-15", "(1 == 1 + 2 * power(10, -15))"),
+            ("eq3.1_vs_1e-14", "(1 == 1 + power(10, -14))"),
+            ("eq3.1_vs_5e-14", "(1 == 1 + 5 * power(10, -14))"),
+            ("eq3.100_plus_1p5e-13", "(100 == 100 + 1.5 * power(10, -13))"),
+            ("eq3.1e6_plus_5e-9", "(1000000 == 1000000 + 5 * power(10, -9))"),
+            ("eq3.1e6_plus_5e-10", "(1000000 == 1000000 + 5 * power(10, -10))"),
+        ],
+    )];
+    t.push(vals(
+        "case3",
+        &[
+            ("case3.lower_192_is_224", "(string_lower(chr(192)) == chr(224))"),
+            ("case3.upper_233_is_201", "(string_upper(chr(233)) == chr(201))"),
+            ("case3.lower_215_is_215", "(string_lower(chr(215)) == chr(215))"),
+            ("case3.upper_255", "ord(string_char_at(string_upper(chr(255)), 1))"),
+            ("case3.ord_127", "ord(chr(127))"),
+            ("case3.ord_128", "ord(chr(128))"),
+            ("case3.ord_159", "ord(chr(159))"),
+            ("case3.ord_160", "ord(chr(160))"),
+            ("case3.ord_255", "ord(chr(255))"),
+        ],
+    ));
+    t.push(err_stmt(
+        "args3.execute_few_runs",
+        "global.q = 0; global.bb_r = script_execute(sc_side); global.bb_r = string(global.bb_r) + '/' + string(global.q);",
+    ));
+    t.push(err_stmt(
+        "change2.same_action",
+        "var i; i = instance_create(0, 0, ch1); with (i) instance_change(ch2, false); global.v = 0; with (ch2) global.v += 1; global.w = 0; with (i) global.w += 1; global.bb_r = string(instance_number(ch1)) + '/' + string(instance_number(ch2)) + '/' + string(global.v) + '/' + string(global.w) + '/' + string(instance_find(ch2, 0) == i) + '/' + string(i.depth); with (ch1) instance_destroy(); with (ch2) instance_destroy();",
+    ));
+    t.push(raw(
+        "change2.self_write",
+        &[
+            "var i; i = instance_create(0, 0, ch1); with (i) { instance_change(ch2, false); x = 5; myvar = 3; }",
+            "with (ch2) bb_log('change2.self_write', string(x) + '/' + string(variable_local_exists('myvar')) + '/' + string(depth)); with (ch1) instance_destroy(); with (ch2) instance_destroy();",
+        ],
+    ));
+    // instance changed in one step, addressed by id in the next test (next step)
+    t.push(raw(
+        "change2.next_step_a",
+        &["global.ch_id = instance_create(0, 0, ch1); with (global.ch_id) instance_change(ch2, false);"],
+    ));
+    t.push(raw(
+        "change2.next_step_b",
+        &["global.v = 0; with (global.ch_id) global.v += 1; bb_log('change2.next_step_with_id', global.v); with (ch2) instance_destroy();"],
+    ));
+    t.push(raw(
+        "change2.perf",
+        &[
+            "global.ch_id = instance_create(0, 0, ch1); with (global.ch_id) { instance_change(ch2, true); global.bb_r = object_get_name(object_index); }",
+            "global.v = 0; with (global.ch_id) global.v += 1; bb_log('change2.perf', global.bb_r + '/' + string(global.v)); with (ch2) instance_destroy();",
+        ],
+    ));
+    t.push(vals("lang3.done", &[("lang3.done", "1")]));
+    let frames = unit_project(&mut g, &fw, t, 60);
+    Spec {
+        name: "bb_lang3",
+        title: "Follow-up: tolerance constant, Latin-1 case/ord, script_execute, instance_change timing",
+        lite: "Lite-safe.",
+        frames,
+        keys: vec![
+            k("eq3.", "GML-3", "the equality tolerance constant; relative above 1?"),
+            k("case3.", "G-24", "Latin-1 case mapping (string compare) and ord of 0x80-0xFF"),
+            k("args3.", "GML-11", "script_execute with too few arguments: does the script run?"),
+            k("change2.", "RT-21", "instance_change(false): same-action queries, writes after the call, with(id) next step, perf=true"),
+            ki(".msg", "GML-18", "error message text"),
+            k("lang3.done", "-", "end marker"),
+        ],
+        project: g.finish(),
+    }
+}
+
 pub fn build_restart2() -> Spec {
     let mut g = Gen::new("bb_restart2", 81032);
     let fw = install(&mut g);

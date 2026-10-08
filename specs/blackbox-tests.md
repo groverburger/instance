@@ -169,7 +169,7 @@ Headless frames for gm-runner: 30
 ## bb_instances — Instance order, equal-depth draw order, depth changes, with/other, instance_change
 
 Lite: Lite-safe.  
-Headless frames for gm-runner: 84
+Headless frames for gm-runner: 85
 
 | key prefix | answers | what is logged |
 |---|---|---|
@@ -294,6 +294,20 @@ Headless frames for gm-runner: 30
 |---|---|---|
 | `rs2.phase1_log` | RT-04 | phase 1 sequence: rest of the action / next action / Game End / Room End / Destroy around game_restart |
 | `rs2.p2_` | RT-04 | instance ids after the restart (counter reset?) |
+
+## bb_lang3 — Follow-up: tolerance constant, Latin-1 case/ord, script_execute, instance_change timing
+
+Lite: Lite-safe.  
+Headless frames for gm-runner: 39
+
+| key prefix | answers | what is logged |
+|---|---|---|
+| `eq3.` | GML-3 | the equality tolerance constant; relative above 1? |
+| `case3.` | G-24 | Latin-1 case mapping (string compare) and ord of 0x80-0xFF |
+| `args3.` | GML-11 | script_execute with too few arguments: does the script run? |
+| `change2.` | RT-21 | instance_change(false): same-action queries, writes after the call, with(id) next step, perf=true |
+| `.msg` | GML-18 | error message text (informational) |
+| `lang3.done` | - | end marker |
 
 ## bb_constexpr — Diagnostic: expression-valued constants only
 
