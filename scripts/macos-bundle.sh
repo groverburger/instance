@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Builds gm-ide and gm-runner in release mode and wraps them as macOS app bundles:
-#   dist/macos/GM81 Clean IDE.app     (gm-ide; gm-runner is copied next to it inside
+# Builds instance-ide and instance-runner in release mode and wraps them as macOS app bundles:
+#   dist/macos/GM81 Clean IDE.app     (instance-ide; instance-runner is copied next to it inside
 #                                      Contents/MacOS so Run (F5) finds it)
-#   dist/macos/GM81 Clean Runner.app  (gm-runner; opens .gm81/.gmk files)
+#   dist/macos/GM81 Clean Runner.app  (instance-runner; opens .gm81/.gmk files)
 # Usage: scripts/macos-bundle.sh [--target aarch64-apple-darwin|x86_64-apple-darwin] [OUT_DIR]
 # Must run on macOS (the bundles are ad-hoc signed with codesign when available).
 set -euo pipefail
@@ -19,10 +19,10 @@ out=${1:-dist/macos}
 bin="${CARGO_TARGET_DIR:-$root/target}/$target_dir"
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 
-cargo build --release ${target_args[@]+"${target_args[@]}"} -p gm-ide -p gm-runner
+cargo build --release ${target_args[@]+"${target_args[@]}"} -p instance-ide -p instance-runner
 mkdir -p "$out"
 icons=$(mktemp -d)
-cargo run -q -p gm-brand --example write_icons -- "$icons"
+cargo run -q -p instance-brand --example write_icons -- "$icons"
 
 # make_app NAME EXECUTABLE BUNDLE_ID DOC_TYPES_XML
 make_app() {
@@ -62,9 +62,9 @@ PLIST
   echo "built $app"
 }
 
-make_app "GM81 Clean IDE" gm-ide org.gm81clean.ide Editor
-# the IDE looks for gm-runner next to its own executable
-cp "$bin/gm-runner" "$out/GM81 Clean IDE.app/Contents/MacOS/"
+make_app "GM81 Clean IDE" instance-ide org.gm81clean.ide Editor
+# the IDE looks for instance-runner next to its own executable
+cp "$bin/instance-runner" "$out/GM81 Clean IDE.app/Contents/MacOS/"
 if command -v codesign >/dev/null; then codesign --force --deep --sign - "$out/GM81 Clean IDE.app" || true; fi
-make_app "GM81 Clean Runner" gm-runner org.gm81clean.runner Viewer
+make_app "GM81 Clean Runner" instance-runner org.gm81clean.runner Viewer
 rm -rf "$icons"

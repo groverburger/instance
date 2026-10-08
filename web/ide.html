@@ -20,7 +20,7 @@
   <div id="loading">Loading the GM81 Clean IDE&hellip;</div>
   <script src="ide.js"></script>
   <script type="module">
-    import init, { start_ide } from "./pkg/gm_ide.js";
+    import init, { start_ide } from "./pkg/instance_ide.js";
     try {
       await init();
       await start_ide("ide_canvas");

@@ -1733,134 +1733,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gm-blackbox"
-version = "0.1.0"
-dependencies = [
- "gm-format",
- "serde_json",
-]
-
-[[package]]
-name = "gm-brand"
-version = "0.1.0"
-dependencies = [
- "png",
-]
-
-[[package]]
-name = "gm-dllcall"
-version = "0.1.0"
-
-[[package]]
-name = "gm-format"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "gm-gmx"
-version = "0.1.0"
-dependencies = [
- "gm-brand",
- "gm-format",
- "png",
- "roxmltree",
- "serde_json",
- "sevenz-rust",
- "zip",
-]
-
-[[package]]
-name = "gm-ide"
-version = "0.1.0"
-dependencies = [
- "arboard",
- "eframe",
- "egui_kittest",
- "fontdue",
- "gm-brand",
- "gm-format",
- "gm-ui",
- "image",
- "js-sys",
- "rfd",
- "serde",
- "serde_json",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
-]
-
-[[package]]
-name = "gm-net"
-version = "0.1.0"
-dependencies = [
- "if-addrs",
- "socket2",
-]
-
-[[package]]
-name = "gm-runner"
-version = "0.1.0"
-dependencies = [
- "arboard",
- "console_error_panic_hook",
- "egui",
- "egui-winit",
- "egui_glow",
- "egui_kittest",
- "fontdue",
- "gilrs",
- "glow",
- "glutin",
- "gm-brand",
- "gm-dllcall",
- "gm-format",
- "gm-net",
- "gm-ui",
- "gml",
- "js-sys",
- "libloading",
- "midly",
- "png",
- "raw-window-handle",
- "rfd",
- "rodio",
- "rustysynth",
- "softbuffer",
- "ttf-parser",
- "wasm-bindgen",
- "web-sys",
- "web-time",
- "windows",
- "winit",
-]
-
-[[package]]
-name = "gm-testdll"
-version = "0.1.0"
-
-[[package]]
-name = "gm-ui"
-version = "0.1.0"
-dependencies = [
- "egui",
- "egui_kittest",
-]
-
-[[package]]
-name = "gm81-dllhost32"
-version = "0.1.0"
-dependencies = [
- "gm-dllcall",
- "libloading",
- "windows-sys 0.60.2",
-]
-
-[[package]]
 name = "gml"
 version = "0.1.0"
 dependencies = [
@@ -2117,6 +1989,134 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c033f80b2c113cdf91ab7a33faa9cbc014726dcad99880c8609af2a370edf37d"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "instance-blackbox"
+version = "0.1.0"
+dependencies = [
+ "instance-format",
+ "serde_json",
+]
+
+[[package]]
+name = "instance-brand"
+version = "0.1.0"
+dependencies = [
+ "png",
+]
+
+[[package]]
+name = "instance-dllcall"
+version = "0.1.0"
+
+[[package]]
+name = "instance-dllhost32"
+version = "0.1.0"
+dependencies = [
+ "instance-dllcall",
+ "libloading",
+ "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "instance-format"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "instance-gmx"
+version = "0.1.0"
+dependencies = [
+ "instance-brand",
+ "instance-format",
+ "png",
+ "roxmltree",
+ "serde_json",
+ "sevenz-rust",
+ "zip",
+]
+
+[[package]]
+name = "instance-ide"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "eframe",
+ "egui_kittest",
+ "fontdue",
+ "image",
+ "instance-brand",
+ "instance-format",
+ "instance-ui",
+ "js-sys",
+ "rfd",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "instance-net"
+version = "0.1.0"
+dependencies = [
+ "if-addrs",
+ "socket2",
+]
+
+[[package]]
+name = "instance-runner"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "console_error_panic_hook",
+ "egui",
+ "egui-winit",
+ "egui_glow",
+ "egui_kittest",
+ "fontdue",
+ "gilrs",
+ "glow",
+ "glutin",
+ "gml",
+ "instance-brand",
+ "instance-dllcall",
+ "instance-format",
+ "instance-net",
+ "instance-ui",
+ "js-sys",
+ "libloading",
+ "midly",
+ "png",
+ "raw-window-handle",
+ "rfd",
+ "rodio",
+ "rustysynth",
+ "softbuffer",
+ "ttf-parser",
+ "wasm-bindgen",
+ "web-sys",
+ "web-time",
+ "windows",
+ "winit",
+]
+
+[[package]]
+name = "instance-testdll"
+version = "0.1.0"
+
+[[package]]
+name = "instance-ui"
+version = "0.1.0"
+dependencies = [
+ "egui",
+ "egui_kittest",
 ]
 
 [[package]]

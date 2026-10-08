@@ -793,7 +793,7 @@ end-to-end by `specs/tools/gmk_dump.py` with exact consumption to EOF. Observed:
 ## Addendum: path, timeline and v800 font records verified
 
 `street racing.gm81` (8.1 IDE, with a user-added path and timeline) decodes to EOF and
-round-trips byte-identically (inflated) through gm-format. Verified record versions:
+round-trips byte-identically (inflated) through instance-format. Verified record versions:
 path 530, timeline 500, font 800. Example font `range_start` raw value 0x04000020
 (range start 32 in the low 16 bits; the high byte is non-zero — its exact meaning,
 charset vs anti-alias level, stays an open question). Triggers, constants, tiles and
@@ -804,7 +804,7 @@ included files remain unverified.
 Source: the user's own projects under `Downloads/old_gamemaker_projects` (21 `.gm81`
 files, header 810) plus the 5 `Examples/` samples. All were decoded byte-by-byte with
 `specs/tools/gmk_dump.py` (exact consumption of every zlib block and of the file) and
-re-written by gm-format with identical inflated contents. No YoYo binary was examined.
+re-written by instance-format with identical inflated contents. No YoYo binary was examined.
 
 ### 0-frame sprites [V] (corrects §5.2; answers the sprite part of FF-11)
 

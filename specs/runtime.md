@@ -379,7 +379,7 @@ These override the recommendations of §4.2/§4.3/§4.4/§5 where they differ.
    collisions, end-step triggers, End Step, draw. (Timelines move from step 4 of
    §4.2 to after step 5.) Animation End is raised after drawing, before the next
    step's begin-step triggers (ev.s03+7 "d.AE0 a.TRbs").
-2. **Object-major dispatch** of Begin Step, Step and End Step (gm-runner uses the
+2. **Object-major dispatch** of Begin Step, Step and End Step (instance-runner uses the
    same dispatcher for the keyboard phases; not verified there): objects in
    ascending object index, within an object its instances in instance order
    (ev.s03 "a b e f g h c d z" follows object order although c and d were placed
@@ -412,7 +412,7 @@ These override the recommendations of §4.2/§4.3/§4.4/§5 where they differ.
    1036). Both fire in the same step when outside, Outside first. Views: same rules
    (unverified).
 7. **Lives / health**: No More Lives / No More Health run at the assignment, before
-   the next statement (ev.s06+1 "a.lives0 a.NML a.lives0done"). (gm-runner raises
+   the next statement (ev.s06+1 "a.lives0 a.NML a.lives0done"). (instance-runner raises
    them at the next function/script call or after the action, because built-in
    variable writes have no VM access.)
 8. **`keyboard_key_press` / `keyboard_key_release`** post a key message: the step of
@@ -584,13 +584,13 @@ Using the instance's bounding box (§8.2) and the room rectangle
       record and Create on the new one, inside the call; the calling code then
       still reads the old object, and `with (id)` in the next action finds
       nothing [change2.perf = "ch1/0"].
-  - gm-runner: the old record keeps the id until the end-of-step purge; the new
+  - instance-runner: the old record keeps the id until the end-of-step purge; the new
     record has an internal id meanwhile, is reported to GML under the real id
     (`id`, function results), and then takes the old record's place in the
     instance order. Writes through the id (`i.x = 5`) during that step go to
     the old record (unverified; recommended because `with (i)` finds nothing).
     Unverified: the new record's position in the instance order during the step
-    (gm-runner: last), and what `instance_destroy()` in the old code after the
+    (instance-runner: last), and what `instance_destroy()` in the old code after the
     call does.
 * `position_destroy(x,y)` destroys every instance whose sprite/mask contains the
   point; `position_change(x,y,obj,perf)` changes them `[403_05]`. (The Destroy-at
@@ -1287,7 +1287,7 @@ backgrounds, tiles `[302_01]` (same flag as `texture_set_interpolation`).
     (`ERROR in`, `action number N`, `of <Event> Event`, `for object <name>:`,
     empty line). The body uses CR between its lines (`In script s:`,
     `Error in code at line L:`, the source line, a caret, `at position P: msg`).
-  - gm-runner implements this in `Game::report_error` and `Host::soft_error`.
+  - instance-runner implements this in `Game::report_error` and `Host::soft_error`.
   - Reading `argument[16]` or above abandons the event with no message.
   - The action number in the header is a single "current action" value that a
     nested event overwrites and does not restore. The event and object are

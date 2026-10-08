@@ -1,0 +1,7 @@
+[package]
+name = "instance-dllcall"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]

@@ -3,33 +3,33 @@
 A clean-room reimplementation of the GameMaker 8.1 runner and IDE in Rust.
 Not affiliated with YoYo Games. See CLEANROOM.md for how this was built.
 
-- `crates/gm-format` – read/write .gmk (v800) / .gm81 (v810) project files
-- `crates/gm-gmx` – convert GameMaker: Studio 1.x projects (.gmx folders, .gmz zip/7z) to .gm81 (`gmx2gm81`, specs/gmx-format.md)
+- `crates/instance-format` – read/write .gmk (v800) / .gm81 (v810) project files
+- `crates/instance-gmx` – convert GameMaker: Studio 1.x projects (.gmx folders, .gmz zip/7z) to .gm81 (`gmx2gm81`, specs/gmx-format.md)
 - `crates/gml` – GML lexer, parser, compiler and interpreter
-- `crates/gm-runner` – the game engine (`gm-runner game.gm81`)
-- `crates/gm-ide` – the editor
-- `crates/gm-net` – multiplayer (`mplay_*`) over gm81-clean's own TCP/UDP protocol
-- `crates/gm-dllcall`, `crates/gm81-dllhost32` – DLL bridge (x64 in-process, x86 via a 32-bit helper)
+- `crates/instance-runner` – the game engine (`instance-runner game.gm81`)
+- `crates/instance-ide` – the editor
+- `crates/instance-net` – multiplayer (`mplay_*`) over gm81-clean's own TCP/UDP protocol
+- `crates/instance-dllcall`, `crates/instance-dllhost32` – DLL bridge (x64 in-process, x86 via a 32-bit helper)
 - `specs/` – behavioural specifications the implementation is built from
 
 ## Usage
 
 ```
 cargo build --release
-target/release/gm-ide [project.gm81]          # editor; F5 runs the game, F6 runs it in debug mode
-target/release/gm-runner game.gm81            # play a .gmk (v701/v800) or .gm81 project
-target/release/gm-runner game.gm81 --debug    # with the Debug Information window (watches, pause/step,
+target/release/instance-ide [project.gm81]          # editor; F5 runs the game, F6 runs it in debug mode
+target/release/instance-runner game.gm81            # play a .gmk (v701/v800) or .gm81 project
+target/release/instance-runner game.gm81 --debug    # with the Debug Information window (watches, pause/step,
                                               # execute code, globals/locals/instances, messages)
-target/release/gm-runner game.gm81 --headless --frames 300 --screenshot out.png
-target/release/gm-runner game.gm81 --renderer software   # force the CPU renderer (default: OpenGL, falls back)
-target/release/gm-runner game.gm81 --compare-renderers DIR --frames 300 --screenshot-every 50 DIR
+target/release/instance-runner game.gm81 --headless --frames 300 --screenshot out.png
+target/release/instance-runner game.gm81 --renderer software   # force the CPU renderer (default: OpenGL, falls back)
+target/release/instance-runner game.gm81 --compare-renderers DIR --frames 300 --screenshot-every 50 DIR
                                               # render with both renderers and diff the frames
 target/release/gmk-info game.gm81 [--tree]    # print a resource summary
 target/release/gmx2gm81 Game.gmx -o game.gm81  # convert a Studio project (folder, .project.gmx or .gmz)
 cargo test --workspace                        # sample tests read $GM81_SAMPLES
-target/release/gm-runner game.gm81 --headless --frames 600 --random-input 1 --max-seconds 60
-GM_PROFILE=1 target/release/gm-runner game.gm81 --headless   # per-phase/event/function timings
-cargo test --release -p gm-runner --test corpus -- --ignored --nocapture   # runs every game in $GM81_CORPUS
+target/release/instance-runner game.gm81 --headless --frames 600 --random-input 1 --max-seconds 60
+GM_PROFILE=1 target/release/instance-runner game.gm81 --headless   # per-phase/event/function timings
+cargo test --release -p instance-runner --test corpus -- --ignored --nocapture   # runs every game in $GM81_CORPUS
 ```
 
 On Windows the runner is a GUI program: a standalone game made with Create Executable
@@ -43,13 +43,13 @@ GUI programs, so scripts should redirect the output (`2>&1 | ...`) or use
 
 Multiplayer: `mplay_*` over TCP/IP only (gm81-clean protocol, specs/multiplayer.md
 Part B; not compatible with GameMaker's DirectPlay sessions). Demo with two headless
-runners: `cargo build -p gm-runner && cargo run -p gm-runner --example mplay_demo`.
+runners: `cargo build -p instance-runner && cargo run -p instance-runner --example mplay_demo`.
 
 Extensions and DLLs: packages are taken from the executable's bundle or from
 `extensions/` next to the runner, `$GM81_EXTENSIONS`, `%APPDATA%/gm81-clean/extensions`
 or the project's `extensions/` folder. 32-bit DLLs (all GM 8.1-era DLLs) need the helper:
-`rustup target add i686-pc-windows-msvc && cargo build --release -p gm81-dllhost32
---target i686-pc-windows-msvc`, then put `gm81-dllhost32.exe` next to `gm-runner.exe`
+`rustup target add i686-pc-windows-msvc && cargo build --release -p instance-dllhost32
+--target i686-pc-windows-msvc`, then put `instance-dllhost32.exe` next to `instance-runner.exe`
 (or set `GM81_DLLHOST32`; cargo target directories are also searched).
 
 Sound: MIDI music plays through the Windows synthesiser (midiOut). Elsewhere (macOS,
@@ -81,11 +81,11 @@ Per-user data of games (the emulated `registry_*` keys as `registry_<game id>.in
 highscores) lives in `%APPDATA%\gm81-runner`, `~/Library/Application Support/gm81-runner`
 or `$XDG_CONFIG_HOME/gm81-runner` (`~/.config/gm81-runner`). Fonts are looked up in the
 system font folders; when a font is missing the bundled Liberation Sans
-(`crates/gm-runner/fonts`, SIL Open Font License) is used.
+(`crates/instance-runner/fonts`, SIL Open Font License) is used.
 
 macOS app bundles: `scripts/macos-bundle.sh` (on a Mac) builds `GM81 Clean IDE.app` (with
 the runner inside, so Run works) and `GM81 Clean Runner.app` in `dist/macos`, with the
-icon generated by `cargo run -p gm-brand --example write_icons -- DIR`. CI uploads them
+icon generated by `cargo run -p instance-brand --example write_icons -- DIR`. CI uploads them
 as artifacts. The runner app takes the game on the command line
 (`open -a "GM81 Clean Runner" --args /path/game.gm81`); Finder "open with" events are
 not handled yet.

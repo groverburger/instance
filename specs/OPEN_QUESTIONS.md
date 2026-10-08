@@ -168,7 +168,7 @@ every case is to make small sample projects in the IDE (black-box) and diff/pars
 - FF-18: Settings "uninitialized" flags word (file-formats.md §2 +12 and the user-corpus
   addendum): bit 0 = treat uninitialized variables as 0 [V]; bit 1 (value 2) is stored by
   the 8.1 IDE in most user projects — meaning unverified (presumably the 8.1 Errors-tab
-  option about uninitialized arguments, cf. IDE-12). Any further bits unknown. gm-format
+  option about uninitialized arguments, cf. IDE-12). Any further bits unknown. instance-format
   keeps bit 0 as `treat_uninitialized_as_zero` and preserves the rest verbatim in
   `uninitialized_extra_bits`.
 - FF-17: Event sub-numbers for mouse/other/step beyond the values observed (left
@@ -178,9 +178,9 @@ every case is to make small sample projects in the IDE (black-box) and diff/pars
   numeric-keypad order (index 0 = down-left, 4 = stop, 7 = up; verified in samples). IDE-16: `.gmspr` format
   is now in §9; `.gmbck` etc. presumed analogous.
 
-## [IMPL-FMT] gm-format implementation notes (2026-10-07)
+## [IMPL-FMT] instance-format implementation notes (2026-10-07)
 
-Observations made while implementing `crates/gm-format` against the sample files
+Observations made while implementing `crates/instance-format` against the sample files
 (treasure.gmk v701 vs treasure.gm81, which the 8.1 IDE saved from it):
 
 - FF-13 resolved (proposed): the **first encoded byte of a v701 stream is stored raw**,
@@ -198,7 +198,7 @@ Observations made while implementing `crates/gm-format` against the sample files
 - v701 settings lack `disable_screensaver`; the converted .gm81 has it = 1 (implementation
   uses true). All other settings/rooms/objects/actions/tree match field-for-field.
 - Writers emit settings_version 800 for both v800 and v810 (per the spec addendum).
-- tutorial1.gmk and treasure.gm81 re-written by gm-format have byte-identical inflated
+- tutorial1.gmk and treasure.gm81 re-written by instance-format have byte-identical inflated
   block contents (only zlib compression differs), so every per-record version number in
   §12 for those records is confirmed.
 - Not covered by any sample and therefore still per-spec [I]: trigger, constant, path,
@@ -300,7 +300,7 @@ Data structures (chapter 411)
 - G-34: `ds_*_write` produce an implementation-defined hex text format (not compatible
   with files written by GM 8.1); `ds_*_read` of a malformed string is a runtime error.
 
-## [IMPL-IDE] crates/gm-ide implementation choices and spec gaps (2026-10-07)
+## [IMPL-IDE] crates/instance-ide implementation choices and spec gaps (2026-10-07)
 
 Choices made where specs/ide.md is silent; please confirm or correct.
 
@@ -344,14 +344,14 @@ Choices made where specs/ide.md is silent; please confirm or correct.
 - IMPL-IDE-12 (resolution/frequency lists): the Resolution tab exposes `resolution`
   and `frequency` as raw indices because the option lists are not specified.
 - IMPL-IDE-13 (runner invocation): Run writes `<temp>/gm81-clean-ide/<pid>/game.gm81`
-  and starts `gm-runner <file>` with the project folder as working directory (temp
+  and starts `instance-runner <file>` with the project folder as working directory (temp
   folder for unsaved projects). No secure-mode/debug flags are passed yet: the runner
   CLI for those needs to be specified.
 - IMPL-IDE-14 (rendering backend, not a spec issue): eframe's default wgpu backend
   crashed with an access violation on the development machine; the IDE uses the glow
   (OpenGL) backend.
 
-## [IMPL-RUN] crates/gm-runner implementation choices (2026-10-07)
+## [IMPL-RUN] crates/instance-runner implementation choices (2026-10-07)
 
 Choices made where specs/runtime.md, actions.json or builtins.json are silent or
 leave a recommendation open. Each is easy to change; please confirm or correct.
@@ -449,7 +449,7 @@ Sound / UI / files
   (414), 3D mode (415; d3d_start returns false), joysticks (none present), CD audio,
   video/web splash screens, message_* dialog styling, clipboard (not yet).
 
-## [D3D-IMPL] Implementer notes on 3D / renderer (gm-runner, 2026-10-07)
+## [D3D-IMPL] Implementer notes on 3D / renderer (instance-runner, 2026-10-07)
 
 - D3D-IMPL-1: Culling of 2D-emitted geometry. d3d.md §3.2 says culling applies to
   2D-drawn triangles in 3D mode, but under `d3d_set_projection_ortho` (y down) every
@@ -550,21 +550,21 @@ Resolve by black-box tests with GM 8.1 (screenshots of small test games).
 
 ## [BLACKBOX] Black-box test projects (2026-10-07)
 
-`crates/gm-blackbox` generates GM 8.1 test projects (`gm-blackbox generate <dir>`) that
+`crates/instance-blackbox` generates GM 8.1 test projects (`instance-blackbox generate <dir>`) that
 log `key=value` observations for most RT-*, GML-*, G-*, R-* items above plus every
 built-in constant (GML-19). The key → question mapping is `specs/blackbox-tests.md`;
-`gm-blackbox compare <ours> <gm>` lists where gm-runner differs from GM 8.1. Resolve the
+`instance-blackbox compare <ours> <gm>` lists where instance-runner differs from GM 8.1. Resolve the
 items here once GM results are in.
 
 ## [RESOLVED-ROOMS] Room transitions verified in GM 8.1 (bb_rooms, 2026-10-08)
 
 Evidence: `gm81_blackbox_tests/gm/results_bb_rooms.txt` (GM 8.1 Lite); rules written
-up in runtime.md §3.2a. gm-runner now matches all 48 bb_rooms keys.
+up in runtime.md §3.2a. instance-runner now matches all 48 bb_rooms keys.
 - RT-02: RESOLVED (runtime.md §3.2a rule 1). After `room_goto` the current action
   finishes, the remaining actions of the event are skipped, the rest of the step is
   abandoned (no later instances / phases / draw) and the transition runs at once.
   Observed `go.ST go.after_goto k.RE ...` with no `go.next_action` and no `gx.ST`.
-  Only room changes were verified; gm-runner keeps game_end/game_restart/game_load
+  Only room changes were verified; instance-runner keeps game_end/game_restart/game_load
   as before (remaining actions run; rest of the step abandoned).
 - RT-03: RESOLVED (§3.2a rule 2c/2e, observed s08). Re-entering a persistent room
   does not re-run the room creation code (no `r1.CC2`); restored instances do get
@@ -597,7 +597,7 @@ up in runtime.md §3.2a. gm-runner now matches all 48 bb_rooms keys.
 
 Evidence: `gm81_blackbox_tests/gm/results_*.txt`. The rules are written up in
 gml-language.md ("Language and library details — VERIFIED") and in runtime.md
-§3.3 and §19. gm-runner now matches every non-informational key of bb_lang
+§3.3 and §19. instance-runner now matches every non-informational key of bb_lang
 (except `ref.other_in_driver_create`, see GML-10), bb_args0, bb_random,
 bb_restart, bb_clash and bb_optional `file.*`.
 - GML-1: RESOLVED. Reals are true when >= 0.5. A string condition is the
@@ -621,7 +621,7 @@ bb_restart, bb_clash and bb_optional `file.*`.
     clear, missing arguments are 0.
   - `argument_count` is read-only, checked at run time.
   - Arguments live in a global array.
-  - gm-format exposes the bit as `Settings::argument_errors`.
+  - instance-format exposes the bit as `Settings::argument_errors`.
 - GML-12: RESOLVED. `var` is lexical, and a built-in name can't be redeclared.
 - GML-14: RESOLVED. `%` is not an operator; `:=` in an expression compares; `.5`,
   `12.` and `1.2.3` are accepted; `1e3` is not.
@@ -660,7 +660,7 @@ bb_restart, bb_clash and bb_optional `file.*`.
 
 Evidence: `gm81_blackbox_tests/gm/results_bb_motion.txt`, `results_bb_optional.txt`
 (GM 8.1 Lite); rules written up in runtime.md §4.2 (5b), §4.3, §7.5, §8.2, §8.3,
-§8.6, §10.1, §10.2. gm-runner now matches all 472 bb_motion keys and all 22
+§8.6, §10.1, §10.2. instance-runner now matches all 472 bb_motion keys and all 22
 bb_optional `xform.*` keys.
 - RT-01: PARTLY RESOLVED. Timelines advance after Begin Step (mo.tl.*: moment 0 of a
   timeline started in Create logs step 1, after the clock's Begin Step), not before
@@ -697,11 +697,11 @@ bb_optional `xform.*` keys.
 ## [RESOLVED-FOLLOWUP] bb_lang2 / bb_restart2 / bb_instances follow-ups (2026-10-08)
 
 Evidence: `gm81_blackbox_tests/gm/results_bb_lang2.txt`, `results_bb_restart2.txt`,
-`results_bb_instances.txt`. gm-runner now matches every non-informational key of all
+`results_bb_instances.txt`. instance-runner now matches every non-informational key of all
 projects with GM results.
 - GML-3: RESOLVED (bounds). Equality is not Delphi's `SameValue` with 1e-12: `0 == 1e-13`,
   `1 == 1 + 5e-13` and `1e6 == 1e6 + 1e-7` are false, while `sin(pi) == 0` is true.
-  gm-runner uses `|a-b| <= max(min(|a|,|b|), 1) * 1e-14` (gml-language.md, Comparison).
+  instance-runner uses `|a-b| <= max(min(|a|,|b|), 1) * 1e-14` (gml-language.md, Comparison).
   Still open: the exact constant and whether it is relative above 1 (proposed bb_lang3
   keys: `0 == 1e-14`, `0 == 5e-15`, `0 == 1e-15`, `100 == 100 + 1.5e-13`,
   `1e6 == 1e6 + 5e-9`).
@@ -729,7 +729,7 @@ projects with GM results.
 
 ## [RESOLVED-LANG3] bb_lang3 follow-up (2026-10-08)
 
-Evidence: `gm81_blackbox_tests/gm/results_bb_lang3.txt` (GM 8.1). gm-runner now matches
+Evidence: `gm81_blackbox_tests/gm/results_bb_lang3.txt` (GM 8.1). instance-runner now matches
 all 29 bb_lang3 keys and still every non-informational key of the other projects.
 - GML-3: RESOLVED. Equality is `|a - b| < 1e-13`, absolute also for large values
   (gml-language.md, Comparison). `0 == 1e-14`, `1 == 1 + 5e-14` are true;
@@ -752,7 +752,7 @@ all 29 bb_lang3 keys and still every non-informational key of the other projects
 ## [RESOLVED-EVENTS] Event dispatch verified in GM 8.1 (bb_events, bb_instances, 2026-10-08)
 
 Evidence: `gm81_blackbox_tests/gm/results_bb_events.txt`, `results_bb_instances.txt`
-(GM 8.1 Lite); rules in runtime.md §4.3a. gm-runner now matches all 59 bb_events keys
+(GM 8.1 Lite); rules in runtime.md §4.3a. instance-runner now matches all 59 bb_events keys
 and 72 of 75 bb_instances keys.
 - RT-01: PARTLY RESOLVED (§4.3a rule 1): timelines run after Begin Step, before
   alarms; Animation End after drawing. The positions of the xprevious capture and of
@@ -778,16 +778,16 @@ and 72 of 75 bb_instances keys.
 - Still open from these projects:
   - RT-21 (bb_instances change.props): right after `instance_change(in_ic2, false)`
     the same code still reads the OLD object_index, sprite, depth, solid, visible,
-    persistent and mask; gm-runner switches all of them at once. New test (added to
+    persistent and mask; instance-runner switches all of them at once. New test (added to
     bb_instances, needs a GM run)
     `change.later.next_action` / `change.later.counts`: logs the same properties in
     the following action, plus `instance_number(in_ic1)`,
     `instance_number(in_ic2)` and the id, to learn whether GM changes the object later
     (deferred) or replaces the instance record.
   - Collision event order (in.s01+1 / in.s02+2: GM "cx.COcy1 cy1.COcx" although cy1
-    was placed before cx; gm-runner fires cy1's event first at step 2) belongs with
+    was placed before cx; instance-runner fires cy1's event first at step 2) belongs with
     the bb_motion collision work (mo.seq). GM appears to process pairs starting from
     the lower object index and to fire both sides of a pair together.
-  - Keyboard / mouse phase order: gm-runner assumes object-major as for Step.
+  - Keyboard / mouse phase order: instance-runner assumes object-major as for Step.
     Proposed test: two objects with Keyboard <K> events whose instances are placed in
     reverse object order, key press simulated the step before.

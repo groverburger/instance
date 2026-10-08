@@ -27,7 +27,7 @@ pub struct Mock {
     pub log: Vec<String>,
     pub next_id: i32,
     /// When `Some`, errors reported through `Host::soft_error` are recorded here
-    /// and execution continues (as gm-runner does); when `None` they abort.
+    /// and execution continues (as instance-runner does); when `None` they abort.
     pub soft_errors: Option<Vec<String>>,
 }
 

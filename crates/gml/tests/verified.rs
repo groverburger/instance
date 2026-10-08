@@ -1,4 +1,4 @@
-//! Behaviours verified black-box against GM 8.1 (gm-blackbox bb_lang / bb_args0 /
+//! Behaviours verified black-box against GM 8.1 (instance-blackbox bb_lang / bb_args0 /
 //! bb_clash / bb_random keys named in each test).
 
 mod common;

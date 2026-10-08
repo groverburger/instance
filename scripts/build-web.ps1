@@ -17,7 +17,7 @@ try {
 
     $target = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $root "target" }
     $wasmDir = Join-Path $target "wasm32-unknown-unknown\$prof"
-    foreach ($crate in @("gm-runner", "gm-ide")) {
+    foreach ($crate in @("instance-runner", "instance-ide")) {
         Write-Host "== building $crate (wasm32, $prof)"
         $cargoArgs = @("rustc", "-p", $crate, "--lib", "--target", "wasm32-unknown-unknown", "--crate-type", "cdylib")
         if (-not $Debug) { $cargoArgs += "--release" }
@@ -25,7 +25,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "cargo failed for $crate" }
     }
     New-Item -ItemType Directory -Force (Join-Path $Out "pkg") | Out-Null
-    foreach ($name in @("gm_runner", "gm_ide")) {
+    foreach ($name in @("instance_runner", "instance_ide")) {
         & wasm-bindgen --target web --no-typescript --out-dir (Join-Path $Out "pkg") (Join-Path $wasmDir "$name.wasm")
         if ($LASTEXITCODE -ne 0) { throw "wasm-bindgen failed for $name" }
     }

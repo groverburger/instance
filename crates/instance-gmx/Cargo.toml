@@ -1,0 +1,19 @@
+[package]
+name = "instance-gmx"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+description = "Convert GameMaker: Studio 1.x projects (.gmx folders, .gmz archives) to GameMaker 8.1 projects"
+
+[dependencies]
+instance-format = { path = "../instance-format" }
+instance-brand = { path = "../instance-brand" }
+png = "0.18.1"
+roxmltree = "0.20"
+sevenz-rust = "0.6"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+serde_json = "1"
+
+[[bin]]
+name = "gmx2gm81"
+path = "src/bin/gmx2gm81.rs"

@@ -19,7 +19,7 @@ try {
     if ($LASTEXITCODE -ne 0) { $failed += "linux" }
     Remove-Item Env:PKG_CONFIG, Env:PKG_CONFIG_ALLOW_CROSS
     Write-Host "== wasm32-unknown-unknown"
-    cargo check -p gm-runner -p gm-ide --target wasm32-unknown-unknown
+    cargo check -p instance-runner -p instance-ide --target wasm32-unknown-unknown
     if ($LASTEXITCODE -ne 0) { $failed += "wasm32" }
 } finally {
     Pop-Location

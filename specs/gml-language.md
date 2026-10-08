@@ -924,7 +924,7 @@ built-in variable; they never shadow built-ins.
 
 ## Language and library details — VERIFIED black-box (GM 8.1 Lite, `bb_lang`, `bb_args0`, `bb_random`, `bb_clash`)
 
-These rules come from the results of the gm-blackbox projects (key prefixes in
+These rules come from the results of the instance-blackbox projects (key prefixes in
 brackets). Where they conflict with earlier sections of this document, they
 take priority. Implemented in `crates/gml` (regression tests in
 `crates/gml/tests/verified.rs`).

@@ -2,8 +2,8 @@
 
 A standalone game made by gm81-clean's "Create Executable" is:
 
-    [ verbatim copy of gm-runner.exe ]
-    [ payload: the project serialised with gm-format as v810 .gm81 bytes ]
+    [ verbatim copy of instance-runner.exe ]
+    [ payload: the project serialised with instance-format as v810 .gm81 bytes ]
     [ footer, 24 bytes:
         u8[8]  magic  = "GM81CLN\x01"
         u64 LE payload_offset   (absolute file offset of the payload)

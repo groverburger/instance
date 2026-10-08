@@ -7,8 +7,8 @@ debugged. Where a feature did not occur in the corpus the layout is marked **[I]
 (inferred by analogy with neighbouring files) — implementations must tolerate absence.
 **[V]** = present in the corpus.
 
-Implementation: `crates/gm-gmx` (`load_gmx(path) -> (gm_format::Project, Vec<Warning>)`,
-CLI `gmx2gm81`). Target model: `crates/gm-format` / `specs/file-formats.md`.
+Implementation: `crates/instance-gmx` (`load_gmx(path) -> (instance_format::Project, Vec<Warning>)`,
+CLI `gmx2gm81`). Target model: `crates/instance-format` / `specs/file-formats.md`.
 
 ## 1. Containers
 
@@ -305,7 +305,7 @@ or instance names are reported per project.
 
 ## 13. Compatibility layer
 
-`crates/gm-gmx/src/compat.rs` holds GML scripts injected (only when used and only when
+`crates/instance-gmx/src/compat.rs` holds GML scripts injected (only when used and only when
 8.1 lacks the name — checked against `specs/builtins.json`):
 
 * maths/geometry: `point_in_rectangle`, `point_in_circle`, `point_in_triangle`,

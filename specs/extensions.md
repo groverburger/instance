@@ -208,7 +208,7 @@ per DLL by reading the PE header machine field (`0x014C` = x86, `0x8664` = x64).
    popular 8.1-era DLLs, implemented clean-room from their user documentation only.
 2. **GML-kind extensions**: always native (§3.2).
 3. **x64 DLLs**: load in-process (`libloading`) and call via `libffi`.
-4. **x86 DLLs on Windows: 32-bit helper process** `gm81-dllhost32.exe` (same Rust
+4. **x86 DLLs on Windows: 32-bit helper process** `instance-dllhost32.exe` (same Rust
    workspace, target `i686-pc-windows-msvc`), started on the first need and killed
    at game end.
 5. Otherwise (x86 DLL on non-Windows, or helper missing): `external_define` fails

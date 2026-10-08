@@ -1,5 +1,5 @@
 // Browser helpers of the gm81-clean web IDE (window.gm81ide), called from Rust
-// (crates/gm-ide/src/web.rs). Loaded by ide.html before the wasm module.
+// (crates/instance-ide/src/web.rs). Loaded by ide.html before the wasm module.
 //
 // Storage: IndexedDB database "gm81-clean", object store "files" (out-of-line
 // string keys). "run/game.gm81" holds the game started with Run (read by

@@ -18,12 +18,12 @@ have=$(wasm-bindgen --version | sed 's/wasm-bindgen //')
 [ "$have" = "$want" ] || echo "warning: wasm-bindgen-cli $have, but Cargo.lock uses $want" >&2
 
 target=${CARGO_TARGET_DIR:-$root/target}
-for crate in gm-runner gm-ide; do
+for crate in instance-runner instance-ide; do
   echo "== building $crate (wasm32, $profile)"
   cargo rustc -p "$crate" --lib --target wasm32-unknown-unknown $flag --crate-type cdylib
 done
 mkdir -p "$out/pkg"
-for name in gm_runner gm_ide; do
+for name in instance_runner instance_ide; do
   wasm-bindgen --target web --no-typescript --out-dir "$out/pkg" "$target/wasm32-unknown-unknown/$profile/$name.wasm"
 done
 cp web/*.html web/*.js "$out/"

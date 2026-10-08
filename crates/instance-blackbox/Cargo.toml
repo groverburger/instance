@@ -1,0 +1,10 @@
+[package]
+name = "instance-blackbox"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+description = "Generates GM 8.1 black-box test projects and compares their result files"
+
+[dependencies]
+instance-format = { path = "../instance-format" }
+serde_json = "1.0.151"

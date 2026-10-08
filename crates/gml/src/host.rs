@@ -113,7 +113,7 @@ pub trait Host {
     }
 
     /// The instance that a read through instance id `id` (`id.x`) addresses. The
-    /// default is `id` itself; a host may redirect it (gm-runner: the new record
+    /// default is `id` itself; a host may redirect it (instance-runner: the new record
     /// made by `instance_change`, which `with (id)` does not find yet).
     fn read_target(&mut self, id: i32) -> i32 {
         id
