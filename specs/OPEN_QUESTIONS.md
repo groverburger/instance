@@ -547,3 +547,11 @@ Resolve by black-box tests with GM 8.1 (screenshots of small test games).
 - EXT-5: Are extension constant values evaluated as GML expressions or literal?
 - EXT-6: external_call with wrong argument types: error or conversion? external_define
   return id numbering and error message wording.
+
+## [BLACKBOX] Black-box test projects (2026-10-07)
+
+`crates/gm-blackbox` generates GM 8.1 test projects (`gm-blackbox generate <dir>`) that
+log `key=value` observations for most RT-*, GML-*, G-*, R-* items above plus every
+built-in constant (GML-19). The key → question mapping is `specs/blackbox-tests.md`;
+`gm-blackbox compare <ours> <gm>` lists where gm-runner differs from GM 8.1. Resolve the
+items here once GM results are in.
