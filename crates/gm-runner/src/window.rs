@@ -4,6 +4,7 @@
 //! fallback, by copying software-rendered pixels to the window with softbuffer.
 
 use crate::debug_window::{DebugWindow, SharedLink};
+use crate::error_dialog::{self, ErrorDialog};
 use gm_runner::draw::gl::{GlBackend, WindowHandles};
 
 /// The window and its raw handles, sent to the game thread for OpenGL.
@@ -42,6 +43,8 @@ enum UserEvent {
     Icon(Vec<u8>, u32, u32),
     /// New data for the debug window.
     Debug,
+    /// Show the error dialog (the game thread waits for the answer).
+    Error(error_dialog::Request),
 }
 
 /// Window icon from straight RGBA pixels.
@@ -102,6 +105,8 @@ struct App {
     /// Debug mode: the link to the game thread, and the Debug Information window.
     debug_link: Option<SharedLink>,
     debug: Option<DebugWindow>,
+    /// The open error dialog (modal: the game window ignores input meanwhile).
+    error: Option<ErrorDialog>,
 }
 
 /// Virtual key code of a winit key (its Debug name is the DOM `code` name).
@@ -294,6 +299,17 @@ impl ApplicationHandler<UserEvent> for App {
                     d.wake();
                 }
             }
+            UserEvent::Error(req) => {
+                self.create_window(el);
+                // (the game thread waits for one answer at a time)
+                self.error = None;
+                let title = "Error";
+                let owner = self.window.clone().filter(|_| self.shown);
+                match ErrorDialog::new(el, req, title, owner.as_deref()) {
+                    Ok(d) => self.error = Some(d),
+                    Err(e) => eprintln!("gm-runner: cannot open the error dialog: {}", e),
+                }
+            }
         }
     }
 
@@ -302,6 +318,32 @@ impl ApplicationHandler<UserEvent> for App {
             if d.id() == id {
                 d.event(&event);
                 return;
+            }
+        }
+        if let Some(d) = &mut self.error {
+            if d.id() == id {
+                if d.event(&event) {
+                    self.error = None;
+                    if let Some(w) = &self.window {
+                        w.focus_window();
+                    }
+                }
+                return;
+            }
+            // modal: the game window only redraws / resizes meanwhile
+            match &event {
+                WindowEvent::RedrawRequested | WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } | WindowEvent::Moved(_) => {}
+                WindowEvent::CloseRequested => {
+                    d.abort();
+                    self.error = None;
+                    let _ = self.input.send(InputEvent::Close);
+                    return;
+                }
+                WindowEvent::Focused(true) | WindowEvent::MouseInput { .. } => {
+                    d.focus();
+                    return;
+                }
+                _ => return,
             }
         }
         match event {
@@ -361,14 +403,30 @@ impl ApplicationHandler<UserEvent> for App {
 }
 
 
-/// Native dialogs through rfd.
+/// Dialogs of a windowed game: errors in the GameMaker-style error dialog
+/// (`error_dialog.rs`, shown by the main thread), the rest through rfd.
 struct RfdUi {
     title: Arc<Mutex<String>>,
+    proxy: EventLoopProxy<UserEvent>,
 }
 
-impl UiHooks for RfdUi {
-    fn error(&mut self, msg: &str, fatal: bool) -> bool {
-        eprintln!("{}", msg);
+/// Shows the error dialog from the game thread and waits for the answer (true =
+/// abort). Falls back to a native message box if the dialog cannot be shown.
+fn error_dialog(proxy: &EventLoopProxy<UserEvent>, msg: &str, fatal: bool) -> bool {
+    // the message (and later the choice) also goes to stderr, for the IDE's Output Log
+    eprintln!("{}", msg);
+    let (tx, rx) = channel();
+    let req = error_dialog::Request { msg: msg.replace("\r\n", "\n").replace('\r', "\n"), fatal, reply: tx };
+    if proxy.send_event(UserEvent::Error(req)).is_ok() {
+        if let Ok(abort) = rx.recv() {
+            return abort;
+        }
+    }
+    rfd_error(msg, fatal)
+}
+
+fn rfd_error(msg: &str, fatal: bool) -> bool {
+    {
         if fatal {
             rfd::MessageDialog::new()
                 .set_level(rfd::MessageLevel::Error)
@@ -385,6 +443,12 @@ impl UiHooks for RfdUi {
             .set_buttons(rfd::MessageButtons::OkCancel)
             .show();
         !matches!(r, rfd::MessageDialogResult::Ok | rfd::MessageDialogResult::Yes)
+    }
+}
+
+impl UiHooks for RfdUi {
+    fn error(&mut self, msg: &str, fatal: bool) -> bool {
+        error_dialog(&self.proxy, msg, fatal)
     }
     fn message(&mut self, msg: &str) {
         let t = self.title.lock().unwrap().clone();
@@ -507,8 +571,7 @@ fn game_thread(
     let mut g = match gm_runner::load_game(&path, &mut vm, false) {
         Ok(g) => g,
         Err(e) => {
-            rfd::MessageDialog::new().set_title("gm-runner").set_description(&e).show();
-            eprintln!("gm-runner: {}", e);
+            error_dialog(&proxy, &format!("FATAL ERROR: the game could not be loaded.\n\n{}", e), true);
             return 1;
         }
     };
@@ -544,7 +607,7 @@ fn game_thread(
         s.outside = rgb_to_0rgb(g.settings.color_outside_room);
     }
     let title = Arc::new(Mutex::new(String::new()));
-    g.ui = Box::new(RfdUi { title: title.clone() });
+    g.ui = Box::new(RfdUi { title: title.clone(), proxy: proxy.clone() });
     g.scripted_input = input;
     install_present(&mut g, &slot, &proxy, use_gl);
     g.pump = Some(Box::new(move || rx.try_iter().collect()));
@@ -564,7 +627,11 @@ fn game_thread(
         let t0 = Instant::now();
         if !std::mem::take(&mut first) {
             if let Err(e) = frontend::tick(&mut g, &mut vm) {
-                eprintln!("gm-runner: {}", e);
+                // (an abort after an error dialog ends the game without a message)
+                let m = e.to_string();
+                if !m.is_empty() {
+                    eprintln!("gm-runner: {}", m);
+                }
                 break;
             }
         }
@@ -677,6 +744,7 @@ pub fn run(path: PathBuf, input: Vec<(u64, InputEvent)>, renderer: Renderer, deb
         shown: false,
         debug_link,
         debug: None,
+        error: None,
     };
     if let Err(e) = event_loop.run_app(&mut app) {
         eprintln!("gm-runner: event loop error: {}", e);

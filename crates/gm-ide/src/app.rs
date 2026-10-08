@@ -61,6 +61,9 @@ pub struct IdeApp {
     confirm_delete: Option<TreePath>,
     group_prompt: Option<(TreePath, String)>,
     runner: Option<Child>,
+    /// Output of the current / last game run, and its window.
+    log: crate::output_log::SharedLog,
+    log_view: crate::output_log::LogView,
     /// Arguments of the last runner launch (tests).
     last_run_args: Vec<String>,
     show_prefs: bool,
@@ -101,6 +104,8 @@ impl IdeApp {
             confirm_delete: None,
             group_prompt: None,
             runner: None,
+            log: Default::default(),
+            log_view: Default::default(),
             last_run_args: Vec::new(),
             show_prefs: false,
             allow_close: false,
@@ -525,7 +530,20 @@ Restore it?"
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
         match cmd.spawn() {
-            Ok(child) => {
+            Ok(mut child) => {
+                {
+                    let mut log = self.log.lock().unwrap();
+                    log.clear();
+                    let name = self.path.as_ref().and_then(|p| p.file_name()).map_or_else(
+                        || "<new game>".to_string(),
+                        |n| n.to_string_lossy().into_owned(),
+                    );
+                    log.ide(format!(
+                        "--- Running {name}{} ---",
+                        if debug { " in debug mode" } else { "" }
+                    ));
+                }
+                crate::output_log::attach(&mut child, &self.log, dialogs::context());
                 self.runner = Some(child);
                 self.status = if debug {
                     "Game running in debug mode…".into()
@@ -545,9 +563,21 @@ Restore it?"
             match c.try_wait() {
                 Ok(Some(st)) => {
                     self.runner = None;
-                    self.status = format!("Game finished ({st})");
-                    if !st.success() {
-                        self.messages.push(format!("The runner exited with {st}."));
+                    self.status = match st.code() {
+                        Some(0) => "Game finished".to_string(),
+                        Some(2) => "Game aborted after an error".to_string(),
+                        _ => format!("Game finished ({st})"),
+                    };
+                    self.log
+                        .lock()
+                        .unwrap()
+                        .ide(format!("--- {} ---", self.status));
+                    // 1 = could not load (the runner said so), 2 = aborted after an
+                    // error the user saw; anything else is unexpected
+                    if !matches!(st.code(), Some(0..=2)) {
+                        self.messages.push(format!(
+                            "The runner exited with {st}. See Window > Output Log for its output."
+                        ));
                     }
                 }
                 Ok(None) => ctx.request_repaint_after(std::time::Duration::from_millis(300)),
@@ -604,6 +634,16 @@ Restore it?"
     #[cfg(test)]
     pub(crate) fn test_last_run(&self) -> (&[String], &[String]) {
         (&self.last_run_args, &self.messages)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_log(&self) -> crate::output_log::SharedLog {
+        self.log.clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_log_open(&self) -> bool {
+        self.log_view.open
     }
 
     #[cfg(test)]
@@ -814,10 +854,35 @@ Restore it?"
         });
     }
 
+    /// Opens the Output Log (in front) or closes it.
+    fn toggle_log(&mut self) {
+        self.log_view.open = !self.log_view.open;
+        self.log_view.raise = self.log_view.open;
+    }
+
+    /// Opens the Output Log in front.
+    fn show_log(&mut self) {
+        self.log_view.open = true;
+        self.log_view.raise = true;
+    }
+
+    /// Error messages of the game run that the user has not seen in the log yet.
+    fn unseen_errors(&self) -> usize {
+        self.log.lock().unwrap().unseen_errors()
+    }
+
     fn window_menu(&mut self, ui: &mut egui::Ui) {
         let ws = self.workspace;
         let ctx = ui.ctx().clone();
         let any = !self.forms.is_empty();
+        if ui
+            .add(egui::Button::selectable(self.log_view.open, "Output Log"))
+            .clicked()
+        {
+            self.toggle_log();
+            ui.close();
+        }
+        ui.separator();
         if ui.add_enabled(any, egui::Button::new("Cascade")).clicked() {
             for (i, f) in self.forms.iter_mut().enumerate() {
                 let size = mdi::outer_size(f.editor.default_size());
@@ -883,35 +948,7 @@ Restore it?"
 
     fn status_bar(&mut self, ui: &mut egui::Ui) {
         let cell = |ui: &mut egui::Ui, w: f32, text: &str| {
-            let (r, _) = ui.allocate_exact_size(Vec2::new(w, 18.0), egui::Sense::hover());
-            let p = ui.painter();
-            p.hline(
-                r.x_range(),
-                r.top() + 0.5,
-                egui::Stroke::new(1.0, theme::SHADOW),
-            );
-            p.vline(
-                r.left() + 0.5,
-                r.y_range(),
-                egui::Stroke::new(1.0, theme::SHADOW),
-            );
-            p.hline(
-                r.x_range(),
-                r.bottom() - 0.5,
-                egui::Stroke::new(1.0, egui::Color32::WHITE),
-            );
-            p.vline(
-                r.right() - 0.5,
-                r.y_range(),
-                egui::Stroke::new(1.0, egui::Color32::WHITE),
-            );
-            p.with_clip_rect(r.shrink(2.0)).text(
-                r.left_center() + Vec2::new(5.0, 0.0),
-                egui::Align2::LEFT_CENTER,
-                text,
-                egui::TextStyle::Body.resolve(ui.style()),
-                egui::Color32::from_gray(20),
-            );
+            gm_ui::chrome::status_cell(ui, w, text);
         };
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
@@ -921,8 +958,54 @@ Restore it?"
                 .as_ref()
                 .map_or_else(|| "<new game>".to_string(), |p| p.display().to_string());
             let right = 120.0;
+            let unseen = self.unseen_errors();
+            let alert = if unseen > 0 { 190.0 } else { 0.0 };
             let mid = (total * 0.45).min(520.0);
-            let left = (total - mid - right - 4.0).max(40.0);
+            let left = (total - mid - right - alert - 6.0).max(40.0);
+            if unseen > 0 {
+                let (r, resp) =
+                    ui.allocate_exact_size(Vec2::new(alert, 18.0), egui::Sense::click());
+                let resp = resp.on_hover_text("Show the output log (Window > Output Log)");
+                let p = ui.painter();
+                p.rect_filled(
+                    r,
+                    0.0,
+                    if resp.hovered() {
+                        theme::HOVER_FILL
+                    } else {
+                        egui::Color32::from_rgb(253, 236, 236)
+                    },
+                );
+                p.rect_stroke(
+                    r.shrink(0.5),
+                    0.0,
+                    egui::Stroke::new(1.0, egui::Color32::from_rgb(214, 120, 120)),
+                    egui::StrokeKind::Inside,
+                );
+                gm_ui::icons::paint(
+                    p,
+                    egui::Rect::from_min_size(r.min + Vec2::new(4.0, 2.0), Vec2::splat(14.0)),
+                    gm_ui::icons::Glyph::Error,
+                    true,
+                );
+                let text = format!(
+                    "{unseen} new error{} - view log",
+                    if unseen == 1 { "" } else { "s" }
+                );
+                p.with_clip_rect(r.shrink(2.0)).text(
+                    r.left_center() + Vec2::new(22.0, 0.0),
+                    egui::Align2::LEFT_CENTER,
+                    &text,
+                    egui::TextStyle::Body.resolve(ui.style()),
+                    theme::ERROR_TEXT,
+                );
+                resp.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &text)
+                });
+                if resp.clicked() {
+                    self.show_log();
+                }
+            }
             let status = if self.status.is_empty() {
                 "Ready"
             } else {
@@ -1035,6 +1118,29 @@ Restore it?"
             }
             if tb(ui, Icon::Debug, "Run the game in debug mode (F6)", !running).clicked() {
                 self.run_game(true);
+            }
+            let unseen = self.unseen_errors();
+            let tip = if unseen > 0 {
+                format!(
+                    "Show the output log ({unseen} new error{})",
+                    if unseen == 1 { "" } else { "s" }
+                )
+            } else {
+                "Show the output log of the game".to_string()
+            };
+            let r = tb(ui, Icon::OutputLog, &tip, true);
+            if unseen > 0 {
+                // a small error badge in the corner of the button
+                let c = r.rect.right_bottom() - Vec2::new(6.5, 6.5);
+                gm_ui::icons::paint(
+                    ui.painter(),
+                    egui::Rect::from_center_size(c, Vec2::splat(11.0)),
+                    gm_ui::icons::Glyph::Error,
+                    true,
+                );
+            }
+            if r.clicked() {
+                self.toggle_log();
             }
             icons::tool_separator(ui);
             for (k, label, _) in LIST_KINDS {
@@ -1594,6 +1700,12 @@ impl eframe::App for IdeApp {
             })
             .inner;
         self.forms_ui(&ctx, area);
+        let log = crate::output_log::window(&ctx, &self.log, &mut self.log_view);
+        if let Some(bytes) = log.save {
+            if let Err(e) = dialogs::save_bytes("output.log", None, dialogs::LOG, &bytes) {
+                self.messages.push(e);
+            }
+        }
         self.dialogs(&ctx);
     }
 
@@ -1691,19 +1803,52 @@ fn paint_logo(p: &egui::Painter, r: egui::Rect, at_bottom: bool) {
         egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
         Color32::WHITE,
     );
+    // Title and subtitle as one block centred on the icon. A galley's height includes
+    // the font's descent and line gap, so the block is measured from the title's cap
+    // height (about 0.72 em above its baseline) to the subtitle's baseline instead.
     let x = icon.max.x + 8.0;
-    p.text(
-        egui::pos2(x, r.center().y - 1.0),
-        egui::Align2::LEFT_BOTTOM,
-        "gm81-clean",
-        egui::FontId::proportional(19.0),
+    let title_font = egui::FontId::proportional(BANNER_TITLE_SIZE);
+    let sub_font = egui::FontId::proportional(10.5);
+    let title = p.layout_no_wrap(
+        BANNER_TITLE.to_string(),
+        title_font,
         Color32::from_rgb(16, 48, 120),
     );
-    p.text(
-        egui::pos2(x + 1.0, r.center().y + 1.0),
-        egui::Align2::LEFT_TOP,
-        "game development environment",
-        egui::FontId::proportional(10.5),
+    let sub = p.layout_no_wrap(
+        BANNER_SUBTITLE.to_string(),
+        sub_font,
         Color32::from_gray(90),
     );
+    // baseline of the first row, from the top of the galley
+    let ascent = |g: &egui::Galley| {
+        g.rows
+            .first()
+            .and_then(|r| r.row.glyphs.first().map(|gl| r.pos.y + gl.pos.y))
+            .unwrap_or(g.size().y * 0.8)
+    };
+    let (t_asc, s_asc) = (ascent(&title), ascent(&sub));
+    let cap = BANNER_TITLE_SIZE * 0.72;
+    // room for the title's descenders above the subtitle
+    let gap = 6.5;
+    let sub_cap = 10.5 * 0.72;
+    let block = cap + gap + sub_cap;
+    let top = icon.center().y - block / 2.0;
+    let title_baseline = top + cap;
+    let sub_baseline = title_baseline + gap + sub_cap;
+    p.galley(
+        egui::pos2(x, (title_baseline - t_asc).round()),
+        title,
+        Color32::PLACEHOLDER,
+    );
+    p.galley(
+        egui::pos2(x + 1.0, (sub_baseline - s_asc).round()),
+        sub,
+        Color32::PLACEHOLDER,
+    );
 }
+
+/// Name shown in the sidebar banner (one place to rename the product).
+pub const BANNER_TITLE: &str = "gm81-clean";
+/// Line under the banner title.
+const BANNER_SUBTITLE: &str = "game development environment";
+const BANNER_TITLE_SIZE: f32 = 19.0;

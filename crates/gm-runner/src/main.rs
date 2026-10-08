@@ -20,8 +20,9 @@
 //! `--debug` runs in debug mode with the Debug Information window
 //! (specs/ide.md §20.3). Console (Windows): runs of a project file print to the
 //! parent's console or a new console window (`--new-console` forces a new one,
-//! `--no-console` suppresses it); a standalone game never shows one (see
-//! `console.rs`). On Windows the runner is a GUI program, so a shell does not
+//! `--no-console` suppresses it: the IDE uses it and reads the piped output); a
+//! standalone game never shows one (see `console.rs`). Errors are shown in the
+//! error dialog (`error_dialog.rs`) and also written to stderr. On Windows the runner is a GUI program, so a shell does not
 //! wait for it: use `Start-Process -Wait` or redirect its output in scripts.
 //! (On `wasm32` this binary is empty; the browser runner is `gm_runner::web`.)
 
@@ -32,6 +33,10 @@
 mod console;
 #[cfg(not(target_arch = "wasm32"))]
 mod debug_window;
+#[cfg(not(target_arch = "wasm32"))]
+mod egui_window;
+#[cfg(not(target_arch = "wasm32"))]
+mod error_dialog;
 #[cfg(not(target_arch = "wasm32"))]
 mod standalone;
 #[cfg(not(target_arch = "wasm32"))]

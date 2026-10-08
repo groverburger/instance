@@ -14,6 +14,7 @@ mod imageio;
 mod mdi;
 mod platform;
 mod prefs;
+mod output_log;
 mod project_ops;
 mod rtf;
 mod run;

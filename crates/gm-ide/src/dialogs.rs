@@ -17,6 +17,7 @@ pub type Filters<'a> = &'a [(&'a str, &'a [&'a str])];
 pub const IMAGES: Filters<'static> = &[("Images", &["png", "bmp", "gif", "jpg", "jpeg"])];
 pub const PNG: Filters<'static> = &[("PNG", &["png"])];
 pub const TEXT: Filters<'static> = &[("Text", &["txt"])];
+pub const LOG: Filters<'static> = &[("Log files", &["log", "txt"])];
 pub const PROJECTS: Filters<'static> = &[
     ("GameMaker projects", &["gm81", "gmk"]),
     ("All files", &["*"]),

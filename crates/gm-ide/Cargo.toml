@@ -16,6 +16,7 @@ path = "src/main.rs"
 fontdue = "0.9.4"
 gm-brand = { path = "../gm-brand" }
 gm-format = { path = "../gm-format" }
+gm-ui = { path = "../gm-ui" }
 eframe = { version = "0.36.2", default-features = false, features = ["accesskit", "default_fonts", "glow", "links", "wayland", "x11"] }
 image = { version = "0.25.10", default-features = false, features = ["png", "bmp", "gif", "jpeg"] }
 serde = { version = "1.0.229", features = ["derive"] }

@@ -3,12 +3,13 @@
 //!
 //! On Windows the runner is a GUI-subsystem program (no console of its own), so
 //! a standalone game started by double-click never shows one. Runs of a project
-//! file (from the IDE or a command line) get a console: the one of the parent
-//! process when there is one (output lands in the calling cmd/PowerShell), else
-//! a new console window. With `new` (the IDE passes `--new-console`) a new
-//! console is always created. Standard handles that are redirected to a file or
-//! pipe (test harnesses, scripts) are kept as they are; when both stdout and
-//! stderr are redirected no console is attached or created at all.
+//! file from a command line get a console: the one of the parent process when
+//! there is one (output lands in the calling cmd/PowerShell), else a new console
+//! window (`new`, from `--new-console`, always creates one). The IDE starts the
+//! runner with `--no-console` and its stdout/stderr piped into its Output Log, so
+//! no console is ever attached or created then. Standard handles that are
+//! redirected to a file or pipe (test harnesses, scripts) are kept as they are;
+//! when both stdout and stderr are redirected no console is attached or created.
 //! Elsewhere this does nothing.
 
 /// Sets up the console (see the module docs).
