@@ -12,7 +12,7 @@ fn arithmetic_and_precedence() {
     assert_eq!(real("return 7.5 mod 2"), 1.5);
     assert_eq!(real("return -7 div 2"), -3.0);
     assert_eq!(real("return -7 mod 2"), -1.0);
-    assert_eq!(real("return 7 % 4"), 3.0);
+    assert_eq!(real("return 7 mod 4"), 3.0);
     assert_eq!(real("return 2 & 3 == 2"), 1.0); // (2 & 3) == 2
     assert_eq!(real("return 1 || 0 && 0"), 0.0); // (1 || 0) && 0
     assert_eq!(real("return 1 < 2 < 3"), 1.0);
@@ -54,9 +54,10 @@ fn strings() {
     assert_eq!(real("return 'a' == 'a'"), 1.0);
     assert_eq!(real("return 'a' == 'A'"), 0.0);
     // mixed comparisons are false / not-equal, no error
-    assert_eq!(real("return '1' == 1"), 0.0);
-    assert_eq!(real("return '1' != 1"), 1.0);
-    assert_eq!(real("return '1' < 1 or '1' > 1"), 0.0);
+    // comparing a string with a real is an error (VERIFIED black-box, bb_lang mix.*)
+    assert_eq!(err("a = '1' return a == 1").message, "Cannot compare arguments.");
+    assert_eq!(err("a = '1' return a != 1").message, "Cannot compare arguments.");
+    assert_eq!(err("a = '1' return a < 1").message, "Cannot compare arguments.");
     // no escapes, multi-line
     assert_eq!(string(r#"return "a\nb""#), "a\\nb");
     assert_eq!(string("return 'line1\nline2'"), "line1\nline2");
@@ -72,9 +73,10 @@ fn type_errors() {
     assert!(err("return 'a' * 2").message.contains("Wrong type"));
     assert_eq!(err("z = 0 return 1 / z").message, "Division by 0.");
     assert_eq!(err("z = 0 return 1 div z").message, "Division by 0.");
-    assert_eq!(err("z = 0 return 1 mod z").message, "Division by 0.");
-    assert_eq!(real("return !'a'"), 1.0);
-    assert_eq!(real("return 'a' && 1"), 0.0);
+    assert_eq!(err("z = 0 return 1 mod z").message, "Modulo by 0.");
+    // VERIFIED black-box (bb_lang mix.not_s, mix.and_s)
+    assert_eq!(err("a = 'a' return !a").message, "Wrong type of arguments to unary operator.");
+    assert_eq!(err("a = 'a' return a && 1").message, "Wrong type of arguments for &&.");
 }
 
 #[test]
@@ -82,7 +84,8 @@ fn truthiness() {
     assert_eq!(real("if 0.5 return 1 return 0"), 1.0);
     assert_eq!(real("if 0.4999 return 1 return 0"), 0.0);
     assert_eq!(real("if -1 return 1 return 0"), 0.0);
-    assert_eq!(real("if 'yes' return 1 return 0"), 0.0);
+    // a string condition is an error (VERIFIED black-box, bb_lang truth.str_*)
+    assert_eq!(err("if 'yes' return 1 return 0").message, "Expression expected");
 }
 
 #[test]
@@ -187,7 +190,9 @@ fn switch_statement() {
 
 #[test]
 fn exit_and_break_at_top_level() {
-    assert_eq!(real("a = 1 exit a = 2"), 0.0);
+    // without return, the value of the last assignment is returned (VERIFIED
+    // black-box, bb_lang args.noreturn / args.exit)
+    assert_eq!(real("a = 1 exit a = 2"), 1.0);
     let (mut vm, mut h) = (Vm::new(), Mock::new());
     run_in(&mut vm, &mut h, "a = 1 break a = 2").unwrap();
     let id = h.insts[0].id;
@@ -297,16 +302,16 @@ fn arrays() {
     assert_eq!(real("b[4, 6] = 1 return b[4, 0] + b[4, 5]"), 0.0);
     assert!(err("b[4, 6] = 1 return b[4, 7]")
         .message
-        .contains("Unknown variable b[4,7]"));
+        .contains("Unknown variable b or array index out of bounds"));
     assert!(err("b[4, 6] = 1 return b[3, 0]")
         .message
         .contains("Unknown variable"));
     assert!(err("a[2] = 1 return a[3]")
         .message
-        .contains("Unknown variable a[3]"));
+        .contains("Unknown variable a or array index out of bounds"));
     assert!(err("a[-1] = 1").message.contains("Negative"));
     assert!(err("a[32000] = 1").message.contains("32000"));
-    assert!(err("a['x'] = 1").message.contains("number"));
+    assert!(err("a['x'] = 1").message.contains("Wrong type of array index"));
     assert_eq!(real("a[31999] = 1 return a[31999]"), 1.0);
     assert_eq!(real("a[1.5] = 3 return a[2]"), 3.0); // index rounded (ties to even)
     assert_eq!(string("a[0] = 1 a[1] = 'x' return a[1]"), "x");
@@ -314,7 +319,7 @@ fn arrays() {
     assert_eq!(real("a[0] = 1 a[1] = 2 c = a return c"), 1.0);
     assert!(err("a[0] = 1 a[1] = 2 c = a return c[1]")
         .message
-        .contains("Unknown variable c[1]"));
+        .contains("Unknown variable c or array index out of bounds"));
     // compound assignment on elements
     assert_eq!(real("a[2] = 1 a[2] += 4 a[2] *= 2 return a[2]"), 10.0);
     // global arrays
@@ -399,7 +404,7 @@ fn with_statement() {
             "n = 0 with (obj_b) { other.n += 1 exit } n = 50 return n"
         )
         .unwrap(),
-        Value::Real(0.0)
+        Value::Real(1.0) // last assignment (other.n += 1)
     );
     assert_eq!(
         run_in(&mut vm, &mut h, "with (obj_b) return id return -1").unwrap(),
@@ -470,13 +475,13 @@ fn dot_access() {
     assert!(run_in(&mut vm, &mut h, "return (199999).v").is_err());
     assert!(run_in(&mut vm, &mut h, "return obj_child.v").is_err()); // no instances
     assert!(run_in(&mut vm, &mut h, "return ('a').v").is_err());
-    // writes to nothing are no-ops
-    run_in(
-        &mut vm,
-        &mut h,
-        "noone.v = 1 (199999).v = 1 obj_child.v = 1",
-    )
-    .unwrap();
+    // writes to nothing are no-ops, except through noone (VERIFIED black-box,
+    // bb_lang ref.noone_write)
+    run_in(&mut vm, &mut h, "(199999).v = 1 obj_child.v = 1").unwrap();
+    assert_eq!(
+        run_in(&mut vm, &mut h, "noone.v = 1").unwrap_err().message,
+        "Cannot assign to the variable"
+    );
     // all
     run_in(&mut vm, &mut h, "all.flag = 1").unwrap();
     assert_eq!(h.var(&mut vm, me, "flag"), Some(Value::Real(1.0)));
@@ -510,10 +515,13 @@ fn builtin_variables() {
         .unwrap_err()
         .message
         .contains("out of bounds"));
-    assert!(run_in(&mut vm, &mut h, "x[1] = 1")
-        .unwrap_err()
-        .message
-        .contains("out of bounds"));
+    // a non-array built-in ignores the index (VERIFIED black-box, bb_lang
+    // arr.builtin_x_index1)
+    assert_eq!(
+        run_in(&mut vm, &mut h, "x = 4 return x[1]").unwrap(),
+        Value::Real(4.0)
+    );
+    run_in(&mut vm, &mut h, "x = 0").unwrap();
     assert!(run_in(&mut vm, &mut h, "x = 'a'")
         .unwrap_err()
         .message
@@ -530,7 +538,8 @@ fn builtin_variables() {
         run_in(&mut vm, &mut h, "return instance_count").unwrap(),
         Value::Real(1.0)
     );
-    // read-only built-ins are compile errors
+    // writing a read-only built-in is a run-time error (VERIFIED black-box, bb_lang
+    // type.readonly_id, args.write_count)
     for src in [
         "id = 3",
         "instance_count = 1",
@@ -539,8 +548,8 @@ fn builtin_variables() {
         "argument_relative = 1",
         "fps += 1",
     ] {
-        let e = vm.compile("t", src.as_bytes(), &h).unwrap_err();
-        assert!(e.message.contains("read-only"), "{}: {}", src, e);
+        let e = run_in(&mut vm, &mut h, src).unwrap_err();
+        assert_eq!(e.message, "Cannot assign to the variable", "{}", src);
     }
 }
 
@@ -609,7 +618,7 @@ fn scripts_and_arguments_body() {
         r(&mut vm, &mut h, "return fact(10)"),
         Value::Real(3628800.0)
     );
-    assert_eq!(r(&mut vm, &mut h, "return noreturn()"), Value::Real(0.0));
+    assert_eq!(r(&mut vm, &mut h, "return noreturn()"), Value::Real(1.0));
     assert_eq!(r(&mut vm, &mut h, "return early()"), Value::Real(0.0));
     assert_eq!(
         r(&mut vm, &mut h, "a0 = 1 return modify(a0, 2) + a0"),
@@ -729,9 +738,8 @@ fn compile_errors() {
     assert!(compile_err("a = abs()")
         .message
         .contains("Wrong number of arguments"));
-    assert!(compile_err("a = choose()")
-        .message
-        .contains("Wrong number of arguments"));
+    // VERIFIED black-box (bb_lang math.choose_none): accepted, result 0
+    assert_eq!(real("return choose() + min() + max() + mean() + median()"), 0.0);
     assert!(compile_err("a = abs").message.contains("without brackets"));
     assert!(compile_err("pi = 3").message.contains("constant"));
     assert!(compile_err("c_red = 3").message.contains("constant"));
@@ -743,7 +751,7 @@ fn compile_errors() {
     assert!(compile_err("a = 1 +").message.contains("end"));
     assert!(compile_err("if").message.contains("end"));
     let args17 = format!("a = max({})", vec!["1"; 17].join(","));
-    assert!(compile_err(&args17).message.contains("Too many arguments"));
+    assert!(compile_err(&args17).message.contains("Wrong number of arguments"));
     let e = compile_err("a = 'unterminated");
     assert_eq!((e.line, e.col), (1, 5));
     assert!(e.to_string().contains("line 1"));

@@ -2,7 +2,8 @@
 //! positions are 1-based byte positions.
 
 use super::{n, Args, NResult, NativeFn};
-use crate::value::{format_fixed, Value};
+use crate::numfmt::string_format;
+use crate::value::Value;
 
 /// Parses the longest numeric prefix of `s` (after leading whitespace):
 /// `[+-] digits [. digits] [(e|E) [+-] digits]`. Returns 0 if there is none.
@@ -61,6 +62,71 @@ pub(crate) fn parse_real(s: &[u8]) -> f64 {
             .and_then(|t| t.parse().ok())
             .unwrap_or(0.0)
     })
+}
+
+/// `real(str)`: VERIFIED black-box (bb_lang real.*). Surrounding whitespace is
+/// ignored; the rest must be a complete number `[+-] digits [. digits]
+/// [(e|E) [+-] digits]` ("", "." and "-.5" are fine, giving 0, 0, -0.5);
+/// anything else ("abc", "12abc", "0x10", "$10", "1,5", "inf", "-") is an error.
+pub(crate) fn real_strict(s: &[u8]) -> Option<f64> {
+    let t = s.trim_ascii();
+    if t.is_empty() {
+        return Some(0.0);
+    }
+    let mut i = 0;
+    let signed = t[0] == b'+' || t[0] == b'-';
+    if signed {
+        i += 1;
+    }
+    let mut nd = 0;
+    while i < t.len() && t[i].is_ascii_digit() {
+        i += 1;
+        nd += 1;
+    }
+    if i < t.len() && t[i] == b'.' {
+        i += 1;
+        while i < t.len() && t[i].is_ascii_digit() {
+            i += 1;
+            nd += 1;
+        }
+    }
+    if nd > 0 && i < t.len() && (t[i] == b'e' || t[i] == b'E') {
+        i += 1;
+        if i < t.len() && (t[i] == b'+' || t[i] == b'-') {
+            i += 1;
+        }
+        let es = i;
+        while i < t.len() && t[i].is_ascii_digit() {
+            i += 1;
+        }
+        if i == es {
+            return None;
+        }
+    }
+    if i != t.len() || (signed && nd == 0) {
+        return None;
+    }
+    if nd == 0 {
+        return Some(0.0);
+    }
+    Some(parse_real(t))
+}
+
+/// GM 8.1's `string_lower`/`string_upper` result for a non-ASCII byte: the
+/// Latin-1 character, case-mapped, encoded as UTF-8 (VERIFIED black-box: bb_lang
+/// sf.lower_latin1 / sf.upper_latin1 give ord() = 195 for chr(192) / chr(233)).
+fn case_map(s: &[u8], f: fn(u8) -> u8) -> Vec<u8> {
+    let mut v = Vec::with_capacity(s.len());
+    for &b in s {
+        let c = f(b);
+        if c < 0x80 {
+            v.push(c);
+        } else {
+            v.push(0xC0 | (c >> 6));
+            v.push(0x80 | (c & 0x3F));
+        }
+    }
+    v
 }
 
 fn pos1(i: i64) -> usize {
@@ -123,17 +189,22 @@ pub(super) fn register(t: &mut Vec<(&'static str, NativeFn)>) {
     t.extend([
         n("real", |_, _, _, a| match a.val(0) {
             Value::Real(x) => Ok(Value::Real(*x)),
-            Value::Str(s) => Ok(Value::Real(parse_real(s))),
+            Value::Str(s) => match real_strict(s) {
+                Some(v) => Ok(Value::Real(v)),
+                None => Err(a.invalid()),
+            },
         }),
         n("string", |_, _, _, a| {
             Ok(Value::Str(a.val(0).to_gml_string()))
         }),
         n("string_format", |_, _, _, a| {
+            // VERIFIED black-box (bb_lang strfmt.string_arg): a string is returned
+            // unchanged.
+            if let Value::Str(s) = a.val(0) {
+                return Ok(Value::Str(s.clone()));
+            }
             let (v, total, dec) = (a.real(0)?, a.int(1)?, a.int(2)?);
-            let s = format_fixed(v, dec.clamp(0, 18) as usize);
-            let total = total.clamp(0, 1 << 20) as usize;
-            let pad = total.saturating_sub(s.len());
-            Ok(Value::from(" ".repeat(pad) + &s))
+            Ok(Value::from(string_format(v, total, dec)))
         }),
         n("chr", |_, _, _, a| {
             Ok(Value::bytes(&[a.int(0)?.rem_euclid(256) as u8]))
@@ -172,6 +243,11 @@ pub(super) fn register(t: &mut Vec<(&'static str, NativeFn)>) {
         }),
         n("string_delete", |_, _, _, a| {
             let (s, i, c) = (a.str(0)?, a.int(1)?, a.int(2)?);
+            // VERIFIED black-box (bb_lang sf.delete_0_1, sf.delete_m1_2): an index
+            // below 1 deletes nothing.
+            if i < 1 {
+                return Ok(Value::bytes(s));
+            }
             let start = pos1(i).min(s.len());
             let end = if c <= 0 {
                 start
@@ -191,14 +267,10 @@ pub(super) fn register(t: &mut Vec<(&'static str, NativeFn)>) {
             Ok(Value::from(v))
         }),
         n("string_lower", |_, _, _, a| {
-            Ok(Value::from(
-                a.str(0)?.iter().map(|&b| to_lower(b)).collect::<Vec<u8>>(),
-            ))
+            Ok(Value::from(case_map(a.str(0)?, to_lower)))
         }),
         n("string_upper", |_, _, _, a| {
-            Ok(Value::from(
-                a.str(0)?.iter().map(|&b| to_upper(b)).collect::<Vec<u8>>(),
-            ))
+            Ok(Value::from(case_map(a.str(0)?, to_upper)))
         }),
         n("string_repeat", |_, _, _, a| {
             let (s, c) = (a.str(0)?, a.int(1)?);
@@ -240,7 +312,22 @@ pub(super) fn register(t: &mut Vec<(&'static str, NativeFn)>) {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_real;
+    use super::{parse_real, real_strict};
+
+    #[test]
+    fn real_function() {
+        // VERIFIED black-box (bb_lang real.*)
+        assert_eq!(real_strict(b" 12"), Some(12.0));
+        assert_eq!(real_strict(b"12 "), Some(12.0));
+        assert_eq!(real_strict(b"1e3"), Some(1000.0));
+        assert_eq!(real_strict(b"-.5"), Some(-0.5));
+        assert_eq!(real_strict(b"+3"), Some(3.0));
+        assert_eq!(real_strict(b""), Some(0.0));
+        assert_eq!(real_strict(b"."), Some(0.0));
+        for bad in [&b"abc"[..], b"12abc", b"0x10", b"$10", b"12.5.6", b"1,5", b"inf", b"-"] {
+            assert_eq!(real_strict(bad), None, "{:?}", bad);
+        }
+    }
 
     #[test]
     fn real_parsing() {

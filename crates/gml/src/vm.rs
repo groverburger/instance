@@ -5,6 +5,7 @@ use crate::compile::{Compiler, St};
 use crate::ds::DsStore;
 use crate::error::{CompileError, Error};
 use crate::host::{Ctx, Host};
+use crate::interp::ArgMode;
 use crate::parser;
 use crate::stdlib::{self as natives, Args};
 use crate::value::Value;
@@ -61,6 +62,10 @@ pub struct Settings {
     /// host that raises this should run the interpreter on a thread with a large
     /// stack (`std::thread::Builder::stack_size`). Default: 256.
     pub max_call_depth: u32,
+    /// Global Game Settings → "throw an error when arguments are not initialized
+    /// correctly" (GM 8.1, settings flag bit 1): script calls check the argument
+    /// count and `argument[i]` beyond `argument_count` is an error.
+    pub check_script_args: bool,
 }
 
 impl Default for Settings {
@@ -68,6 +73,7 @@ impl Default for Settings {
         Settings {
             uninitialized_as_zero: false,
             max_call_depth: 256,
+            check_script_args: false,
         }
     }
 }
@@ -96,6 +102,11 @@ pub struct Vm {
     pub(crate) locals_pool: Vec<Vec<Option<crate::vars::Var>>>,
     pub(crate) exec_cache: HashMap<Vec<u8>, Rc<Program>>,
     pub(crate) clock: Clock,
+    /// The script argument array (`argument0..15`) and `argument_count`. GM 8.1
+    /// keeps one global argument array: a script call saves it, installs its own
+    /// arguments and restores it afterwards; code actions see whatever it holds.
+    pub(crate) args: [Value; 16],
+    pub(crate) argc: usize,
 }
 
 impl Default for Vm {
@@ -132,6 +143,8 @@ impl Vm {
             locals_pool: Vec::new(),
             exec_cache: HashMap::new(),
             clock: Box::new(crate::stdlib::date::system_now),
+            args: Default::default(),
+            argc: 0,
         };
         vm.set_seed(0.0);
         vm
@@ -151,7 +164,7 @@ impl Vm {
         let ast = parser::parse_program(src)?;
         let mut c = Compiler::new(&mut self.interner, host);
         let body = c.block(&ast)?;
-        Ok(Rc::new(c.finish(name, body)))
+        Ok(Rc::new(c.finish(name, src, body)))
     }
 
     /// Compiles a single expression (action argument, user constant). Running the
@@ -165,13 +178,16 @@ impl Vm {
         let ast = parser::parse_expression(src)?;
         let mut c = Compiler::new(&mut self.interner, host);
         let e = c.expr(&ast)?;
-        Ok(Rc::new(c.finish(name, vec![St::Return(e)])))
+        Ok(Rc::new(c.finish(name, src, vec![St::Return(e)])))
     }
 
     // ------------------------------------------------------------ running
 
     /// Runs a compiled program with the given context and arguments (at most 16 are
-    /// used; for code actions pass none). Returns the `return` value, or real 0.
+    /// used): the arguments are installed as `argument0..` / `argument_count` for the
+    /// run and the previous ones restored afterwards. Returns the `return` value; a
+    /// program that ends without `return` returns the value of the last assignment
+    /// it executed, or real 0 (VERIFIED black-box, bb_lang args.noreturn/args.exit).
     ///
     /// On error the program is abandoned and the error (with location) returned;
     /// the caller decides whether to show it, set `error_occurred`/`error_last`, etc.
@@ -182,11 +198,42 @@ impl Vm {
         ctx: Ctx,
         args: &[Value],
     ) -> Result<Value, Error> {
-        self.run_program(host, prog, ctx, args)
+        self.run_program(host, prog, ctx, ArgMode::Set(args))
     }
 
-    /// Compiles and runs source text with the given context, as `execute_string`.
-    /// Compile errors are returned as runtime errors.
+    /// Runs a program without touching the argument array (code actions, event
+    /// code): `argument0..` and `argument_count` read whatever the array holds.
+    pub fn run_code(&mut self, host: &mut dyn Host, prog: &Program, ctx: Ctx) -> Result<Value, Error> {
+        self.run_program(host, prog, ctx, ArgMode::Keep)
+    }
+
+    /// Runs a script called from code (`scr(...)`, `script_execute`) after GM
+    /// 8.1's argument-count check, done only with [`Settings::check_script_args`]
+    /// (VERIFIED black-box, bb_lang args.*, bb_clash): a script needs exactly 1 + its highest `argumentN` index arguments (0 if it uses
+    /// none); a script that also uses the `argument[i]` form accepts more.
+    pub fn run_script(
+        &mut self,
+        host: &mut dyn Host,
+        prog: &Program,
+        ctx: Ctx,
+        args: &[Value],
+    ) -> Result<Value, Error> {
+        let need = prog.arg_required as usize;
+        if self.settings.check_script_args
+            && (args.len() < need || (args.len() > need && !prog.arg_array))
+        {
+            return Err(Error::new(format!(
+                "Illegal argument count calling script \"{}\".\nScript requires {} arguments, {} have been supplied.",
+                prog.name, need, args.len()
+            )));
+        }
+        self.run_program(host, prog, ctx, ArgMode::Set(args))
+    }
+
+    /// Compiles and runs source text with the given context, as `execute_string`:
+    /// the extra arguments are written into `argument0..` (`argument_count` keeps
+    /// its value, VERIFIED black-box bb_lang args.exec_string_args). Compile errors
+    /// are returned as runtime errors.
     pub fn execute_string(
         &mut self,
         host: &mut dyn Host,
@@ -197,9 +244,13 @@ impl Vm {
         let prog = match self.exec_cache.get(src) {
             Some(p) => p.clone(),
             None => {
-                let p = self
-                    .compile("execute_string", src, &*host)
-                    .map_err(Error::from)?;
+                let p = self.compile("execute_string", src, &*host).map_err(|e| {
+                    let line = crate::error::source_line(src, e.line);
+                    Error::new(format!(
+                        "COMPILATION ERROR in string to be executed\n{}",
+                        crate::error::code_error_text(e.line, e.col, &line, &e.message)
+                    ))
+                })?;
                 if self.exec_cache.len() >= EXEC_CACHE_LIMIT {
                     self.exec_cache.clear();
                 }
@@ -207,7 +258,7 @@ impl Vm {
                 p
             }
         };
-        self.run_program(host, &prog, ctx, args)
+        self.run_program(host, &prog, ctx, ArgMode::Slots(args))
     }
 
     /// Calls a built-in function by id: natively if implemented by this crate, else
@@ -258,6 +309,13 @@ impl Vm {
     /// Mutable access to global user variables.
     pub fn globals_mut(&mut self) -> &mut VarTable {
         &mut self.globals
+    }
+
+    /// Removes every global user variable and `globalvar` declaration (as
+    /// `game_restart` does).
+    pub fn clear_globals(&mut self) {
+        self.globals.clear();
+        self.globalvar.clear();
     }
 
     /// Whether `id` has been declared with `globalvar`.

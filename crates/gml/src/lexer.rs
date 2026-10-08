@@ -97,7 +97,6 @@ pub enum Tok {
     Minus,
     Star,
     Slash,
-    Percent,
     /// End of input.
     Eof,
 }
@@ -183,7 +182,6 @@ impl Tok {
             Minus => "-",
             Star => "*",
             Slash => "/",
-            Percent => "%",
             Real(_) | Str(_) | Ident(_) | Eof => "",
         }
     }
@@ -331,26 +329,31 @@ impl<'a> Lexer<'a> {
             let s = std::str::from_utf8(&self.src[start..self.pos]).unwrap();
             keyword(s).unwrap_or_else(|| Tok::Ident(s.to_string()))
         } else if c.is_ascii_digit() || (c == b'.' && self.peek(1).is_ascii_digit()) {
+            // VERIFIED black-box (bb_lang syn.double_dot, strfmt.1_23456_0_20,
+            // div0.tiny): GM 8.1 accumulates the integer digits (v = v*10 + d), then
+            // adds each fraction digit times p (p = 0.1, then p /= 10 per digit), in
+            // double precision. Further dots after the first are skipped
+            // (`1.2.3` = 1.23).
+            let mut v = 0.0f64;
             while self.peek(0).is_ascii_digit() {
+                v = v * 10.0 + (self.peek(0) - b'0') as f64;
                 self.pos += 1;
             }
             if self.peek(0) == b'.' {
                 self.pos += 1;
-                while self.peek(0).is_ascii_digit() {
+                let mut p = 0.1f64;
+                loop {
+                    let d = self.peek(0);
+                    if d.is_ascii_digit() {
+                        v += (d - b'0') as f64 * p;
+                        p /= 10.0;
+                    } else if d != b'.' {
+                        break;
+                    }
                     self.pos += 1;
                 }
             }
-            let s = std::str::from_utf8(&self.src[start..self.pos]).unwrap();
-            let s = s.strip_suffix('.').unwrap_or(s);
-            let s = if s.starts_with('.') {
-                format!("0{}", s)
-            } else {
-                s.to_string()
-            };
-            Tok::Real(
-                s.parse::<f64>()
-                    .map_err(|_| CompileError::new("Invalid number.", span))?,
-            )
+            Tok::Real(v)
         } else if c == b'$' {
             self.pos += 1;
             let ds = self.pos;
@@ -443,7 +446,6 @@ impl<'a> Lexer<'a> {
             (b'-', _) => (Minus, 1),
             (b'*', _) => (Star, 1),
             (b'/', _) => (Slash, 1),
-            (b'%', _) => (Percent, 1),
             _ => (Eof, 0),
         }
     }
@@ -519,7 +521,7 @@ mod tests {
     fn operators() {
         use Tok::*;
         assert_eq!(
-            toks("<> != := ++ -- <= << >= >> ^^ ^= && &= || |= %"),
+            toks("<> != := ++ -- <= << >= >> ^^ ^= && &= || |="),
             vec![
                 NotEq,
                 NotEq,
@@ -538,7 +540,6 @@ mod tests {
                 AndAssign,
                 OrOr,
                 OrAssign,
-                Percent,
                 Eof
             ]
         );

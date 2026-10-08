@@ -45,10 +45,18 @@ fn effect(g: &mut Game, a: &A, which: i32, n: usize) -> Result<Value, Error> {
 
 pub fn register(l: &mut Reg) {
     l.push(("sound_play", |g, _, _, a| {
+        // VERIFIED black-box (bb_lang misc.sound_play_missing): an error
+        if g.sound_res(a.i(0)?).is_none() {
+            return Err(Error::new("Sound does not exist."));
+        }
         g.sound_play(a.i(0)?, false)?;
         zero()
     }));
     l.push(("sound_loop", |g, _, _, a| {
+        // VERIFIED black-box (bb_lang misc.sound_play_missing): an error
+        if g.sound_res(a.i(0)?).is_none() {
+            return Err(Error::new("Sound does not exist."));
+        }
         g.sound_play(a.i(0)?, true)?;
         zero()
     }));

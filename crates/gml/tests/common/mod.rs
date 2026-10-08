@@ -26,6 +26,9 @@ pub struct Mock {
     pub global_builtins: HashMap<(u16, i32), Value>,
     pub log: Vec<String>,
     pub next_id: i32,
+    /// When `Some`, errors reported through `Host::soft_error` are recorded here
+    /// and execution continues (as gm-runner does); when `None` they abort.
+    pub soft_errors: Option<Vec<String>>,
 }
 
 impl Mock {
@@ -236,6 +239,16 @@ impl Host for Mock {
         }
     }
 
+    fn soft_error(&mut self, e: Error) -> Result<(), Error> {
+        match &mut self.soft_errors {
+            Some(v) => {
+                v.push(e.message);
+                Ok(())
+            }
+            None => Err(e),
+        }
+    }
+
     fn call_script(
         &mut self,
         vm: &mut Vm,
@@ -248,7 +261,7 @@ impl Host for Mock {
             .get(&script)
             .cloned()
             .ok_or_else(|| Error::new(format!("Unknown script {}", script)))?;
-        vm.run(self, &p, *ctx, args)
+        vm.run_script(self, &p, *ctx, args)
     }
 }
 

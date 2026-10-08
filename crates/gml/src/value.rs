@@ -141,53 +141,33 @@ pub fn to_int(v: f64) -> i64 {
     v.round_ties_even() as i64
 }
 
-/// Converts a real to a string per GML `string()` rules (spec §4.7): integral values
-/// without decimals, other values with exactly two decimals (half away from zero).
-pub fn real_to_string(v: f64) -> String {
-    if v.is_nan() {
-        return "nan".into();
+pub use crate::numfmt::{format_fixed, real_to_string};
+
+/// The 64-bit integer conversion of bitwise operands: round half to even like
+/// [`to_int`], but values outside the `i64` range (and NaN) give `i64::MIN`, as
+/// the x87 integer store does (spec §4.6).
+#[inline]
+pub fn to_i64_x87(v: f64) -> i64 {
+    let r = v.round_ties_even();
+    if (-9_223_372_036_854_775_808.0..9_223_372_036_854_775_808.0).contains(&r) {
+        r as i64
+    } else {
+        i64::MIN
     }
-    if v.is_infinite() {
-        return if v > 0.0 { "inf".into() } else { "-inf".into() };
-    }
-    if v.fract() == 0.0 {
-        if v == 0.0 {
-            return "0".into();
-        }
-        return format!("{:.0}", v);
-    }
-    format_fixed(v, 2)
 }
 
-/// Formats `v` with exactly `dec` decimals, rounding half away from zero (based on
-/// the exact binary value, so `2.675` (really 2.67499999...) gives `"2.67"`).
-/// A result that rounds to zero is printed without a minus sign.
-pub fn format_fixed(v: f64, dec: usize) -> String {
-    if !v.is_finite() {
-        return real_to_string(v);
-    }
-    let dec = dec.min(18);
-    let a = v.abs();
-    let scale = 10f64.powi(dec as i32);
-    let scaled = a * scale;
-    let exact = a.mul_add(scale, -scaled) == 0.0;
-    let mut s = if exact && scaled.fract() == 0.5 {
-        // Exact tie: round away from zero.
-        let digits = format!("{:.0}", scaled.floor() + 1.0);
-        let digits = format!("{:0>width$}", digits, width = dec + 1);
-        let (ip, fp) = digits.split_at(digits.len() - dec);
-        if dec > 0 {
-            format!("{}.{}", ip, fp)
-        } else {
-            ip.to_string()
-        }
+/// `Integer(Trunc(v))`: truncation to a 64-bit integer, wrapped to 32 bits. GM 8.1
+/// converts this way in `floor`, `ceil` and `file_text_write_real` (VERIFIED
+/// black-box: bb_random raw values >= 2^31 print negative, bb_optional
+/// file.real_line4). Out-of-range values give 0.
+#[inline]
+pub fn wrap_i32(v: f64) -> i32 {
+    let t = v.trunc();
+    if (-9_223_372_036_854_775_808.0..9_223_372_036_854_775_808.0).contains(&t) {
+        t as i64 as i32
     } else {
-        format!("{:.*}", dec, a)
-    };
-    if v < 0.0 && s.bytes().any(|b| (b'1'..=b'9').contains(&b)) {
-        s.insert(0, '-');
+        0
     }
-    s
 }
 
 impl Value {
@@ -369,21 +349,72 @@ fn b(v: bool) -> Value {
     Value::Real(if v { 1.0 } else { 0.0 })
 }
 
+/// `Int64 shl n` as GM 8.1 computes it (Delphi's 64-bit shift helper): the count is
+/// the low byte of the integer, taken as signed; below 32 (including negative
+/// counts) the shift is by `count & 31`, 32..63 shifts the low word into the high
+/// word, 64 and more give 0. VERIFIED black-box (bb_lang bit.1_shl_m1 = 2^31,
+/// bit.1_shl_63, bit.1_shl_64).
 fn shl(a: i64, n: i64) -> i64 {
-    if (0..64).contains(&n) {
-        a.wrapping_shl(n as u32)
+    let cl = n as u8 as i8;
+    let (mut lo, mut hi) = (a as u32, (a as u64 >> 32) as u32);
+    if cl < 32 {
+        let c = (cl as u8 & 31) as u32;
+        if c != 0 {
+            hi = (hi << c) | (lo >> (32 - c));
+            lo <<= c;
+        }
+    } else if cl < 64 {
+        hi = lo << (cl as u32 & 31);
+        lo = 0;
     } else {
-        0
+        return 0;
     }
+    (((hi as u64) << 32) | lo as u64) as i64
 }
 
+/// `Int64 shr n`: a logical (unsigned) shift with the same count rules as [`shl`].
+/// VERIFIED black-box (bb_lang bit.m1_shr_1 = 2^63-1, bit.m8_shr_1).
 fn shr(a: i64, n: i64) -> i64 {
-    if (0..64).contains(&n) {
-        a >> n
-    } else if a < 0 {
-        -1
+    let cl = n as u8 as i8;
+    let (mut lo, mut hi) = (a as u32, (a as u64 >> 32) as u32);
+    if cl < 32 {
+        let c = (cl as u8 & 31) as u32;
+        if c != 0 {
+            lo = (lo >> c) | (hi << (32 - c));
+            hi >>= c;
+        }
+    } else if cl < 64 {
+        lo = hi >> (cl as u32 & 31);
+        hi = 0;
     } else {
-        0
+        return 0;
+    }
+    (((hi as u64) << 32) | lo as u64) as i64
+}
+
+/// GM 8.1's real equality (Delphi `SameValue`): `|a - b| <= max(min(|a|, |b|) *
+/// 1e-12, 1e-12)`. VERIFIED black-box (bb_lang eq.*: `0.1 + 0.2 == 0.3`,
+/// `sin(pi) == 0` are true; `0 == 0.000000000001`, `1 == 1.0000000001` false).
+#[inline]
+pub fn same_real(a: f64, b: f64) -> bool {
+    if a == b {
+        return true;
+    }
+    let eps = (a.abs().min(b.abs()) * 1e-12).max(1e-12);
+    (a - b).abs() <= eps
+}
+
+/// Real comparison with [`same_real`] equality.
+#[inline]
+pub(crate) fn cmp_real(op: BinOp, a: f64, c: f64) -> bool {
+    let same = same_real(a, c);
+    match op {
+        BinOp::Eq => same,
+        BinOp::Ne => !same,
+        BinOp::Lt => a < c && !same,
+        BinOp::Le => a < c || same,
+        BinOp::Gt => a > c && !same,
+        _ => a > c || same,
     }
 }
 
@@ -412,21 +443,16 @@ pub fn binary(op: BinOp, l: &Value, r: &Value) -> Result<Value, String> {
                 }
                 Mod => {
                     if c == 0.0 {
-                        return Err("Division by 0.".into());
+                        return Err("Modulo by 0.".into());
                     }
                     a % c
                 }
-                BitAnd => (to_int(a) & to_int(c)) as f64,
-                BitOr => (to_int(a) | to_int(c)) as f64,
-                BitXor => (to_int(a) ^ to_int(c)) as f64,
-                Shl => shl(to_int(a), to_int(c)) as f64,
-                Shr => shr(to_int(a), to_int(c)) as f64,
-                Eq => return Ok(b(a == c)),
-                Ne => return Ok(b(a != c)),
-                Lt => return Ok(b(a < c)),
-                Le => return Ok(b(a <= c)),
-                Gt => return Ok(b(a > c)),
-                Ge => return Ok(b(a >= c)),
+                BitAnd => (to_i64_x87(a) & to_i64_x87(c)) as f64,
+                BitOr => (to_i64_x87(a) | to_i64_x87(c)) as f64,
+                BitXor => (to_i64_x87(a) ^ to_i64_x87(c)) as f64,
+                Shl => shl(to_i64_x87(a), to_i64_x87(c)) as f64,
+                Shr => shr(to_i64_x87(a), to_i64_x87(c)) as f64,
+                Eq | Ne | Lt | Le | Gt | Ge => return Ok(b(cmp_real(op, a, c))),
                 And => return Ok(b(a >= 0.5 && c >= 0.5)),
                 Or => return Ok(b(a >= 0.5 || c >= 0.5)),
                 Xor => return Ok(b((a >= 0.5) != (c >= 0.5))),
@@ -445,44 +471,37 @@ pub fn binary(op: BinOp, l: &Value, r: &Value) -> Result<Value, String> {
             Le => Ok(b(a.as_bytes() <= c.as_bytes())),
             Gt => Ok(b(a.as_bytes() > c.as_bytes())),
             Ge => Ok(b(a.as_bytes() >= c.as_bytes())),
-            And | Or | Xor => Ok(logic(op, l, r)),
-            _ => Err(type_err(op.symbol())),
+            _ => Err(type_err(op)),
         },
+        // VERIFIED black-box (bb_lang mix.*): comparing a string with a real is an
+        // error, like arithmetic and logic on mixed operands.
         _ => match op {
-            Eq => Ok(b(false)),
-            Ne => Ok(b(true)),
-            Lt | Le | Gt | Ge => Ok(b(false)),
-            And | Or | Xor => Ok(logic(op, l, r)),
-            _ => Err(type_err(op.symbol())),
+            Eq | Ne | Lt | Le | Gt | Ge => Err("Cannot compare arguments.".into()),
+            _ => Err(type_err(op)),
         },
     }
 }
 
-fn logic(op: BinOp, l: &Value, r: &Value) -> Value {
-    let (a, c) = (l.is_true(), r.is_true());
-    b(match op {
-        BinOp::And => a && c,
-        BinOp::Or => a || c,
-        _ => a != c,
-    })
-}
-
-fn type_err(sym: &str) -> String {
-    format!("Wrong type of arguments to {}.", sym)
+/// "Wrong type of arguments to +." for arithmetic, "... for &&." for bitwise and
+/// logical operators (GM 8.1 wording, bb_lang mix.*.msg).
+fn type_err(op: BinOp) -> String {
+    use BinOp::*;
+    match op {
+        Add | Sub | Mul | Div | IntDiv | Mod => format!("Wrong type of arguments to {}.", op.symbol()),
+        _ => format!("Wrong type of arguments for {}.", op.symbol()),
+    }
 }
 
 /// Applies a unary operator. On failure returns the error message.
 #[inline]
 pub fn unary(op: UnOp, v: &Value) -> Result<Value, String> {
     match (op, v) {
-        (UnOp::Not, v) => Ok(b(!v.is_true())),
+        (UnOp::Not, Value::Real(a)) => Ok(b(!(*a >= 0.5))),
         (UnOp::Neg, Value::Real(a)) => Ok(Value::Real(-a)),
         (UnOp::Plus, Value::Real(a)) => Ok(Value::Real(*a)),
-        (UnOp::BitNot, Value::Real(a)) => Ok(Value::Real(!to_int(*a) as f64)),
-        (op, Value::Str(_)) => Err(format!(
-            "Wrong type of argument to unary operator {}.",
-            op.symbol()
-        )),
+        (UnOp::BitNot, Value::Real(a)) => Ok(Value::Real(!to_i64_x87(*a) as f64)),
+        // VERIFIED black-box (bb_lang mix.not_s, mix.neg_s)
+        (_, Value::Str(_)) => Err("Wrong type of arguments to unary operator.".into()),
     }
 }
 
@@ -499,7 +518,7 @@ mod tests {
         assert_eq!(real_to_string(-2.675), "-2.67"); // -2.67499999... in binary
         assert_eq!(real_to_string(0.125), "0.13"); // exact tie, away from zero
         assert_eq!(real_to_string(-0.001), "0.00");
-        assert_eq!(real_to_string(1e20), "100000000000000000000");
+        assert_eq!(real_to_string(1e20), "ERROR");
         assert_eq!(real_to_string(123456.789), "123456.79");
     }
 
@@ -512,17 +531,36 @@ mod tests {
         assert_eq!(binary(BinOp::Mod, &r(-7.0), &r(2.0)).unwrap(), r(-1.0));
         assert!(binary(BinOp::Div, &r(1.0), &r(0.0)).is_err());
         assert_eq!(binary(BinOp::Shl, &r(1.0), &r(70.0)).unwrap(), r(0.0));
-        assert_eq!(binary(BinOp::Shr, &r(-8.0), &r(70.0)).unwrap(), r(-1.0));
+        assert_eq!(binary(BinOp::Shr, &r(-8.0), &r(70.0)).unwrap(), r(0.0));
+        // Delphi 64-bit shifts (VERIFIED black-box bb_lang bit.*)
+        assert_eq!(binary(BinOp::Shl, &r(1.0), &r(-1.0)).unwrap(), r(2147483648.0));
+        assert_eq!(binary(BinOp::Shl, &r(1.0), &r(63.0)).unwrap(), r(-9223372036854775808.0));
+        assert_eq!(binary(BinOp::Shl, &r(1.0), &r(64.0)).unwrap(), r(0.0));
+        assert_eq!(binary(BinOp::Shr, &r(-1.0), &r(1.0)).unwrap(), r(9223372036854775807.0));
+        assert_eq!(binary(BinOp::Shr, &r(1099511627776.0), &r(8.0)).unwrap(), r(4294967296.0));
+        assert_eq!(binary(BinOp::BitOr, &r(-2147483649.0), &r(0.0)).unwrap(), r(-2147483649.0));
+        assert_eq!(binary(BinOp::BitOr, &r(4294967295.5), &r(0.0)).unwrap(), r(4294967296.0));
+        assert!(binary(BinOp::Mod, &r(5.0), &r(0.0)).unwrap_err().contains("Modulo by 0"));
         assert_eq!(binary(BinOp::BitAnd, &r(2.5), &r(3.0)).unwrap(), r(2.0)); // 2.5 -> 2 (ties even)
         let s = |x: &str| Value::from(x);
         assert_eq!(binary(BinOp::Add, &s("a"), &s("b")).unwrap(), s("ab"));
         assert!(binary(BinOp::Add, &s("a"), &r(1.0)).is_err());
         assert!(binary(BinOp::Sub, &s("a"), &s("b")).is_err());
         assert_eq!(binary(BinOp::Lt, &s("ab"), &s("abc")).unwrap(), r(1.0));
-        assert_eq!(binary(BinOp::Eq, &s("1"), &r(1.0)).unwrap(), r(0.0));
-        assert_eq!(binary(BinOp::Ne, &s("1"), &r(1.0)).unwrap(), r(1.0));
-        assert_eq!(binary(BinOp::Lt, &s("1"), &r(1.0)).unwrap(), r(0.0));
-        assert_eq!(unary(UnOp::Not, &s("x")).unwrap(), r(1.0));
+        // VERIFIED black-box (bb_lang mix.*): mixed comparisons and logic are errors
+        assert_eq!(binary(BinOp::Eq, &s("1"), &r(1.0)).unwrap_err(), "Cannot compare arguments.");
+        assert!(binary(BinOp::Ne, &s("1"), &r(1.0)).is_err());
+        assert!(binary(BinOp::Lt, &s("1"), &r(1.0)).is_err());
+        assert_eq!(binary(BinOp::And, &s("a"), &r(1.0)).unwrap_err(), "Wrong type of arguments for &&.");
+        assert_eq!(binary(BinOp::BitOr, &s("a"), &r(1.0)).unwrap_err(), "Wrong type of arguments for |.");
+        assert!(unary(UnOp::Not, &s("x")).is_err());
+        // tolerant equality (Delphi SameValue)
+        assert_eq!(binary(BinOp::Eq, &r(0.1 + 0.2), &r(0.3)).unwrap(), r(1.0));
+        assert_eq!(binary(BinOp::Lt, &r(0.3), &r(0.1 + 0.2)).unwrap(), r(0.0));
+        assert_eq!(binary(BinOp::Ge, &r(0.3), &r(0.1 + 0.2)).unwrap(), r(1.0));
+        assert_eq!(binary(BinOp::Eq, &r(std::f64::consts::PI.sin()), &r(0.0)).unwrap(), r(1.0));
+        assert_eq!(binary(BinOp::Eq, &r(1.0), &r(1.0000000001)).unwrap(), r(0.0));
+        assert_eq!(binary(BinOp::Eq, &r(0.0), &r(1.0000000000000002e-12)).unwrap(), r(0.0));
         assert!(unary(UnOp::Neg, &s("x")).is_err());
         assert_eq!(unary(UnOp::BitNot, &r(0.0)).unwrap(), r(-1.0));
     }

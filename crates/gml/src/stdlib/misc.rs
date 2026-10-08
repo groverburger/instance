@@ -197,17 +197,35 @@ pub(super) fn register(t: &mut Vec<(&'static str, NativeFn)>) {
                 argument_relative: false,
                 ..*c
             };
-            vm.execute_string(h, src, ctx, &a.vals[1..])
+            let r = vm.execute_string(h, src, ctx, &a.vals[1..]);
+            isolated(h, r)
         }),
         n("execute_file", |vm, h, c, a| {
             let path = String::from_utf8_lossy(a.str(0)?).into_owned();
             let src = h.read_file(&path)?;
-            let prog = vm.compile(&path, &src, &*h).map_err(Error::from)?;
+            let prog = match vm.compile(&path, &src, &*h) {
+                Ok(p) => p,
+                Err(e) => return isolated(h, Err(Error::from(e))),
+            };
             let ctx = Ctx {
                 argument_relative: false,
                 ..*c
             };
-            vm.run(h, &prog, ctx, &a.vals[1..])
+            let r = vm.run(h, &prog, ctx, &a.vals[1..]);
+            isolated(h, r)
         }),
     ]);
+}
+
+/// Errors inside `execute_string` / `execute_file` code do not abandon the caller:
+/// they are reported and the call returns 0 (VERIFIED black-box, bb_lang
+/// type.readonly_id, var.shadow_x).
+fn isolated(h: &mut dyn Host, r: Result<Value, Error>) -> Result<Value, Error> {
+    match r {
+        Err(e) if e.kind == crate::error::ErrorKind::Runtime => {
+            h.soft_error(e)?;
+            Ok(Value::Real(0.0))
+        }
+        r => r,
+    }
 }

@@ -375,7 +375,8 @@ pub fn register(l: &mut Reg) {
         let tf = match mode {
             0 => match crate::vfs::read(&p) {
                 Ok(d) => TextFile { data: d, pos: 0, out: None },
-                Err(_) => return Err(Error::new(format!("Could not open file {}", p.display()))),
+                // VERIFIED black-box (bb_optional file.open_missing): -1, no error
+                Err(_) => return r(-1.0),
             },
             1 => TextFile {
                 data: Vec::new(),
@@ -410,7 +411,10 @@ pub fn register(l: &mut Reg) {
     }));
     l.push(("file_text_write_real", |g, _, _, a| {
         let v = a.r(1)?;
-        let s = if v.fract() == 0.0 && v.abs() < 1e15 { format!(" {}", v as i64) } else { format!(" {:.6}", v) };
+        // VERIFIED black-box (bb_optional file.real_line*): integral values are
+        // written as a 32-bit integer (wrapping: 1e11 -> 1215752192), others with
+        // six decimals.
+        let s = if v.fract() == 0.0 { format!(" {}", gml::wrap_i32(v)) } else { format!(" {:.6}", v) };
         let f = text_file(g, a)?;
         if let Some(o) = f.out.as_mut() {
             o.write_all(s.as_bytes()).map_err(|e| Error::new(e.to_string()))?;

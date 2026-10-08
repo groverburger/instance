@@ -269,6 +269,7 @@ impl Game {
     pub fn new(project: fmt::Project, vm: &mut Vm, headless: bool) -> Result<Game, String> {
         let p = project;
         vm.settings.uninitialized_as_zero = p.settings.treat_uninitialized_as_zero;
+        vm.settings.check_script_args = p.settings.argument_errors;
         let mut g = Game {
             game_id: p.game_id,
             settings: p.settings.clone(),
@@ -521,7 +522,9 @@ impl Game {
                     Value::Real(0.0)
                 }
             };
-            g.constants.insert(c.name.clone(), v);
+            // a resource name wins over a user constant of the same name (VERIFIED
+            // black-box, bb_clash clash.const_vs_object)
+            g.constants.entry(c.name.clone()).or_insert(v);
         }
         g.compile_all(vm, &p);
         crate::ext::compile(&mut g, vm);
@@ -1021,23 +1024,49 @@ impl Game {
         if e.kind == ErrorKind::Halt {
             return Err(e);
         }
+        if e.kind == ErrorKind::AbortEvent {
+            // an event abandoned without a message (GM 8.1 crash-like failure)
+            return Ok(());
+        }
         self.error_occurred = true;
-        self.error_last = e.message.clone();
+        // GM 8.1's message layout (VERIFIED black-box, bb_lang *.msg): a header,
+        // then "In script <name>:" for errors inside scripts and the code excerpt
+        // with a caret; errors of built-in functions show only their message.
+        let body = match &e.location {
+            Some(l) => {
+                let script = if self.script_names.contains_key(&*l.program) {
+                    format!("In script {}:\n", l.program)
+                } else {
+                    String::new()
+                };
+                let line = l.source_line.clone().unwrap_or_default();
+                format!("{}{}", script, gml::code_error_text(l.line, l.col, &line, &e.message))
+            }
+            None => e.message.clone(),
+        };
         let obj_name = self
             .object(self.ev.object)
             .map(|o| o.name.clone())
             .unwrap_or_else(|| "<none>".into());
-        let msg = if self.in_timeline || self.ev.object < 0 {
-            format!("ERROR in action number {}:\n{}", action_no + 1, e)
+        let header: Vec<String> = if self.in_timeline || self.ev.object < 0 {
+            vec![format!("ERROR in action number {}:", action_no + 1)]
         } else {
-            format!(
-                "ERROR in\naction number {}\nof {} Event\nfor object {}:\n\n{}",
-                action_no + 1,
-                crate::events::event_name(self.ev.etype, self.ev.number, self),
-                obj_name,
-                e
-            )
+            vec![
+                "ERROR in".into(),
+                format!("action number {}", action_no + 1),
+                format!("of {} Event", crate::events::event_name(self.ev.etype, self.ev.number, self)),
+                format!("for object {}:", obj_name),
+                String::new(),
+            ]
         };
+        // error_last: header lines end with CR LF, the body uses CR (as GM 8.1)
+        // a compile error in execute_string has no header (bb_lang syn.*.msg)
+        self.error_last = if body.starts_with("COMPILATION ERROR") {
+            body.replace('\n', "\r")
+        } else {
+            format!("{}\r\n{}", header.join("\r\n"), body.replace('\n', "\r"))
+        };
+        let msg = format!("{}\n{}", header.join("\n"), body);
         let abort = self.ui_error(&msg, e.kind == ErrorKind::Fatal);
         if abort {
             self.aborted = true;
@@ -1260,9 +1289,11 @@ impl Game {
                     self.instances.clear();
                     self.reindex();
                     self.snapshots.clear();
+                    // VERIFIED black-box (bb_restart rs.p2.*): global variables are
+                    // cleared, score/lives reset, health keeps its value.
+                    vm.clear_globals();
                     self.score = 0.0;
                     self.lives = -1.0;
-                    self.health = 100.0;
                     self.audio.stop_all();
                     self.room = -1;
                     self.pending = None;
