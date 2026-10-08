@@ -1,8 +1,8 @@
 //! Multiplayer functions (`mplay_*`, specs/multiplayer.md Part A) on top of the
-//! `instance-net` session engine (gm81-clean's own protocol, Part B).
+//! `instance-net` session engine (Instance's own protocol, Part B).
 //!
 //! Only TCP/IP is supported; IPX, modem and serial initialisation return false.
-//! Environment overrides (diagnostics/tests): `GM81_MPLAY_PORT` sets the base port
+//! Environment overrides (diagnostics/tests): `INSTANCE_MPLAY_PORT` (or `GM81_MPLAY_PORT`) sets the base port
 //! (default 40810).
 
 use crate::builtins::{bo, r, zero, Reg, A};
@@ -13,7 +13,7 @@ use gml::{Error, Value};
 /// Creates the game's multiplayer state.
 pub fn new_state(game_id: i32) -> Mplay {
     let mut cfg = instance_net::Config::default();
-    if let Some(p) = std::env::var("GM81_MPLAY_PORT").ok().and_then(|p| p.parse().ok()) {
+    if let Some(p) = instance_brand::appdirs::env_var("MPLAY_PORT").and_then(|p| p.parse().ok()) {
         cfg.port = p;
     }
     Mplay::new(game_id, cfg)

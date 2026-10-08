@@ -1,4 +1,5 @@
-//! gm81-clean brand artwork, shared by the IDE and the runner.
+//! Instance brand artwork, shared by the IDE and the runner (plus the product name,
+//! per-user data folder and environment variables, in [`appdirs`]).
 //!
 //! The app icon is a red "pac" ball (a shaded disc with a wedge-shaped mouth opening to
 //! the right and one eye), the same motif as the wordmark banner in the IDE. It is drawn
@@ -10,6 +11,7 @@
 //! compiler), an `.ico` decoder for game icons, and detection of the stock icon that
 //! GameMaker 8.1 projects carry by default (by SHA-1 of the icon bytes).
 
+pub mod appdirs;
 mod icns;
 mod ico;
 mod sha1;

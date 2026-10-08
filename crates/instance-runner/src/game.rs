@@ -270,7 +270,7 @@ pub struct Game {
     pub net: instance_net::Mplay,
     /// Extension packages and the DLL bridge.
     pub ext: crate::ext::Extensions,
-    /// Timing instrumentation (`GM_PROFILE`).
+    /// Timing instrumentation (`INSTANCE_PROFILE`).
     pub prof: Option<Box<crate::profile::Profiler>>,
     /// Calls of stubbed or unsupported built-in functions (diagnostics).
     pub unsupported_calls: std::collections::BTreeMap<&'static str, u64>,

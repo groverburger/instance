@@ -8,19 +8,19 @@
 //!   events go to the OS synthesiser (winmm `midiOut`, "Microsoft GS Wavetable
 //!   Synth") from a dedicated thread ([`midi_out`]); volume is applied through
 //!   channel volume (CC7). When no OS synthesiser can be opened (or
-//!   `GM81_MIDI=soundfont` is set) MIDI is rendered with `rustysynth` into the
+//!   `INSTANCE_MIDI=soundfont` is set) MIDI is rendered with `rustysynth` into the
 //!   PCM mixer using a SoundFont found on this search path:
-//!     1. the file named by `GM81_SOUNDFONT`,
+//!     1. the file named by `INSTANCE_SOUNDFONT` (or `GM81_SOUNDFONT`),
 //!     2. `<runner exe dir>/soundfonts/default.sf2`,
 //!     3. platform locations (`/usr/share/sounds/sf2/FluidR3_GM.sf2`,
 //!        `/usr/share/soundfonts/default.sf2`, `/usr/share/soundfonts/FluidR3_GM.sf2`,
 //!        `~/Library/Audio/Sounds/Banks/default.sf2`).
 //!
-//!   No SoundFont ships with gm81-clean. Without one MIDI is silent but
+//!   No SoundFont ships with Instance. Without one MIDI is silent but
 //!   `sound_isplaying` follows the logical state.
 //! * Without an audio device (or in headless runs) every call succeeds and
 //!   `sound_isplaying` follows the logical state (sound length in real time).
-//! * `GM81_AUDIO_DEBUG=1` logs backend choices and MIDI message counts.
+//! * `INSTANCE_AUDIO_DEBUG=1` logs backend choices and MIDI message counts.
 
 pub mod dsp;
 pub mod midi;
@@ -41,7 +41,7 @@ pub const MAX_VOICES: usize = 128;
 
 pub(crate) fn debug() -> bool {
     static D: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *D.get_or_init(|| std::env::var("GM81_AUDIO_DEBUG").map(|v| !v.is_empty() && v != "0").unwrap_or(false))
+    *D.get_or_init(|| instance_brand::appdirs::env_var("AUDIO_DEBUG").map(|v| v != "0").unwrap_or(false))
 }
 
 macro_rules! alog {
@@ -91,7 +91,7 @@ pub fn set_soundfont_bytes(data: Vec<u8>) {
 /// Searches the SoundFont path (see module docs).
 pub fn find_soundfont() -> Option<std::path::PathBuf> {
     let mut cands: Vec<std::path::PathBuf> = Vec::new();
-    if let Ok(p) = std::env::var("GM81_SOUNDFONT") {
+    if let Some(p) = instance_brand::appdirs::env_var("SOUNDFONT") {
         if !p.is_empty() {
             cands.push(p.into());
         }
@@ -393,7 +393,7 @@ impl Audio {
             if !self.headless {
                 // no OS synthesiser (nor threads) in the browser
                 let force_sf = cfg!(target_arch = "wasm32")
-                    || std::env::var("GM81_MIDI").map(|v| v.eq_ignore_ascii_case("soundfont")).unwrap_or(false);
+                    || instance_brand::appdirs::env_var("MIDI").map(|v| v.eq_ignore_ascii_case("soundfont")).unwrap_or(false);
                 if !force_sf {
                     match MidiThread::start(self.globals.clone()) {
                         Ok(t) => {
@@ -427,7 +427,7 @@ impl Audio {
                         None => crate::warn(if cfg!(target_arch = "wasm32") {
                             "audio: no SoundFont was loaded (see 'Web' in README.md); MIDI music is silent"
                         } else {
-                            "audio: no MIDI synthesiser (set GM81_SOUNDFONT to a .sf2 file); MIDI music is silent"
+                            "audio: no MIDI synthesiser (set INSTANCE_SOUNDFONT to a .sf2 file); MIDI music is silent"
                         }),
                     }
                 }

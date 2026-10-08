@@ -761,7 +761,7 @@ fn screenshot_dialogs() {
     ops::create_resource(&mut p, ResourceKind::Object, &ops::Placement::End);
     h.state_mut().test_set_project(p);
     h.run_steps(2);
-    h.get_by_label("About gm81-clean").click();
+    h.get_by_label("About Instance").click();
     h.run_steps(3);
     h.render()
         .unwrap()

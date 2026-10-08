@@ -3,7 +3,7 @@
 //! DLLs built for this process's architecture are loaded in-process with
 //! `libloading` and called through `instance_dllcall`'s typed shims. 32-bit x86 DLLs
 //! (all GM 8.1-era DLLs) run in the `instance-dllhost32` helper process when the runner
-//! is 64-bit. The helper is located via `GM81_DLLHOST32`, next to the runner, or in
+//! is 64-bit. The helper is located via `INSTANCE_DLLHOST32` (or `GM81_DLLHOST32`), next to the runner, or in
 //! a cargo `target/i686-pc-windows-msvc/{debug,release}` directory.
 
 use instance_dllcall::proto::{self, Dec, Enc, PVal};
@@ -93,7 +93,7 @@ pub struct Dlls {
 
 /// Locates the 32-bit helper executable.
 pub fn find_helper() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("GM81_DLLHOST32") {
+    if let Some(p) = instance_brand::appdirs::env_var_os("DLLHOST32") {
         let p = PathBuf::from(p);
         if p.is_file() {
             return Some(p);

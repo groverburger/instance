@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use web_time::Instant;
 
-/// Counters for diagnostics (`GM81_AUDIO_DEBUG`) and tests.
+/// Counters for diagnostics (`INSTANCE_AUDIO_DEBUG`) and tests.
 #[derive(Default)]
 pub struct MidiStats {
     pub device: Mutex<String>,

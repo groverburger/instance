@@ -45,11 +45,11 @@ to code; the manual recommends packages instead `[414_00]`.
   shipped packages.
 * The IDE's package form lists "used" and "available" packages; Install adds a
   package from a distribution file (`.gex`), Uninstall removes it `[215_00]`
-  (`ide.md` §18.4). The `.gex` layout is **not known** (EXT-1). gm81-clean's IDE
+  (`ide.md` §18.4). The `.gex` layout is **not known** (EXT-1). Instance's IDE
   additionally accepts installing a `.ged`+`.dat`(+`.chm`) set by copying it.
 * **Recommended** search path for packages (first hit wins, by package name):
   1. `<IDE exe dir>/extensions/`
-  2. `%APPDATA%/gm81-clean/extensions/` (where gm81-clean's IDE installs `.gex`/
+  2. `%APPDATA%/Instance/extensions/` (`gm81-clean` in earlier builds, copied over on first start) (where Instance's IDE installs `.gex`/
      `.ged` packages when the IDE folder is not writable)
   3. `<project dir>/extensions/`
 
@@ -116,7 +116,7 @@ resource, or another extension's name): **recommended** load error naming both.
   functions. **[I]** 12 = stdcall, 11 = cdecl; GML records ignore it (EXT-3).
 * Unused argument type slots hold 2 (real).
 * Unlike `external_define`, records with more than 4 arguments including strings
-  are allowed only if the DLL bridge supports them (gm81-clean's bridge does).
+  are allowed only if the DLL bridge supports them (Instance's bridge does).
 
 ### 3.4 Init and final functions
 * **Init:** after all resources and extensions are loaded and before the first
@@ -189,7 +189,7 @@ become invalid. Unknown name: no effect.
   return GML code to execute (gml-language.md).
 * `get_function_address(function_name)`: returns the address of a runner function
   for DLLs to call directly; documented as unsupported and Delphi-specific
-  (`register`/Pascal convention, Delphi strings) `[414_00]`. **gm81-clean: always
+  (`register`/Pascal convention, Delphi strings) `[414_00]`. **Instance: always
   returns 0** (cannot be supported).
 * GM 8.1 has no "secure mode" setting; the manual's remark that DLLs are disabled in
   secure mode does not apply.

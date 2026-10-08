@@ -595,7 +595,7 @@ Restore it?"
             |n| n.to_string_lossy().into_owned(),
         );
         format!(
-            "{name}{} - GM81 Clean IDE",
+            "{name}{} - Instance",
             if self.modified { " *" } else { "" }
         )
     }
@@ -846,7 +846,7 @@ Restore it?"
             });
             ui.menu_button("Window", |ui| self.window_menu(ui));
             ui.menu_button("Help", |ui| {
-                if ui.button("About gm81-clean…").clicked() {
+                if ui.button("About Instance…").clicked() {
                     self.show_about = true;
                     ui.close();
                 }
@@ -1171,7 +1171,7 @@ Restore it?"
                 self.open_form(ResKey::Extensions);
             }
             icons::tool_separator(ui);
-            if tb(ui, Icon::Help, "About gm81-clean", true).clicked() {
+            if tb(ui, Icon::Help, "About Instance", true).clicked() {
                 self.show_about = true;
             }
         });
@@ -1263,7 +1263,7 @@ Restore it?"
                     to_close.push(fi);
                     continue;
                 }
-                let d = mdi::dialog(ctx, wid.with("close"), "gm81-clean", |ui| {
+                let d = mdi::dialog(ctx, wid.with("close"), "Instance", |ui| {
                     ui.label(format!("Save changes to \"{}\"?", f.editor.title()));
                     ui.horizontal(|ui| {
                         if ui.button("Yes").clicked() {
@@ -1312,7 +1312,7 @@ Restore it?"
 
     fn dialogs(&mut self, ctx: &Context) {
         if let Some(m) = self.messages.first().cloned() {
-            let d = mdi::dialog(ctx, Id::new("message"), "gm81-clean", |ui| {
+            let d = mdi::dialog(ctx, Id::new("message"), "Instance", |ui| {
                 ui.set_max_width(420.0);
                 ui.label(m);
                 ui.add_space(6.0);
@@ -1330,7 +1330,7 @@ Restore it?"
         }
         if let Some(p) = self.pending.clone() {
             let mut choice = None;
-            let d = mdi::dialog(ctx, Id::new("save_prompt"), "gm81-clean", |ui| {
+            let d = mdi::dialog(ctx, Id::new("save_prompt"), "Instance", |ui| {
                 ui.label("The game has been changed. Save the changes?");
                 ui.horizontal(|ui| {
                     if ui.button("Yes").clicked() {
@@ -1427,11 +1427,11 @@ Restore it?"
             }
         }
         if self.show_about {
-            let d = mdi::dialog(ctx, Id::new("about"), "About gm81-clean", |ui| {
+            let d = mdi::dialog(ctx, Id::new("about"), "About Instance", |ui| {
                 ui.set_width(360.0);
                 let (r, _) = ui.allocate_exact_size(Vec2::new(360.0, 56.0), egui::Sense::hover());
                 paint_logo(ui.painter(), r, false);
-                ui.label("A clean-room, GameMaker 8.1 compatible game development environment.");
+                ui.label("A game development environment that opens GameMaker 8.1 project files (clean-room implementation).");
                 ui.label(
                     egui::RichText::new("Not affiliated with or endorsed by YoYo Games.")
                         .small()
@@ -1848,7 +1848,7 @@ fn paint_logo(p: &egui::Painter, r: egui::Rect, at_bottom: bool) {
 }
 
 /// Name shown in the sidebar banner (one place to rename the product).
-pub const BANNER_TITLE: &str = "gm81-clean";
+pub const BANNER_TITLE: &str = "Instance";
 /// Line under the banner title.
 const BANNER_SUBTITLE: &str = "game development environment";
 const BANNER_TITLE_SIZE: f32 = 19.0;

@@ -91,7 +91,7 @@ impl Gen {
         s.treat_uninitialized_as_zero = false;
         s.argument_errors = true;
         s.icon = make_ico();
-        s.author = "gm81-clean black-box generator".into();
+        s.author = "Instance black-box generator".into();
         s.information = format!("Black-box test project {name}");
         s.last_changed = STAMP;
         s.info_last_changed = STAMP;

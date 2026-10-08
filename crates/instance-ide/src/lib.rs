@@ -28,7 +28,7 @@ mod widgets;
 pub use web::start_ide;
 
 /// Title of the main window.
-pub const APP_TITLE: &str = "GM81 Clean IDE";
+pub const APP_TITLE: &str = "Instance";
 
 /// Runs the IDE in a native window, optionally opening `open`.
 #[cfg(not(target_arch = "wasm32"))]

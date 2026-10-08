@@ -4,7 +4,7 @@ Source: manual `404_03` (functions), `111_00` (joystick events), `403_10` (event
 constants); event numbers from `runtime.md` §5.1. Paraphrased. Open items:
 `OPEN_QUESTIONS.md` section `[JOY]`.
 
-GM 8.1 sits on the Windows multimedia joystick interface; a gm81-clean runner maps
+GM 8.1 sits on the Windows multimedia joystick interface; an Instance runner maps
 modern controllers onto the same model (§5).
 
 ---

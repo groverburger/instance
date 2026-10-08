@@ -1,13 +1,16 @@
-// Browser helpers of the gm81-clean web IDE (window.gm81ide), called from Rust
+// Browser helpers of the Instance web IDE (window.instanceIde), called from Rust
 // (crates/instance-ide/src/web.rs). Loaded by ide.html before the wasm module.
 //
-// Storage: IndexedDB database "gm81-clean", object store "files" (out-of-line
+// Storage: IndexedDB database "instance", object store "files" (out-of-line
 // string keys). "run/game.gm81" holds the game started with Run (read by
 // play.html?game=idb:run/game.gm81); "autosave/project" holds {name, bytes, time}.
+// Earlier builds used the database "gm81-clean": its autosave is offered when the
+// new database has none.
 (function () {
   "use strict";
 
-  const DB_NAME = "gm81-clean";
+  const DB_NAME = "instance";
+  const LEGACY_DB_NAME = "gm81-clean";
   const STORE = "files";
   const RUN_KEY = "run/game.gm81";
   const AUTOSAVE_KEY = "autosave/project";
@@ -21,9 +24,9 @@
 
   // Opens the database, adding the object store if it is missing (another page
   // may have created the database with other stores or another version).
-  async function openDb() {
+  async function openDb(name = DB_NAME) {
     let db = await new Promise((resolve, reject) => {
-      const r = indexedDB.open(DB_NAME);
+      const r = indexedDB.open(name);
       r.onupgradeneeded = () => {
         if (!r.result.objectStoreNames.contains(STORE)) r.result.createObjectStore(STORE);
       };
@@ -34,7 +37,7 @@
     const version = db.version + 1;
     db.close();
     return new Promise((resolve, reject) => {
-      const r = indexedDB.open(DB_NAME, version);
+      const r = indexedDB.open(name, version);
       r.onupgradeneeded = () => {
         if (!r.result.objectStoreNames.contains(STORE)) r.result.createObjectStore(STORE);
       };
@@ -43,8 +46,8 @@
     });
   }
 
-  async function withStore(mode, f) {
-    const db = await openDb();
+  async function withStore(mode, f, name = DB_NAME) {
+    const db = await openDb(name);
     try {
       const tx = db.transaction(STORE, mode);
       const result = await req(f(tx.objectStore(STORE)));
@@ -63,11 +66,20 @@
   const get = (key) => withStore("readonly", (s) => s.get(key));
   const del = (key) => withStore("readwrite", (s) => s.delete(key));
 
+  // The autosave of earlier builds (database "gm81-clean"), only if that database
+  // exists (opening a missing database would create it).
+  async function legacyAutosave() {
+    if (!indexedDB.databases) return null;
+    const dbs = await indexedDB.databases();
+    if (!dbs.some((d) => d.name === LEGACY_DB_NAME)) return null;
+    return withStore("readonly", (s) => s.get(AUTOSAVE_KEY), LEGACY_DB_NAME);
+  }
+
   // Byte arrays from Rust are views into wasm memory: copy before keeping them.
   const copy = (bytes) => new Uint8Array(bytes);
 
   function closeGame() {
-    const o = document.getElementById("gm81-run-overlay");
+    const o = document.getElementById("instance-run-overlay");
     if (o) o.remove();
     const c = document.querySelector("canvas");
     if (c) c.focus();
@@ -76,7 +88,7 @@
   function showGame() {
     closeGame();
     const overlay = document.createElement("div");
-    overlay.id = "gm81-run-overlay";
+    overlay.id = "instance-run-overlay";
     overlay.style.cssText =
       "position:fixed;inset:0;z-index:1000;background:#000;display:flex;flex-direction:column";
     const bar = document.createElement("div");
@@ -101,12 +113,12 @@
     frame.focus();
   }
 
-  // play.html (in the iframe) may post "gm81-close-game" when the game ends.
+  // play.html (in the iframe) may post "instance-close-game" when the game ends.
   window.addEventListener("message", (e) => {
-    if (e.origin === location.origin && e.data === "gm81-close-game") closeGame();
+    if (e.origin === location.origin && e.data === "instance-close-game") closeGame();
   });
 
-  window.gm81ide = {
+  window.instanceIde = {
     async runGame(bytes) {
       try {
         await put(RUN_KEY, copy(bytes));
@@ -118,16 +130,17 @@
 
     saveAutosave(name, bytes) {
       return put(AUTOSAVE_KEY, { name, bytes: copy(bytes), time: Date.now() }).catch((e) =>
-        console.warn("gm81-clean: autosave failed", e)
+        console.warn("instance: autosave failed", e)
       );
     },
 
     async loadAutosave() {
       try {
-        const v = await get(AUTOSAVE_KEY);
+        let v = await get(AUTOSAVE_KEY);
+        if (!(v && v.bytes)) v = await legacyAutosave().catch(() => null);
         return v && v.bytes ? v : null;
       } catch (e) {
-        console.warn("gm81-clean: cannot read the autosave", e);
+        console.warn("instance: cannot read the autosave", e);
         return null;
       }
     },

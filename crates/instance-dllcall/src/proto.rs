@@ -2,7 +2,7 @@
 //!
 //! Transport: the helper's stdin (requests) and stdout (replies) as binary pipes.
 //! Every frame is `u32 length` (bytes after this field) + `u8 op` + payload, all
-//! little-endian; strings are `u32 len` + bytes. Op codes (gm81-clean's choice):
+//! little-endian; strings are `u32 len` + bytes. Op codes (Instance's choice):
 //!
 //! | op | request payload | reply payload (OK) |
 //! |---|---|---|

@@ -491,21 +491,36 @@ pub fn read_to_string(p: &Path) -> io::Result<String> {
     read(p).map(|b| String::from_utf8_lossy(&b).into_owned())
 }
 
-/// Folder for the runner's per-user data (emulated registry, highscores):
-/// `%APPDATA%\gm81-runner`, `~/Library/Application Support/gm81-runner`,
-/// `$XDG_CONFIG_HOME/gm81-runner` or `~/.config/gm81-runner`; `/config/gm81-runner`
-/// in the browser.
+/// Folder for the runner's per-user data (emulated registry, highscores): the shared
+/// per-user folder of `instance_brand::appdirs` (`%APPDATA%\Instance`,
+/// `~/Library/Application Support/Instance`, `$XDG_CONFIG_HOME/Instance` or
+/// `~/.config/Instance`; the `gm81-runner` folder of earlier builds is migrated on first
+/// use); `/config/Instance` in the browser (migrated from `/config/gm81-runner`).
 pub fn config_dir() -> PathBuf {
     if cfg!(target_arch = "wasm32") {
-        return PathBuf::from("/config/gm81-runner");
+        let dir = PathBuf::from("/config").join(instance_brand::appdirs::DATA_DIR_NAME);
+        migrate_web_config(&PathBuf::from("/config/gm81-runner"), &dir);
+        return dir;
     }
-    let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
-    let base = if cfg!(windows) {
-        env("APPDATA")
-    } else if cfg!(target_os = "macos") {
-        env("HOME").map(|h| h.join("Library").join("Application Support"))
-    } else {
-        env("XDG_CONFIG_HOME").or_else(|| env("HOME").map(|h| h.join(".config")))
-    };
-    base.unwrap_or_else(temp_dir).join("gm81-runner")
+    instance_brand::appdirs::data_dir()
+        .unwrap_or_else(|| temp_dir().join(instance_brand::appdirs::DATA_DIR_NAME))
+}
+
+/// Browser: copies the files of the old per-game config folder once (the old folder is
+/// kept; files already in the new folder win).
+fn migrate_web_config(old: &Path, new: &Path) {
+    let marker = new.join(".migrated-from-gm81-runner");
+    if !is_dir(old) || exists(&marker) {
+        return;
+    }
+    let _ = create_dir_all(new);
+    if let Ok(entries) = read_dir(old) {
+        for (name, is_dir) in entries {
+            let dst = new.join(&name);
+            if !is_dir && !exists(&dst) {
+                let _ = copy(&old.join(&name), &dst);
+            }
+        }
+    }
+    let _ = write(&marker, b"");
 }

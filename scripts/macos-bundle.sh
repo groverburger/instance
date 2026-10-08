@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Builds instance-ide and instance-runner in release mode and wraps them as macOS app bundles:
-#   dist/macos/GM81 Clean IDE.app     (instance-ide; instance-runner is copied next to it inside
+#   dist/macos/Instance.app     (instance-ide; instance-runner is copied next to it inside
 #                                      Contents/MacOS so Run (F5) finds it)
-#   dist/macos/GM81 Clean Runner.app  (instance-runner; opens .gm81/.gmk files)
+#   dist/macos/Instance Runner.app  (instance-runner; opens .gm81/.gmk files)
 # Usage: scripts/macos-bundle.sh [--target aarch64-apple-darwin|x86_64-apple-darwin] [OUT_DIR]
 # Must run on macOS (the bundles are ad-hoc signed with codesign when available).
 set -euo pipefail
@@ -30,7 +30,7 @@ make_app() {
   rm -rf "$app"
   mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
   cp "$bin/$2" "$app/Contents/MacOS/"
-  cp "$icons/gm81-clean.icns" "$app/Contents/Resources/gm81-clean.icns"
+  cp "$icons/instance.icns" "$app/Contents/Resources/instance.icns"
   cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -40,7 +40,7 @@ make_app() {
   <key>CFBundleDisplayName</key><string>$1</string>
   <key>CFBundleIdentifier</key><string>$3</string>
   <key>CFBundleExecutable</key><string>$2</string>
-  <key>CFBundleIconFile</key><string>gm81-clean</string>
+  <key>CFBundleIconFile</key><string>instance</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleVersion</key><string>$version</string>
@@ -52,7 +52,7 @@ make_app() {
       <key>CFBundleTypeName</key><string>GameMaker project</string>
       <key>CFBundleTypeExtensions</key><array><string>gm81</string><string>gmk</string></array>
       <key>CFBundleTypeRole</key><string>$4</string>
-      <key>CFBundleTypeIconFile</key><string>gm81-clean</string>
+      <key>CFBundleTypeIconFile</key><string>instance</string>
     </dict>
   </array>
 </dict>
@@ -62,9 +62,9 @@ PLIST
   echo "built $app"
 }
 
-make_app "GM81 Clean IDE" instance-ide org.gm81clean.ide Editor
+make_app "Instance" instance-ide dev.instance.ide Editor
 # the IDE looks for instance-runner next to its own executable
-cp "$bin/instance-runner" "$out/GM81 Clean IDE.app/Contents/MacOS/"
-if command -v codesign >/dev/null; then codesign --force --deep --sign - "$out/GM81 Clean IDE.app" || true; fi
-make_app "GM81 Clean Runner" instance-runner org.gm81clean.runner Viewer
+cp "$bin/instance-runner" "$out/Instance.app/Contents/MacOS/"
+if command -v codesign >/dev/null; then codesign --force --deep --sign - "$out/Instance.app" || true; fi
+make_app "Instance Runner" instance-runner dev.instance.runner Viewer
 rm -rf "$icons"

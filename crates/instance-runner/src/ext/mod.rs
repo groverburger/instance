@@ -132,7 +132,7 @@ fn eval_constant(g: &Game, vm: &mut Vm, name: &str, value: &str) -> Value {
 /// game, before user constants and code are compiled. Missing packages are an error.
 pub fn load(g: &mut Game, vm: &mut Vm, packages: &[String]) -> Result<(), String> {
     let mut ext = std::mem::take(&mut g.ext);
-    ext.dlls.verbose = std::env::var_os("GM81_DEBUG_DLL").is_some();
+    ext.dlls.verbose = instance_brand::appdirs::env_var_os("DEBUG_DLL").is_some();
     let r = load_into(g, &mut ext, vm, packages);
     g.ext = ext;
     r

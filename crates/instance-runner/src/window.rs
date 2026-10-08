@@ -52,7 +52,7 @@ fn window_icon(rgba: Vec<u8>, w: u32, h: u32) -> Option<winit::window::Icon> {
     winit::window::Icon::from_rgba(rgba, w, h).ok()
 }
 
-/// The gm81-clean icon, used unless the game has an icon of its own.
+/// The Instance icon, used unless the game has an icon of its own.
 fn default_icon() -> Option<winit::window::Icon> {
     window_icon(instance_brand::icon_rgba(48), 48, 48)
 }

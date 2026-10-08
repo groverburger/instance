@@ -1,5 +1,5 @@
-//! gm81-clean multiplayer: the `mplay_*` behaviour of specs/multiplayer.md Part A over
-//! gm81-clean's own TCP/UDP protocol (Part B). Not compatible with GameMaker's
+//! Instance multiplayer: the `mplay_*` behaviour of specs/multiplayer.md Part A over
+//! Instance's own TCP/UDP protocol (Part B). Not compatible with GameMaker's
 //! DirectPlay sessions.
 //!
 //! [`Mplay`] is the game-side object. It never blocks except where the spec allows

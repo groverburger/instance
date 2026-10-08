@@ -1,4 +1,4 @@
-//! Embeds the gm81-clean app icon (rendered by instance-brand) into the Windows executable.
+//! Embeds the Instance app icon (rendered by instance-brand) into the Windows executable.
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");

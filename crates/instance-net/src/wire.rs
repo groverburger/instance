@@ -1,4 +1,4 @@
-//! Byte-level encoding of the gm81-clean multiplayer protocol (specs/multiplayer.md
+//! Byte-level encoding of the Instance multiplayer protocol (specs/multiplayer.md
 //! Part B §B.2, §B.9).
 
 use std::io;

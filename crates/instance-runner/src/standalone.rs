@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 /// Environment variable set to the path of the extracted extension bundle (v2 footers),
 /// for the extension loader.
-pub const BUNDLE_ENV: &str = "GM81CLEAN_EXTENSION_BUNDLE";
+pub const BUNDLE_ENV: &str = "INSTANCE_EXTENSION_BUNDLE";
 
 /// Read the embedded game (payload and optional extension bundle) of `exe`.
 pub fn embedded_in(exe: &Path) -> Option<instance_format::exe::Embedded> {
@@ -20,7 +20,7 @@ pub fn extract_own_game() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let e = embedded_in(&exe)?;
     let dir = std::env::temp_dir()
-        .join("gm81-clean-standalone")
+        .join("instance-standalone")
         .join(std::process::id().to_string());
     std::fs::create_dir_all(&dir).ok()?;
     let game = dir.join("game.gm81");

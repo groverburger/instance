@@ -1,5 +1,5 @@
 //! Optional timing instrumentation (diagnostics only). Enabled when the
-//! environment variable `GM_PROFILE` is set; `Game::profile_report` prints the
+//! environment variable `INSTANCE_PROFILE` (or `GM_PROFILE`) is set; `Game::profile_report` prints the
 //! hottest events, functions, scripts and step phases (inclusive times).
 
 use std::collections::HashMap;
@@ -19,7 +19,7 @@ pub struct Profiler {
 
 impl Profiler {
     pub fn from_env() -> Option<Box<Profiler>> {
-        std::env::var_os("GM_PROFILE").map(|_| Box::default())
+        std::env::var_os("INSTANCE_PROFILE").or_else(|| std::env::var_os("GM_PROFILE")).map(|_| Box::default())
     }
 
     #[inline]

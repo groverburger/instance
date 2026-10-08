@@ -3,7 +3,7 @@ name = "instance-brand"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
-description = "gm81-clean brand artwork: the app icon drawn from vector shapes, .ico/.res writers and icon helpers"
+description = "Instance brand artwork and app folders: the app icon drawn from vector shapes, .ico/.res writers and icon helpers"
 
 [dependencies]
 png = "0.18.1"

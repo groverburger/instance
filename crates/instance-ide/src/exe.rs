@@ -15,8 +15,11 @@ pub fn extension_dirs(project_path: Option<&Path>) -> Vec<PathBuf> {
     {
         v.push(dir.join("extensions"));
     }
-    if let Some(appdata) = std::env::var_os("APPDATA") {
-        v.push(PathBuf::from(appdata).join("gm81-clean").join("extensions"));
+    if let Some(e) = instance_brand::appdirs::env_var_os("EXTENSIONS") {
+        v.extend(std::env::split_paths(&e));
+    }
+    if let Some(d) = instance_brand::appdirs::data_dir() {
+        v.push(d.join("extensions"));
     }
     if let Some(dir) = project_path.and_then(Path::parent) {
         v.push(dir.join("extensions"));

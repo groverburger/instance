@@ -1,4 +1,4 @@
-//! Multiplayer demo: two headless runners talking over gm81-clean's protocol.
+//! Multiplayer demo: two headless runners talking over Instance's protocol.
 //!
 //! ```text
 //! cargo build -p instance-runner
@@ -7,7 +7,7 @@
 //! ```
 //! Manually: `instance-runner out.gm81 --headless --frames 5 host` in one terminal and
 //! `instance-runner out.gm81 --headless --frames 5` in another (same machine or LAN).
-//! `GM81_MPLAY_PORT` changes the port (default 40810).
+//! `INSTANCE_MPLAY_PORT` changes the port (default 40810).
 
 mod project;
 

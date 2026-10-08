@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>GM81 Clean Player</title>
+  <title>Instance Player</title>
   <link rel="icon" href="data:,">
   <style>
     [hidden] { display: none !important; }
@@ -31,24 +31,25 @@
       or drop a .gm81 / .gmk file onto this page.
     </div>
   </div>
-  <!-- written by the build script: sets window.GM81_SOUNDFONT when a SoundFont was bundled -->
+  <!-- written by the build script: sets window.INSTANCE_SOUNDFONT when a SoundFont was bundled -->
   <script src="config.js"></script>
   <script type="module">
     import init, { start_game, set_soundfont } from "./pkg/instance_runner.js";
 
     // Configuration (URL parameters):
-    //   game=URL | idb:KEY   game file to load (idb: = IndexedDB "gm81-clean"/"files", used by the IDE)
-    //   soundfont=URL        SoundFont for MIDI music (default: window.GM81_SOUNDFONT from config.js; "none" to skip)
+    //   game=URL | idb:KEY   game file to load (idb: = IndexedDB "instance"/"files", used by the IDE)
+    //   soundfont=URL        SoundFont for MIDI music (default: window.INSTANCE_SOUNDFONT from config.js; "none" to skip)
     //   renderer=gl|software
-    // A page can also embed a game: <script id="gm81-game" type="application/octet-stream" data-src="URL">
-    // or a base64 payload in window.GM81_GAME_BASE64.
+    // A page can also embed a game: <script id="instance-game" type="application/octet-stream" data-src="URL">
+    // or a base64 payload in window.INSTANCE_GAME_BASE64 (the names of earlier builds,
+    // id="gm81-game" and window.GM81_GAME_BASE64, also work).
     const params = new URLSearchParams(location.search);
     const $ = (id) => document.getElementById(id);
     const status = (t, err) => { $("status").textContent = t; $("status").className = err ? "error" : ""; };
 
     function idbGet(key) {
       return new Promise((resolve, reject) => {
-        const r = indexedDB.open("gm81-clean");
+        const r = indexedDB.open("instance");
         r.onerror = () => reject(r.error);
         r.onupgradeneeded = () => r.result.createObjectStore("files");
         r.onsuccess = () => {
@@ -68,17 +69,17 @@
     }
 
     async function loadSoundFont() {
-      const sf = params.get("soundfont") ?? window.GM81_SOUNDFONT;
+      const sf = params.get("soundfont") ?? window.INSTANCE_SOUNDFONT ?? window.GM81_SOUNDFONT;
       if (!sf || sf === "none") {
-        console.warn("gm81: no SoundFont configured; MIDI music will be silent. " +
-          "Build with GM81_SOUNDFONT=path/to/file.sf2 (or put one in web/soundfonts/default.sf2) or pass ?soundfont=URL.");
+        console.warn("instance: no SoundFont configured; MIDI music will be silent. " +
+          "Build with INSTANCE_SOUNDFONT=path/to/file.sf2 (or put one in web/soundfonts/default.sf2) or pass ?soundfont=URL.");
         return;
       }
       try {
         set_soundfont(await fetchBytes(sf));
-        console.info("gm81: SoundFont loaded from", sf);
+        console.info("instance: SoundFont loaded from", sf);
       } catch (e) {
-        console.warn(`gm81: cannot load the SoundFont (${e.message}); MIDI music will be silent.`);
+        console.warn(`instance: cannot load the SoundFont (${e.message}); MIDI music will be silent.`);
       }
     }
 
@@ -90,10 +91,11 @@
         return { name: g.slice(4), bytes: b };
       }
       if (g) return { name: g, bytes: await fetchBytes(g) };
-      const tag = document.getElementById("gm81-game");
+      const tag = document.getElementById("instance-game") ?? document.getElementById("gm81-game");
       if (tag && tag.dataset.src) return { name: tag.dataset.src, bytes: await fetchBytes(tag.dataset.src) };
-      if (window.GM81_GAME_BASE64) {
-        const s = atob(window.GM81_GAME_BASE64);
+      const b64 = window.INSTANCE_GAME_BASE64 ?? window.GM81_GAME_BASE64;
+      if (b64) {
+        const s = atob(b64);
         const b = new Uint8Array(s.length);
         for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
         return { name: "embedded", bytes: b };
@@ -131,12 +133,12 @@
       }
     }
 
-    window.gm81GameEnded = () => {
+    window.instanceGameEnded = () => {
       $("game").hidden = true;
       $("overlay").hidden = false;
       $("start").hidden = true;
       status("The game has ended.");
-      if (parent !== window) parent.postMessage("gm81-close-game", location.origin);
+      if (parent !== window) parent.postMessage("instance-close-game", location.origin);
     };
 
     // drag and drop of a game file

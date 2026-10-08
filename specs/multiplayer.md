@@ -1,8 +1,8 @@
-# Multiplayer (`mplay_*`) — behavioural specification and gm81-clean wire protocol
+# Multiplayer (`mplay_*`) — behavioural specification and Instance wire protocol
 
 Source: manual chapter 413 (`413_00` … `413_05`), paraphrased. Part A describes the
-GML-visible behaviour. Part B is **gm81-clean's own network protocol** — it is *not*
-GameMaker's (GM 8.1 used DirectPlay) and gm81-clean games cannot talk to games run
+GML-visible behaviour. Part B is **Instance's own network protocol** — it is *not*
+GameMaker's (GM 8.1 used DirectPlay) and Instance games cannot talk to games run
 by the original runner. Open items: `OPEN_QUESTIONS.md` section `[MP]`.
 
 ---
@@ -24,13 +24,13 @@ by the original runner. Open items: `OPEN_QUESTIONS.md` section `[MP]`.
 
 ## A.2 Connection functions `[413_01]`
 
-| Function | gm81-clean behaviour |
+| Function | Instance behaviour |
 |---|---|
 | `mplay_init_ipx()` | Not supported: returns false, status unchanged. |
 | `mplay_init_tcpip(addr)` | Initialise TCP/IP. `addr` = host name or IPv4/IPv6 address, optionally followed by `:port`; may be empty. Needed only for joining a session on a specific machine; empty = LAN mode (discovery by broadcast, Part B). Returns true if a socket layer is available (always on desktop). Stores `addr` for later `session_find`. |
 | `mplay_init_modem(initstr,phonenr)` | Not supported: returns false. |
 | `mplay_init_serial(portno,baudrate,stopbits,parity,flow)` | Not supported: returns false (GM's argument meanings: port 1–4 or 0 = settings dialog; stop bits 0=1, 1=1.5, 2=2; parity 0 none,1 odd,2 even,3 mark; flow 0 none,1 xon/xoff,2 rts,3 dtr,4 rts+dtr). |
-| `mplay_connect_status()` | 0 none, 1 IPX, 2 TCP/IP, 3 modem, 4 serial. gm81-clean: 0 or 2. |
+| `mplay_connect_status()` | 0 none, 1 IPX, 2 TCP/IP, 3 modem, 4 serial. Instance: 0 or 2. |
 | `mplay_end()` | Ends the session (as `mplay_session_end`) and the connection; status → 0. |
 | `mplay_ipaddress()` | This machine's IP address as a string (e.g. `"192.168.1.5"`). The manual warns it is slow. **Recommended:** the first non-loopback IPv4 address of an up interface (the one with a default route if determinable); `"127.0.0.1"` if none. Cache for ~5 s. |
 
@@ -127,9 +127,9 @@ the inbound queue immediately so that busy-waiting GML loops make progress.
 
 ---
 
-# Part B — gm81-clean TCP/IP protocol (version 1)
+# Part B — Instance TCP/IP protocol (version 1)
 
-**This is gm81-clean's own protocol, designed for this project. It is not
+**This is Instance's own protocol, designed for this project. It is not
 compatible with GameMaker/DirectPlay.**
 
 ## B.1 Topology and transports

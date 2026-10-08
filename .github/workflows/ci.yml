@@ -53,10 +53,10 @@ jobs:
       - name: Build .app bundles
         run: bash scripts/macos-bundle.sh dist/macos
       - name: Zip
-        run: cd dist/macos && ditto -c -k --keepParent "GM81 Clean IDE.app" gm81-clean-ide-macos.zip && ditto -c -k --keepParent "GM81 Clean Runner.app" gm81-clean-runner-macos.zip
+        run: cd dist/macos && ditto -c -k --keepParent "Instance.app" instance-macos.zip && ditto -c -k --keepParent "Instance Runner.app" instance-runner-macos.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: gm81-clean-macos-${{ runner.arch }}
+          name: instance-macos-${{ runner.arch }}
           path: dist/macos/*.zip
 
   wasm:
@@ -78,5 +78,5 @@ jobs:
         run: bash scripts/build-web.sh dist/web
       - uses: actions/upload-artifact@v4
         with:
-          name: gm81-clean-web
+          name: instance-web
           path: dist/web

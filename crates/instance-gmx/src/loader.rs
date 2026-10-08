@@ -1054,7 +1054,7 @@ fn load_config(ctx: &mut Ctx, rel: &str, p: &mut Project, name: &mut String, sc:
     s.copyright = text(o, "option_version_copyright");
     s.description = text(o, "option_version_description");
     // The Studio project's game icon is deliberately not carried over: converted
-    // projects get gm81-clean's own icon (16-48 px) instead.
+    // projects get Instance's own icon (16-48 px) instead.
     s.icon = instance_brand::ico_file(&[16, 32, 48]);
     p.game_id = int(o, "option_gameid", 0);
     p.guid = parse_guid(&text(o, "option_gameguid"));

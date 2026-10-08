@@ -27,16 +27,16 @@ for name in instance_runner instance_ide; do
   wasm-bindgen --target web --no-typescript --out-dir "$out/pkg" "$target/wasm32-unknown-unknown/$profile/$name.wasm"
 done
 cp web/*.html web/*.js "$out/"
-# optional SoundFont for MIDI: $GM81_SOUNDFONT or web/soundfonts/default.sf2 (ignored by version control)
-sf=${GM81_SOUNDFONT:-}
+# optional SoundFont for MIDI: $INSTANCE_SOUNDFONT ($GM81_SOUNDFONT) or web/soundfonts/default.sf2 (ignored by version control)
+sf=${INSTANCE_SOUNDFONT:-${GM81_SOUNDFONT:-}}
 [ -z "$sf" ] && [ -f web/soundfonts/default.sf2 ] && sf=web/soundfonts/default.sf2
 if [ -n "$sf" ]; then
   mkdir -p "$out/soundfonts"
   cp "$sf" "$out/soundfonts/default.sf2"
-  echo 'window.GM81_SOUNDFONT = "soundfonts/default.sf2";' > "$out/config.js"
+  echo 'window.INSTANCE_SOUNDFONT = "soundfonts/default.sf2";' > "$out/config.js"
   echo "SoundFont: $sf"
 else
-  echo 'window.GM81_SOUNDFONT = null;' > "$out/config.js"
-  echo "no SoundFont bundled: MIDI music will be silent (set GM81_SOUNDFONT to a .sf2 file)"
+  echo 'window.INSTANCE_SOUNDFONT = null;' > "$out/config.js"
+  echo "no SoundFont bundled: MIDI music will be silent (set INSTANCE_SOUNDFONT to a .sf2 file)"
 fi
 echo "web build ready in $out  (serve: python3 -m http.server -d $out 8000)"

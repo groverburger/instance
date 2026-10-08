@@ -78,7 +78,7 @@ sounds `[406_01]`.
 | `sound_fade(index,value,time)` | Change the sound's volume from its current value to `value` linearly over `time` milliseconds (real time). For fading music in or out `[406_01]`. A new fade replaces a running one; `time ≤ 0` = immediate. The fade proceeds whether or not the sound is playing; the final value persists. |
 | `sound_pan(index,value)` | Pan −1 (left) .. 0 (centre) .. 1 (right). Applies to playing voices and later plays. |
 | `sound_background_tempo(factor)` | Multiply the tempo of MIDI background music by `factor`; 1 = normal; valid 0.01..100 `[406_01]` (**recommended** clamp). Persists; affects the current and future MIDI playback. No effect on WAV. |
-| `sound_set_search_directory(dir)` | Directory (no trailing backslash) where DirectMusic files look for referenced band/style files `[406_01]`. Stored; no effect in gm81-clean. |
+| `sound_set_search_directory(dir)` | Directory (no trailing backslash) where DirectMusic files look for referenced band/style files `[406_01]`. Stored; no effect in Instance. |
 
 Initial per-sound volume and pan = the resource's stored values; the master volume
 starts at 1. Values are clamped to their ranges.
@@ -122,7 +122,7 @@ each channel scaled by its side's gain.
    sound set. Send a GS reset at open; send all-notes-off on stop.
 3. **Fallback (and non-Windows): SoundFont synthesis** with `rustysynth`, rendered
    into the PCM mixer (so volume, pan, effects and 3D behave like WAV). SoundFont
-   lookup order: runner option/path in `GM81_SOUNDFONT`, then
+   lookup order: runner option/path in `INSTANCE_SOUNDFONT` (or `GM81_SOUNDFONT`), then
    `<runner dir>/soundfonts/default.sf2`, then a platform default if any. If no
    SoundFont is available MIDI plays silently but `sound_isplaying` follows the
    logical state (looping music reports true).
@@ -279,7 +279,7 @@ default this only matters for user-set values (SND-4).
 
 ## 8. CD audio `[406_04]`
 
-| Function | Semantics | gm81-clean default (no CD support) |
+| Function | Semantics | Instance default (no CD support) |
 |---|---|---|
 | `cd_init()` | must be called before the others and after changing CDs | no-op |
 | `cd_present()` | CD in the default drive | false |

@@ -1,14 +1,16 @@
-# gm81-clean
+# Instance
 
-A clean-room reimplementation of the GameMaker 8.1 runner and IDE in Rust.
-Not affiliated with YoYo Games. See CLEANROOM.md for how this was built.
+Instance is a game development environment (IDE and game runner) written in Rust. It
+opens, edits and runs GameMaker 8.1 project files (.gmk / .gm81) and behaves like the
+GameMaker 8.1 runner; it is a clean-room implementation. Not affiliated with or endorsed
+by YoYo Games. See CLEANROOM.md for how this was built.
 
 - `crates/instance-format` – read/write .gmk (v800) / .gm81 (v810) project files
 - `crates/instance-gmx` – convert GameMaker: Studio 1.x projects (.gmx folders, .gmz zip/7z) to .gm81 (`gmx2gm81`, specs/gmx-format.md)
 - `crates/gml` – GML lexer, parser, compiler and interpreter
 - `crates/instance-runner` – the game engine (`instance-runner game.gm81`)
 - `crates/instance-ide` – the editor
-- `crates/instance-net` – multiplayer (`mplay_*`) over gm81-clean's own TCP/UDP protocol
+- `crates/instance-net` – multiplayer (`mplay_*`) over Instance's own TCP/UDP protocol
 - `crates/instance-dllcall`, `crates/instance-dllhost32` – DLL bridge (x64 in-process, x86 via a 32-bit helper)
 - `specs/` – behavioural specifications the implementation is built from
 
@@ -16,7 +18,7 @@ Not affiliated with YoYo Games. See CLEANROOM.md for how this was built.
 
 ```
 cargo build --release
-target/release/instance-ide [project.gm81]          # editor; F5 runs the game, F6 runs it in debug mode
+target/release/instance-ide [project.gm81]     # editor; F5 runs the game, F6 runs it in debug mode
 target/release/instance-runner game.gm81            # play a .gmk (v701/v800) or .gm81 project
 target/release/instance-runner game.gm81 --debug    # with the Debug Information window (watches, pause/step,
                                               # execute code, globals/locals/instances, messages)
@@ -28,7 +30,7 @@ target/release/gmk-info game.gm81 [--tree]    # print a resource summary
 target/release/gmx2gm81 Game.gmx -o game.gm81  # convert a Studio project (folder, .project.gmx or .gmz)
 cargo test --workspace                        # sample tests read $GM81_SAMPLES
 target/release/instance-runner game.gm81 --headless --frames 600 --random-input 1 --max-seconds 60
-GM_PROFILE=1 target/release/instance-runner game.gm81 --headless   # per-phase/event/function timings
+INSTANCE_PROFILE=1 target/release/instance-runner game.gm81 --headless   # per-phase/event/function timings
 cargo test --release -p instance-runner --test corpus -- --ignored --nocapture   # runs every game in $GM81_CORPUS
 ```
 
@@ -41,25 +43,33 @@ a GameMaker-style error dialog (Ignore / Abort) as the game's error settings ask
 GUI programs, so scripts should redirect the output (`2>&1 | ...`) or use
 `Start-Process -Wait`.
 
-Multiplayer: `mplay_*` over TCP/IP only (gm81-clean protocol, specs/multiplayer.md
+Multiplayer: `mplay_*` over TCP/IP only (Instance protocol, specs/multiplayer.md
 Part B; not compatible with GameMaker's DirectPlay sessions). Demo with two headless
 runners: `cargo build -p instance-runner && cargo run -p instance-runner --example mplay_demo`.
 
 Extensions and DLLs: packages are taken from the executable's bundle or from
-`extensions/` next to the runner, `$GM81_EXTENSIONS`, `%APPDATA%/gm81-clean/extensions`
+`extensions/` next to the runner, `$INSTANCE_EXTENSIONS`, `%APPDATA%/Instance/extensions`
 or the project's `extensions/` folder. 32-bit DLLs (all GM 8.1-era DLLs) need the helper:
 `rustup target add i686-pc-windows-msvc && cargo build --release -p instance-dllhost32
 --target i686-pc-windows-msvc`, then put `instance-dllhost32.exe` next to `instance-runner.exe`
-(or set `GM81_DLLHOST32`; cargo target directories are also searched).
+(or set `INSTANCE_DLLHOST32`; cargo target directories are also searched).
 
 Sound: MIDI music plays through the Windows synthesiser (midiOut). Elsewhere (macOS,
 Linux), or
-with `GM81_MIDI=soundfont`, it is rendered with a SoundFont looked up from
-`GM81_SOUNDFONT`, then `<runner dir>/soundfonts/default.sf2`, then common system
-locations (none is shipped). `GM81_AUDIO_DEBUG=1` logs MIDI activity.
-Joysticks are read with gilrs (`GM81_JOYSTICK=0` disables, `GM81_JOY_DPAD_AS_STICK=1`,
-`GM81_JOY_RAW=1`); `--input` also accepts `STEP:joy1:button:N:down|up`,
+with `INSTANCE_MIDI=soundfont`, it is rendered with a SoundFont looked up from
+`INSTANCE_SOUNDFONT`, then `<runner dir>/soundfonts/default.sf2`, then common system
+locations (none is shipped). `INSTANCE_AUDIO_DEBUG=1` logs MIDI activity.
+Joysticks are read with gilrs (`INSTANCE_JOYSTICK=0` disables, `INSTANCE_JOY_DPAD_AS_STICK=1`,
+`INSTANCE_JOY_RAW=1`); `--input` also accepts `STEP:joy1:button:N:down|up`,
 `STEP:joy1:axis:x|y|z|r|u|v:VALUE`, `STEP:joy1:pov:ANGLE`, `STEP:joy1:connect|disconnect`.
+
+Environment variables: `INSTANCE_EXTENSIONS`, `INSTANCE_DLLHOST32`, `INSTANCE_DEBUG_DLL`,
+`INSTANCE_MIDI`, `INSTANCE_SOUNDFONT`, `INSTANCE_AUDIO_DEBUG`, `INSTANCE_JOYSTICK`,
+`INSTANCE_JOY_DPAD_AS_STICK`, `INSTANCE_JOY_RAW`, `INSTANCE_MPLAY_PORT` and
+`INSTANCE_PROFILE`. The names used by earlier builds (`GM81_*` instead of `INSTANCE_*`,
+and `GM_PROFILE`) still work as fallbacks; an `INSTANCE_*` variable wins when both are
+set. (`GM81_SAMPLES`, `GM81_CORPUS*` and `GM81_BLACKBOX_DIR` name folders of GameMaker 8.1
+test material for the test suites and keep their names.)
 
 ## Platforms
 
@@ -78,16 +88,22 @@ does not support (unverified without a Mac; the main
 thread is expected), so the windowed runner uses the software renderer; `--renderer gl` tries OpenGL.
 
 Per-user data of games (the emulated `registry_*` keys as `registry_<game id>.ini`, and
-highscores) lives in `%APPDATA%\gm81-runner`, `~/Library/Application Support/gm81-runner`
-or `$XDG_CONFIG_HOME/gm81-runner` (`~/.config/gm81-runner`). Fonts are looked up in the
+highscores) lives with the IDE's settings (`ide.json`, recent files) and installed
+extensions in `%APPDATA%\Instance`, `~/Library/Application Support/Instance` or
+`$XDG_CONFIG_HOME/Instance` (`~/.config/Instance`). Earlier builds used the folders
+`gm81-clean` (IDE) and `gm81-runner` (runner) in the same place: on first start their
+contents are copied into `Instance` (files already there are kept; the old folders are not
+deleted, and a `.migrated-from-<old name>` marker stops the copy from repeating). In the
+browser, the per-game `/config/gm81-runner` folder and the IDE's settings and autosave are
+carried over the same way. Fonts are looked up in the
 system font folders; when a font is missing the bundled Liberation Sans
 (`crates/instance-runner/fonts`, SIL Open Font License) is used.
 
-macOS app bundles: `scripts/macos-bundle.sh` (on a Mac) builds `GM81 Clean IDE.app` (with
-the runner inside, so Run works) and `GM81 Clean Runner.app` in `dist/macos`, with the
+macOS app bundles: `scripts/macos-bundle.sh` (on a Mac) builds `Instance.app` (the IDE, with
+the runner inside, so Run works) and `Instance Runner.app` in `dist/macos`, with the
 icon generated by `cargo run -p instance-brand --example write_icons -- DIR`. CI uploads them
 as artifacts. The runner app takes the game on the command line
-(`open -a "GM81 Clean Runner" --args /path/game.gm81`); Finder "open with" events are
+(`open -a "Instance Runner" --args /path/game.gm81`); Finder "open with" events are
 not handled yet.
 
 Linux builds need the ALSA, udev, X11/Wayland and GL development packages (see the
@@ -107,15 +123,15 @@ python -m http.server -d dist/web 8000                # then open http://localho
 HTTP, not opened as files).
 
 - **Player** (`play.html`): `?game=URL` fetches a `.gm81`/`.gmk` from the server, or drop a
-  file onto the page; a page can also embed a game (`<script id="gm81-game" data-src=URL>`
-  or `window.GM81_GAME_BASE64`). The game starts after a click (browsers only allow audio
+  file onto the page; a page can also embed a game (`<script id="instance-game" data-src=URL>`
+  or `window.INSTANCE_GAME_BASE64`). The game starts after a click (browsers only allow audio
   after a user gesture). `?renderer=software` forces the CPU renderer; `?autostart`
   skips the button. Rendering uses WebGL2; input comes from the canvas and keyboard.
   `show_message`/`show_question`/`get_string` use the browser's `alert`/`confirm`/`prompt`.
   Files written by the game (`file_*`, `ini_*`, saves, highscores, registry) live in a
   virtual file system stored in `localStorage` per game id.
 - **MIDI**: put a General MIDI SoundFont at `web/soundfonts/default.sf2` (ignored by git) or
-  set `GM81_SOUNDFONT=/path/file.sf2` when running the build script; it is copied to
+  set `INSTANCE_SOUNDFONT=/path/file.sf2` when running the build script; it is copied to
   `dist/web/soundfonts/default.sf2`. `?soundfont=URL` overrides it. Without one, MIDI music
   is silent and the console says so.
 - **IDE** (`ide.html`): File > Open uses the browser's file picker (or drop a file);
@@ -127,6 +143,9 @@ HTTP, not opened as files).
   the next step instead of blocking, `keyboard_wait`/`mouse_wait` return at once, and the
   in-game modal boxes (highscore name entry, splash images) are skipped. GML recursion is
   limited to 512 nested script calls (the browser's own call stack is the limit).
+
+Standalone executables made by Create Executable carry the game after the runner with a
+footer (specs/exe-format.md); executables made by earlier builds (old footer magic) still run.
 
 Not supported yet: loading .exe files compiled by YoYo's GameMaker.
 Open spec questions and implementation choices: `specs/OPEN_QUESTIONS.md`.

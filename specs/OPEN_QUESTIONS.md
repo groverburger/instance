@@ -343,7 +343,7 @@ Choices made where specs/ide.md is silent; please confirm or correct.
   Whether the original IDE does the same is unverified.
 - IMPL-IDE-12 (resolution/frequency lists): the Resolution tab exposes `resolution`
   and `frequency` as raw indices because the option lists are not specified.
-- IMPL-IDE-13 (runner invocation): Run writes `<temp>/gm81-clean-ide/<pid>/game.gm81`
+- IMPL-IDE-13 (runner invocation): Run writes `<temp>/instance-ide/<pid>/game.gm81`
   and starts `instance-runner <file>` with the project folder as working directory (temp
   folder for unsaved projects). No secure-mode/debug flags are passed yet: the runner
   CLI for those needs to be specified.
@@ -437,7 +437,7 @@ Sound / UI / files
   native dialogs; show_message_ext maps to up to three native buttons. In headless
   mode questions answer "yes", inputs return their default, highscore names "Player".
 - R-23: Highscores and registry_* values are stored in
-  %APPDATA%\gm81-runner\highscore_<game_id>.txt / registry_<game_id>.txt (not the real
+  %APPDATA%\Instance\highscore_<game_id>.txt / registry_<game_id>.txt (not the real
   registry). registry_set_root only namespaces the _ext keys.
 - R-24: game_save/game_load use an implementation-defined binary format (magic
   "GM81RSV1"); F5/F6 use <working_directory>\_save.gmd.
@@ -497,7 +497,7 @@ Resolve by black-box tests with GM 8.1 (screenshots of small test games).
 
 ## [MP] Multiplayer (specs/multiplayer.md, 2026-10-07)
 
-- MP-1: gm81-clean uses its own protocol (Part B); interop with GM 8.1 DirectPlay
+- MP-1: Instance uses its own protocol (Part B); interop with GM 8.1 DirectPlay
   games is out of scope. Confirm this is acceptable.
 - MP-2: When the host leaves a non-migrating session, does mplay_session_status() on the
   clients become 0 in GM? Do players still appear in mplay_player_find?
@@ -540,7 +540,7 @@ Resolve by black-box tests with GM 8.1 (screenshots of small test games).
   export `pr_set_font_size` (code 12, one real) through a typed **stdcall** call
   crashes the 32-bit helper, while a typed **cdecl** call works — so code 12 appears
   to mean cdecl (and 11 presumably stdcall), the reverse of the [I] guess in
-  extensions.md §3.3. gm81-clean's x86 bridge now uses a convention-agnostic thunk
+  extensions.md §3.3. Instance's x86 bridge now uses a convention-agnostic thunk
   (restores ESP after the call), so either reading works.
 - EXT-4: Exact timing of extension init functions relative to Game Start/Create events
   and of final functions relative to Game End; are finals called on game_restart?

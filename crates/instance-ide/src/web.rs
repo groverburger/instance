@@ -1,5 +1,5 @@
 //! Browser entry point and the JavaScript helpers of `web/ide.js`
-//! (`window.gm81ide`): file pickers, downloads, the IndexedDB autosave and
+//! (`window.instanceIde`): file pickers, downloads, the IndexedDB autosave and
 //! running the game in the web runner (an overlay iframe with `play.html`).
 
 use std::cell::RefCell;
@@ -7,38 +7,38 @@ use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
-/// Bindings to `window.gm81ide` (defined by `web/ide.js`, loaded before the wasm).
+/// Bindings to `window.instanceIde` (defined by `web/ide.js`, loaded before the wasm).
 pub mod js {
     use wasm_bindgen::prelude::*;
 
     #[wasm_bindgen]
     extern "C" {
         /// Shows a file picker; resolves to an array of `{name, bytes}` or null.
-        #[wasm_bindgen(js_namespace = gm81ide, js_name = pickFiles)]
+        #[wasm_bindgen(js_namespace = instanceIde, js_name = pickFiles)]
         pub fn pick_files(accept: &str, multiple: bool) -> js_sys::Promise;
         /// Offers `bytes` as a download named `name`.
-        #[wasm_bindgen(js_namespace = gm81ide)]
+        #[wasm_bindgen(js_namespace = instanceIde)]
         pub fn download(name: &str, bytes: &[u8]);
         /// Stores the game in IndexedDB and opens `play.html` over the IDE.
-        #[wasm_bindgen(js_namespace = gm81ide, js_name = runGame)]
+        #[wasm_bindgen(js_namespace = instanceIde, js_name = runGame)]
         pub fn run_game(bytes: &[u8]);
         /// Stores the autosave (name, bytes) in IndexedDB.
-        #[wasm_bindgen(js_namespace = gm81ide, js_name = saveAutosave)]
+        #[wasm_bindgen(js_namespace = instanceIde, js_name = saveAutosave)]
         pub fn save_autosave(name: &str, bytes: &[u8]) -> js_sys::Promise;
         /// Resolves to `{name, bytes, time}` or null.
-        #[wasm_bindgen(js_namespace = gm81ide, js_name = loadAutosave)]
+        #[wasm_bindgen(js_namespace = instanceIde, js_name = loadAutosave)]
         pub fn load_autosave() -> js_sys::Promise;
         /// Removes the autosave.
-        #[wasm_bindgen(js_namespace = gm81ide, js_name = clearAutosave)]
+        #[wasm_bindgen(js_namespace = instanceIde, js_name = clearAutosave)]
         pub fn clear_autosave() -> js_sys::Promise;
         /// Fetches a URL; resolves to a Uint8Array (rejects on HTTP errors).
-        #[wasm_bindgen(js_namespace = gm81ide, js_name = fetchBytes)]
+        #[wasm_bindgen(js_namespace = instanceIde, js_name = fetchBytes)]
         pub fn fetch_bytes(url: &str) -> js_sys::Promise;
         /// A query parameter of the page URL.
-        #[wasm_bindgen(js_namespace = gm81ide, js_name = queryParam)]
+        #[wasm_bindgen(js_namespace = instanceIde, js_name = queryParam)]
         pub fn query_param(name: &str) -> Option<String>;
         /// Hides the "loading" message of the page.
-        #[wasm_bindgen(js_namespace = gm81ide, js_name = loaded)]
+        #[wasm_bindgen(js_namespace = instanceIde, js_name = loaded)]
         pub fn loaded();
     }
 }

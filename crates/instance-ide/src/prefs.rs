@@ -44,7 +44,11 @@ fn config_path() -> Option<PathBuf> {
 
 /// localStorage key of the preferences on the web.
 #[cfg(target_arch = "wasm32")]
-const STORAGE_KEY: &str = "gm81-clean/ide.json";
+const STORAGE_KEY: &str = "instance/ide.json";
+
+/// localStorage key used by earlier builds, read when [`STORAGE_KEY`] is not set yet.
+#[cfg(target_arch = "wasm32")]
+const LEGACY_STORAGE_KEY: &str = "gm81-clean/ide.json";
 
 #[cfg(target_arch = "wasm32")]
 fn storage() -> Option<web_sys::Storage> {
@@ -54,7 +58,11 @@ fn storage() -> Option<web_sys::Storage> {
 fn read_text() -> Option<String> {
     #[cfg(target_arch = "wasm32")]
     {
-        storage()?.get_item(STORAGE_KEY).ok()?
+        let st = storage()?;
+        match st.get_item(STORAGE_KEY).ok()? {
+            Some(s) => Some(s),
+            None => st.get_item(LEGACY_STORAGE_KEY).ok()?,
+        }
     }
     #[cfg(not(target_arch = "wasm32"))]
     {

@@ -218,7 +218,7 @@ impl Runner {
             crate::vfs::persist();
             log("instance-runner: game ended");
             let w = window();
-            if let Ok(f) = js_sys::Reflect::get(&w, &"gm81GameEnded".into()) {
+            if let Ok(f) = js_sys::Reflect::get(&w, &"instanceGameEnded".into()) {
                 if let Some(f) = f.dyn_ref::<js_sys::Function>() {
                     let _ = f.call0(&w);
                 }

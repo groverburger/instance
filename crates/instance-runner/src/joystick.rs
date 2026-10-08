@@ -2,10 +2,11 @@
 //! `gilrs` (windowed runs) or from scripted input (`--input STEP:joy1:...`).
 //!
 //! Options (environment):
-//! * `GM81_JOYSTICK=0` disables the device layer (only scripted input).
-//! * `GM81_JOY_DPAD_AS_STICK=1` makes the D-pad drive `joystick_direction` and
+//! Environment variables (`INSTANCE_*`; the `GM81_*` names of earlier builds also work):
+//! * `INSTANCE_JOYSTICK=0` disables the device layer (only scripted input).
+//! * `INSTANCE_JOY_DPAD_AS_STICK=1` makes the D-pad drive `joystick_direction` and
 //!   the direction events (off by default, §5.3).
-//! * `GM81_JOY_RAW=1` uses raw axes/buttons in device order instead of the
+//! * `INSTANCE_JOY_RAW=1` uses raw axes/buttons in device order instead of the
 //!   gamepad mapping of §5.2.
 
 /// Deflection beyond which a direction counts (§3, strict inequality).
@@ -196,8 +197,9 @@ pub struct Joysticks {
     device: Device,
 }
 
+/// `INSTANCE_<name>` (or `GM81_<name>`) as a flag.
 fn env_flag(name: &str) -> Option<bool> {
-    std::env::var(name).ok().map(|v| !(v.is_empty() || v == "0" || v.eq_ignore_ascii_case("false") || v.eq_ignore_ascii_case("off")))
+    instance_brand::appdirs::env_var(name).map(|v| !(v.is_empty() || v == "0" || v.eq_ignore_ascii_case("false") || v.eq_ignore_ascii_case("off")))
 }
 
 impl Joysticks {
@@ -248,10 +250,10 @@ impl Joysticks {
         let d = &mut self.device;
         if !d.tried {
             d.tried = true;
-            if let Some(v) = env_flag("GM81_JOY_DPAD_AS_STICK") {
+            if let Some(v) = env_flag("JOY_DPAD_AS_STICK") {
                 self.dpad_as_stick = v;
             }
-            if env_flag("GM81_JOYSTICK") == Some(false) {
+            if env_flag("JOYSTICK") == Some(false) {
                 return;
             }
             match gilrs::GilrsBuilder::new().with_default_filters(false).build() {
@@ -289,7 +291,7 @@ impl Joysticks {
                 _ => {}
             }
         }
-        let raw = env_flag("GM81_JOY_RAW").unwrap_or(false);
+        let raw = env_flag("JOY_RAW").unwrap_or(false);
         let Some(g) = d.gilrs.as_ref() else { return };
         for k in 0..2 {
             let Some(id) = d.assigned[k] else { continue };

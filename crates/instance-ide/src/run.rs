@@ -48,7 +48,7 @@ pub fn find_runner(configured: Option<&str>) -> Option<PathBuf> {
 /// Temporary folder of this IDE instance.
 pub fn temp_dir() -> PathBuf {
     std::env::temp_dir()
-        .join("gm81-clean-ide")
+        .join("instance-ide")
         .join(std::process::id().to_string())
 }
 

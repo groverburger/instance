@@ -34,29 +34,12 @@ pub fn unix_nanos() -> u64 {
     }
 }
 
-fn home() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .filter(|h| !h.is_empty())
-        .map(PathBuf::from)
-}
-
-/// The per-user configuration directory of gm81-clean (`None` on the web).
+/// The per-user configuration directory (`%APPDATA%\Instance` etc., see
+/// `instance_brand::appdirs`; the folders of earlier builds are migrated on first use).
+/// `None` on the web.
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub fn config_dir() -> Option<PathBuf> {
-    if cfg!(target_arch = "wasm32") {
-        return None;
-    }
-    let base = if cfg!(windows) {
-        std::env::var_os("APPDATA").map(PathBuf::from)
-    } else if cfg!(target_os = "macos") {
-        home().map(|h| h.join("Library").join("Application Support"))
-    } else {
-        std::env::var_os("XDG_CONFIG_HOME")
-            .filter(|x| !x.is_empty())
-            .map(PathBuf::from)
-            .or_else(|| home().map(|h| h.join(".config")))
-    }?;
-    Some(base.join("gm81-clean"))
+    instance_brand::appdirs::data_dir()
 }
 
 pub use instance_ui::fonts::font_dirs;

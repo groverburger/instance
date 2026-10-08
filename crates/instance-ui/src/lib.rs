@@ -1,4 +1,4 @@
-//! The GameMaker-style egui look shared by the gm81-clean IDE (`instance-ide`) and the
+//! The GameMaker-style egui look shared by the Instance IDE (`instance-ide`) and the
 //! runner's own windows (`instance-runner`: Debug Information window, error dialog), so
 //! both stay identical: visuals and fonts ([`theme`]), classic window chrome —
 //! bevels, gradient captions, caption buttons, dialog frames ([`chrome`]) — and a few
