@@ -88,11 +88,9 @@ pub fn build() -> Spec {
 /// Diagnostic variants for locating why bb_lang closes instantly in GM 8.1:
 /// without the expression constants, the constants alone, and the tests in quarters.
 pub fn diagnostics() -> Vec<Spec> {
-    let mut v = vec![build_with("bb_lang_noconst", 81020, false, None), constexpr()];
-    for (i, name) in ["bb_lang_q1", "bb_lang_q2", "bb_lang_q3", "bb_lang_q4"].into_iter().enumerate() {
-        v.push(build_with(name, 81021 + i as i32, false, Some((i, 4))));
-    }
-    v
+    // The quarters / no-constants variants located the startup failure (a literal
+    // type mix in a script); only the expression-constants probe is still useful.
+    vec![constexpr()]
 }
 
 /// Only bb_lang's expression-valued constants plus one trivial test.
