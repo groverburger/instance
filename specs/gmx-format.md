@@ -177,7 +177,9 @@ the resource kind: `string` (expressions, strings, colours, menus, booleans) or
 `sprite`, `sound`, `background`, `path`, `script`, `object`, `room`, `font`,
 `timeline` holding a **resource name** (converted to the index). Argument lists are
 padded to 8 entries. Library/action ids are the GM 8.1 ones (`1/603` execute code,
-`1/604` call inherited, `1/601` execute script, `1/611` set variable, …).
+`1/604` call inherited, `1/601` execute script, `1/611` set variable, …): all 29
+distinct (library, action) pairs in the corpus exist in the 8.1 libraries
+(specs/actions.json) with the same function names [V].
 
 ## 8. Rooms — `<room>` [V]
 

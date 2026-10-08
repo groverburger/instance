@@ -568,6 +568,15 @@ pub fn parse_action(ctx: &mut Ctx, a: roxmltree::Node, owner: &str) -> Action {
         applies_to: APPLIES_TO_SELF,
         ..Action::default()
     };
+    if gm_format::builtin_action(act.library_id, act.action_id).is_none() {
+        ctx.warn(
+            owner,
+            format!(
+                "action {}/{} ({}) is not in the GM 8.1 action libraries",
+                act.library_id, act.action_id, act.function_name
+            ),
+        );
+    }
     let who = text(a, "whoName");
     act.applies_to = match who.trim() {
         "" | "self" => APPLIES_TO_SELF,
@@ -923,8 +932,7 @@ fn load_room(
         }
         if !tile_code.is_empty() {
             room.creation_code = format!(
-                "{}// tile scale/colour (gmx2gm81)\n{tile_code}\n{}",
-                crate::convert::TRANSFORM_MARK,
+                "// gmx2gm81: Studio tile scale/colour\n{tile_code}\n{}",
                 room.creation_code
             );
         }
