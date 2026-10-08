@@ -1,15 +1,34 @@
-//! gm81-clean's own standalone-executable layout (specs/exe-format.md):
+//! Instance's own standalone-executable layout (specs/exe-format.md):
 //! `[runner][payload (.gm81 v810)][bundle?][footer]`.
 //!
-//! * v1 footer, 24 bytes: `"GM81CLN\x01"`, u64 LE payload offset, u64 LE payload length.
-//! * v2 footer, 40 bytes: `"GM81CLN\x02"`, payload offset/length, bundle offset/length.
+//! * v1 footer, 24 bytes: `"INSTNC\0\x01"`, u64 LE payload offset, u64 LE payload length.
+//! * v2 footer, 40 bytes: `"INSTNC\0\x02"`, payload offset/length, bundle offset/length.
+//!
+//! Executables written by earlier builds (under the old product name) carry the magics
+//! `"GM81CLN\x01"` / `"GM81CLN\x02"` with the same layout; they are still read.
 //!
 //! The bundle carries the extension packages used by the project:
 //! u32 LE count, then per package u32-length-prefixed UTF-8 name, `.ged` bytes and
 //! `.dat` bytes.
 
-pub const MAGIC_V1: [u8; 8] = *b"GM81CLN\x01";
-pub const MAGIC_V2: [u8; 8] = *b"GM81CLN\x02";
+/// Footer magic of v1 executables (no extension bundle).
+pub const MAGIC_V1: [u8; 8] = *b"INSTNC\0\x01";
+/// Footer magic of v2 executables (with an extension bundle).
+pub const MAGIC_V2: [u8; 8] = *b"INSTNC\0\x02";
+/// v1 footer magic written by earlier builds; accepted when reading.
+pub const LEGACY_MAGIC_V1: [u8; 8] = *b"GM81CLN\x01";
+/// v2 footer magic written by earlier builds; accepted when reading.
+pub const LEGACY_MAGIC_V2: [u8; 8] = *b"GM81CLN\x02";
+
+/// Whether `m` is a v1 footer magic (current or legacy).
+pub fn is_magic_v1(m: &[u8]) -> bool {
+    m == MAGIC_V1 || m == LEGACY_MAGIC_V1
+}
+
+/// Whether `m` is a v2 footer magic (current or legacy).
+pub fn is_magic_v2(m: &[u8]) -> bool {
+    m == MAGIC_V2 || m == LEGACY_MAGIC_V2
+}
 pub const FOOTER_V1_LEN: usize = 24;
 pub const FOOTER_V2_LEN: usize = 40;
 
@@ -108,7 +127,7 @@ fn slice(data: &[u8], off: u64, len: u64, limit: usize) -> Option<Vec<u8>> {
 pub fn read_embedded(data: &[u8]) -> Option<Embedded> {
     if data.len() >= FOOTER_V2_LEN {
         let f = &data[data.len() - FOOTER_V2_LEN..];
-        if f[..8] == MAGIC_V2 {
+        if is_magic_v2(&f[..8]) {
             let limit = data.len() - FOOTER_V2_LEN;
             return Some(Embedded {
                 payload: slice(data, u64_at(f, 8), u64_at(f, 16), limit)?,
@@ -118,7 +137,7 @@ pub fn read_embedded(data: &[u8]) -> Option<Embedded> {
     }
     if data.len() >= FOOTER_V1_LEN {
         let f = &data[data.len() - FOOTER_V1_LEN..];
-        if f[..8] == MAGIC_V1 {
+        if is_magic_v1(&f[..8]) {
             let limit = data.len() - FOOTER_V1_LEN;
             return Some(Embedded {
                 payload: slice(data, u64_at(f, 8), u64_at(f, 16), limit)?,
@@ -153,6 +172,48 @@ mod tests {
         let exe = build(b"MZrunner", b"payload", Some(&b));
         let e = read_embedded(&exe).unwrap();
         assert_eq!(e.payload, b"payload");
+        assert_eq!(read_bundle(e.bundle.as_deref().unwrap()).unwrap(), pk);
+    }
+
+    #[test]
+    fn writes_the_instance_magic() {
+        let exe = build(b"MZ", b"p", None);
+        assert_eq!(&exe[exe.len() - FOOTER_V1_LEN..][..8], b"INSTNC\0\x01");
+        let exe = build(b"MZ", b"p", Some(&write_bundle(&[])));
+        assert_eq!(&exe[exe.len() - FOOTER_V2_LEN..][..8], b"INSTNC\0\x02");
+    }
+
+    /// An executable in the layout of earlier builds, with the old magic.
+    fn legacy_exe(runner: &[u8], payload: &[u8], bundle: Option<&[u8]>) -> Vec<u8> {
+        let mut exe = build(runner, payload, bundle);
+        let (len, magic) = match bundle {
+            None => (FOOTER_V1_LEN, b"GM81CLN\x01"),
+            Some(_) => (FOOTER_V2_LEN, b"GM81CLN\x02"),
+        };
+        let at = exe.len() - len;
+        exe[at..at + 8].copy_from_slice(magic);
+        exe
+    }
+
+    #[test]
+    fn reads_legacy_v1_footer() {
+        let exe = legacy_exe(b"MZrunner", b"old payload", None);
+        let e = read_embedded(&exe).unwrap();
+        assert_eq!(e.payload, b"old payload");
+        assert_eq!(e.bundle, None);
+    }
+
+    #[test]
+    fn reads_legacy_v2_footer() {
+        let pk = vec![BundledPackage {
+            name: "Old".into(),
+            ged: vec![7; 3],
+            dat: vec![8; 4],
+        }];
+        let b = write_bundle(&pk);
+        let exe = legacy_exe(b"MZrunner", b"old payload", Some(&b));
+        let e = read_embedded(&exe).unwrap();
+        assert_eq!(e.payload, b"old payload");
         assert_eq!(read_bundle(e.bundle.as_deref().unwrap()).unwrap(), pk);
     }
 

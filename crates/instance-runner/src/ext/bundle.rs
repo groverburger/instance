@@ -15,9 +15,8 @@ pub struct PackageFiles {
     pub origin: String,
 }
 
-const MAGIC_V2: &[u8; 8] = b"GM81CLN\x02";
-
-/// Reads the extension bundle of a gm81-clean standalone executable (footer v2).
+/// Reads the extension bundle of a standalone executable (footer v2; the magic of
+/// earlier builds is accepted too).
 /// Returns `None` when the file has no v2 footer.
 pub fn read_exe_bundle(exe: &Path) -> Option<Vec<PackageFiles>> {
     let mut f = std::fs::File::open(exe).ok()?;
@@ -28,7 +27,7 @@ pub fn read_exe_bundle(exe: &Path) -> Option<Vec<PackageFiles>> {
     f.seek(SeekFrom::Start(len - 40)).ok()?;
     let mut foot = [0u8; 40];
     f.read_exact(&mut foot).ok()?;
-    if &foot[..8] != MAGIC_V2 {
+    if !instance_format::exe::is_magic_v2(&foot[..8]) {
         return None;
     }
     let off = u64::from_le_bytes(foot[24..32].try_into().ok()?);
@@ -110,11 +109,11 @@ pub fn search_dirs() -> Vec<PathBuf> {
             v.push(d.join("extensions"));
         }
     }
-    if let Some(e) = std::env::var_os("GM81_EXTENSIONS") {
+    if let Some(e) = instance_brand::appdirs::env_var_os("EXTENSIONS") {
         v.extend(std::env::split_paths(&e));
     }
-    if let Some(a) = std::env::var_os("APPDATA") {
-        v.push(PathBuf::from(a).join("gm81-clean").join("extensions"));
+    if let Some(d) = instance_brand::appdirs::data_dir() {
+        v.push(d.join("extensions"));
     }
     if let Some(d) = PROJECT_DIR.lock().unwrap().clone() {
         v.push(d.join("extensions"));
@@ -170,16 +169,20 @@ mod tests {
         exe.extend_from_slice(b"payload");
         let bo = exe.len() as u64;
         exe.extend_from_slice(&b);
-        exe.extend_from_slice(MAGIC_V2);
-        for v in [po, 7, bo, b.len() as u64] {
-            exe.extend_from_slice(&v.to_le_bytes());
-        }
-        let dir = std::env::temp_dir().join(format!("gm81_bundle_test_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("instance_bundle_test_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let p = dir.join("game.exe");
-        std::fs::write(&p, &exe).unwrap();
-        let got = read_exe_bundle(&p).unwrap();
-        assert_eq!(got[0].ged, vec![1, 2]);
+        // the current footer magic and the one of earlier builds
+        for magic in [instance_format::exe::MAGIC_V2, instance_format::exe::LEGACY_MAGIC_V2] {
+            let mut exe = exe.clone();
+            exe.extend_from_slice(&magic);
+            for v in [po, 7, bo, b.len() as u64] {
+                exe.extend_from_slice(&v.to_le_bytes());
+            }
+            let p = dir.join("game.exe");
+            std::fs::write(&p, &exe).unwrap();
+            let got = read_exe_bundle(&p).unwrap();
+            assert_eq!(got[0].ged, vec![1, 2]);
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
