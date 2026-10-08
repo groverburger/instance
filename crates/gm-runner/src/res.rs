@@ -19,9 +19,6 @@ pub struct Mask {
     pub top: i32,
     pub right: i32,
     pub bottom: i32,
-    /// For geometric shapes with a user box larger than the image: points outside
-    /// the image but inside the box count as set.
-    pub full_outside: bool,
 }
 
 impl Mask {
@@ -31,8 +28,7 @@ impl Mask {
             return false;
         }
         if x < 0 || y < 0 || x as u32 >= self.w || y as u32 >= self.h {
-            // user-defined boxes may lie outside the image: rectangle semantics
-            return self.full_outside;
+            return false;
         }
         self.bits[(y as u32 * self.w + x as u32) as usize]
     }
@@ -159,7 +155,14 @@ impl SpriteRes {
             // bounding box
             let (l, t, r, b) = match self.bbox_mode {
                 1 => (0, 0, w as i32 - 1, h as i32 - 1),
-                2 => (self.bbox_left, self.bbox_top, self.bbox_right, self.bbox_bottom),
+                // a user box is clipped to the image: the mask is a per-pixel
+                // image of the sprite (OPEN_QUESTIONS R-12)
+                2 => {
+                    let (l, t) = (self.bbox_left.max(0), self.bbox_top.max(0));
+                    let r = self.bbox_right.min(w as i32 - 1).max(l);
+                    let b = self.bbox_bottom.min(h as i32 - 1).max(t);
+                    (l.min(r), t.min(b), r, b)
+                }
                 _ => {
                     let (mut l, mut t, mut r, mut b) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
                     for y in 0..h as i32 {
@@ -211,7 +214,6 @@ impl SpriteRes {
                 top: t,
                 right: r,
                 bottom: b,
-                full_outside: self.shape != 0,
             });
         }
         self.masks = SpriteMasks { masks };

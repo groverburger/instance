@@ -63,6 +63,10 @@ struct Slot {
     req_w: i32,
     req_h: i32,
     resize: bool,
+    /// Centre the window on its monitor at the next window update.
+    recenter: bool,
+    /// Explicit outer position requested by the game (window_set_position etc.).
+    set_pos: Option<(i32, i32)>,
     set_mouse: Option<(f64, f64)>,
     /// Current client size of the window (set by the main thread).
     win_w: u32,
@@ -314,6 +318,14 @@ impl App {
                 s.win_h = size.height;
             }
         }
+        let recenter = std::mem::take(&mut s.recenter);
+        if let Some((x, y)) = s.set_pos.take() {
+            if !self.fullscreen {
+                win.set_outer_position(PhysicalPosition::new(x, y));
+            }
+        } else if recenter && !self.fullscreen {
+            center_window(&win);
+        }
         win.set_cursor_visible(s.cursor_visible);
         if let Some((x, y)) = s.set_mouse.take() {
             let m = slot_mapping(&s);
@@ -325,6 +337,16 @@ impl App {
             win.set_visible(true);
         }
     }
+}
+
+/// Centres the window on its current (else the primary) monitor, keeping the
+/// title bar on screen.
+fn center_window(win: &Window) {
+    let Some(mon) = win.current_monitor().or_else(|| win.primary_monitor()) else { return };
+    let (mp, ms, os) = (mon.position(), mon.size(), win.outer_size());
+    let x = mp.x + (ms.width as i32 - os.width as i32) / 2;
+    let y = mp.y + ((ms.height as i32 - os.height as i32) / 2).max(0);
+    win.set_outer_position(PhysicalPosition::new(x.max(mp.x), y));
 }
 
 fn client_size(s: &Slot) -> (u32, u32) {
@@ -614,6 +636,8 @@ fn game_thread(
     }
     let mut next = Instant::now();
     let mut last_region = (0, 0);
+    let mut last_pos = (i32::MIN, i32::MIN);
+    let mut last_center = true;
     let (mut frames, mut busy, mut t_report) = (0u64, 0.0f64, Instant::now());
     let report = std::env::var_os("GM_RUNNER_FPS").is_some();
     while !g.ended {
@@ -639,6 +663,18 @@ fn game_thread(
                 if last_region != (g.region_w, g.region_h) || g.win.w > 0 {
                     s.resize = true;
                 }
+                // centred unless the game placed the window itself (runtime.md §12.1)
+                if g.win.center && (s.resize || !last_center) {
+                    s.recenter = true;
+                }
+                if !g.win.center && (g.win.x, g.win.y) != last_pos {
+                    s.set_pos = Some((g.win.x, g.win.y));
+                    last_pos = (g.win.x, g.win.y);
+                }
+                if g.win.center {
+                    last_pos = (i32::MIN, i32::MIN);
+                }
+                last_center = g.win.center;
                 s.req_w = g.win.w;
                 s.req_h = g.win.h;
                 last_region = (g.region_w, g.region_h);

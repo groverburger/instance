@@ -94,6 +94,7 @@ pub struct Vm {
     pub(crate) depth: u32,
     pub(crate) arg_pool: Vec<Vec<Value>>,
     pub(crate) select_pool: Vec<Vec<i32>>,
+    pub(crate) locals_pool: Vec<Vec<Option<crate::vars::Var>>>,
     pub(crate) exec_cache: HashMap<Vec<u8>, Rc<Program>>,
     pub(crate) clock: Clock,
 }
@@ -130,6 +131,7 @@ impl Vm {
             depth: 0,
             arg_pool: Vec::new(),
             select_pool: Vec::new(),
+            locals_pool: Vec::new(),
             exec_cache: HashMap::new(),
             clock: Box::new(crate::stdlib::date::system_now),
         };

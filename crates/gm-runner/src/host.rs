@@ -289,7 +289,6 @@ impl Game {
         if let Some(x) = self.bg_get(var, k) {
             return Ok(x);
         }
-        let now = local_now();
         Ok(match var {
             v::INSTANCE_COUNT => Value::Real(self.instances.iter().filter(|i| i.active).count() as f64),
             v::INSTANCE_ID => {
@@ -302,13 +301,13 @@ impl Game {
             v::ROOM_SPEED => Value::Real(self.rs.speed),
             v::FPS => Value::Real(self.fps),
             v::CURRENT_TIME => Value::Real(self.start_time.elapsed().as_millis() as f64),
-            v::CURRENT_YEAR => Value::Real(date_parts(now).0 as f64),
-            v::CURRENT_MONTH => Value::Real(date_parts(now).1 as f64),
-            v::CURRENT_DAY => Value::Real(date_parts(now).2 as f64),
-            v::CURRENT_WEEKDAY => Value::Real(date_parts(now).3 as f64),
-            v::CURRENT_HOUR => Value::Real(date_parts(now).4 as f64),
-            v::CURRENT_MINUTE => Value::Real(date_parts(now).5 as f64),
-            v::CURRENT_SECOND => Value::Real(date_parts(now).6 as f64),
+            v::CURRENT_YEAR => Value::Real(date_parts(local_now()).0 as f64),
+            v::CURRENT_MONTH => Value::Real(date_parts(local_now()).1 as f64),
+            v::CURRENT_DAY => Value::Real(date_parts(local_now()).2 as f64),
+            v::CURRENT_WEEKDAY => Value::Real(date_parts(local_now()).3 as f64),
+            v::CURRENT_HOUR => Value::Real(date_parts(local_now()).4 as f64),
+            v::CURRENT_MINUTE => Value::Real(date_parts(local_now()).5 as f64),
+            v::CURRENT_SECOND => Value::Real(date_parts(local_now()).6 as f64),
             v::ROOM => Value::Real(self.room as f64),
             v::ROOM_FIRST => Value::Real(*self.room_order.first().unwrap_or(&-1) as f64),
             v::ROOM_LAST => Value::Real(*self.room_order.last().unwrap_or(&-1) as f64),

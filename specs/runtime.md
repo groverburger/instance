@@ -538,6 +538,8 @@ Per sprite (`[202]`, `[409_01]`):
 * bbox mode: 0 automatic (tight box of mask pixels, honouring alpha tolerance; per
   subimage if separate), 1 full image, 2 user-defined (`bbleft,bbtop,bbright,
   bbbottom`; a single box for all subimages even with separate masks).
+  **UNSPECIFIED – recommended:** a user box is clipped to the image bounds (masks are
+  per-pixel images of the sprite); see OPEN_QUESTIONS R-12 for the game evidence.
 * kind: 0 precise (pixels with alpha > tolerance, restricted to the bbox),
   1 rectangle (whole bbox), 2 disk/ellipse inscribed in the bbox, 3 diamond inscribed
   in the bbox.

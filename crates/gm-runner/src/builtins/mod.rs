@@ -154,7 +154,7 @@ pub fn dispatch(g: &mut Game, vm: &mut Vm, ctx: &Ctx, f: FunctionId, args: &[Val
     match t.fns[f.0 as usize] {
         Some(func) => {
             let a = A { v: args, f };
-            if table().geometry[f.0 as usize] {
+            if t.geometry[f.0 as usize] {
                 // edits sprites (masks/origins): instance boxes may change
                 g.spatial_invalidate();
             }
