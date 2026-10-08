@@ -16,8 +16,10 @@ Not affiliated with YoYo Games. See CLEANROOM.md for how this was built.
 
 ```
 cargo build --release
-target/release/gm-ide [project.gm81]          # editor; F5 runs the game
+target/release/gm-ide [project.gm81]          # editor; F5 runs the game, F6 runs it in debug mode
 target/release/gm-runner game.gm81            # play a .gmk (v701/v800) or .gm81 project
+target/release/gm-runner game.gm81 --debug    # with the Debug Information window (watches, pause/step,
+                                              # execute code, globals/locals/instances, messages)
 target/release/gm-runner game.gm81 --headless --frames 300 --screenshot out.png
 target/release/gm-runner game.gm81 --renderer software   # force the CPU renderer (default: OpenGL, falls back)
 target/release/gm-runner game.gm81 --compare-renderers DIR --frames 300 --screenshot-every 50 DIR
@@ -29,6 +31,13 @@ target/release/gm-runner game.gm81 --headless --frames 600 --random-input 1 --ma
 GM_PROFILE=1 target/release/gm-runner game.gm81 --headless   # per-phase/event/function timings
 cargo test --release -p gm-runner --test corpus -- --ignored --nocapture   # runs every game in $GM81_CORPUS
 ```
+
+On Windows the runner is a GUI program: a standalone game made with Create Executable
+never opens a console, while runs of a project file print `show_debug_message` output,
+errors and runner info to the calling console (or a new console window; the IDE always
+gives each run its own console). `--no-console` turns this off. Shells do not wait for
+GUI programs, so scripts should redirect the output (`2>&1 | ...`) or use
+`Start-Process -Wait`.
 
 Multiplayer: `mplay_*` over TCP/IP only (gm81-clean protocol, specs/multiplayer.md
 Part B; not compatible with GameMaker's DirectPlay sessions). Demo with two headless

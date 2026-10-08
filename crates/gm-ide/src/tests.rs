@@ -143,6 +143,47 @@ fn temp_game_file() {
     crate::run::cleanup();
 }
 
+/// Runs from the IDE get their own console; debug runs add `--debug`.
+#[test]
+fn runner_arguments() {
+    let g = std::path::Path::new("game.gm81");
+    assert_eq!(
+        crate::run::runner_args(g, false),
+        ["game.gm81", "--new-console"]
+    );
+    assert_eq!(
+        crate::run::runner_args(g, true),
+        ["game.gm81", "--new-console", "--debug"]
+    );
+}
+
+/// Run > Run in Debug mode launches the runner with `--debug`. The configured
+/// "runner" is a plain file, so starting it fails after the command was built.
+#[test]
+fn ui_debug_run_passes_debug_flag() {
+    use egui_kittest::kittest::Queryable;
+    let mut h = egui_kittest::Harness::builder()
+        .with_size(eframe::egui::Vec2::new(1200.0, 800.0))
+        .build_eframe(|cc| crate::app::IdeApp::new(cc, None));
+    let mut p = ops::new_project();
+    ops::create_resource(&mut p, ResourceKind::Room, &ops::Placement::End);
+    h.state_mut().test_set_project(p);
+    let fake = tmp("not-a-runner.exe");
+    std::fs::write(&fake, b"not a program").unwrap();
+    h.state_mut().test_set_runner_path(fake.to_str().unwrap());
+    h.run_steps(2);
+    h.get_by_label("Run").click();
+    h.run_steps(2);
+    h.get_by_label("Run in Debug mode (F6)").click();
+    h.run_steps(2);
+    let (args, msgs) = h.state().test_last_run();
+    assert!(args[0].ends_with("game.gm81"), "{args:?}");
+    assert!(args.iter().any(|a| a == "--debug"), "{args:?}");
+    assert!(args.iter().any(|a| a == "--new-console"), "{args:?}");
+    assert!(msgs.iter().any(|m| m.contains("Cannot start")), "{msgs:?}");
+    crate::run::cleanup();
+}
+
 /// Render the whole IDE headlessly with every form of a sample open: no panics, and
 /// nothing is modified by merely displaying forms.
 #[test]

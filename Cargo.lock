@@ -1178,6 +1178,7 @@ checksum = "606ed4167daf341e5753d703285c4c1d562324b2c07aa8f405cd7d066fe58f3b"
 dependencies = [
  "bytemuck",
  "egui",
+ "egui-winit",
  "glow",
  "log",
  "profiling",
@@ -1797,6 +1798,9 @@ version = "0.1.0"
 dependencies = [
  "arboard",
  "console_error_panic_hook",
+ "egui",
+ "egui-winit",
+ "egui_glow",
  "fontdue",
  "gilrs",
  "glow",

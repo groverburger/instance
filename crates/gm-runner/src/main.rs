@@ -17,10 +17,21 @@
 //! Joystick items: `STEP:joy1:button:N:down|up`, `STEP:joy1:axis:x|y|z|r|u|v:VALUE`,
 //! `STEP:joy1:pov:ANGLE` (−1 centred), `STEP:joy1:connect|disconnect` (also `joy2`).
 
+//! `--debug` runs in debug mode with the Debug Information window
+//! (specs/ide.md §20.3). Console (Windows): runs of a project file print to the
+//! parent's console or a new console window (`--new-console` forces a new one,
+//! `--no-console` suppresses it); a standalone game never shows one (see
+//! `console.rs`). On Windows the runner is a GUI program, so a shell does not
+//! wait for it: use `Start-Process -Wait` or redirect its output in scripts.
 //! (On `wasm32` this binary is empty; the browser runner is `gm_runner::web`.)
 
 #![cfg_attr(target_arch = "wasm32", allow(dead_code, unused_imports))]
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
+#[cfg(not(target_arch = "wasm32"))]
+mod console;
+#[cfg(not(target_arch = "wasm32"))]
+mod debug_window;
 #[cfg(not(target_arch = "wasm32"))]
 mod standalone;
 #[cfg(not(target_arch = "wasm32"))]
@@ -53,6 +64,18 @@ struct Opts {
     compare: Option<PathBuf>,
     max_seconds: Option<f64>,
     random_input: Option<u64>,
+    debug: bool,
+    /// The game came from this executable (no console, ever).
+    standalone: bool,
+    no_console: bool,
+    new_console: bool,
+}
+
+/// What the command line asks for.
+enum Parsed {
+    Run(Opts),
+    /// Print this and exit.
+    Print(String),
 }
 
 /// A deterministic "monkey" input script for `frames` steps: held arrow/WASD/
@@ -128,7 +151,7 @@ fn parse_input(s: &str) -> Result<Vec<(u64, InputEvent)>, String> {
     Ok(out)
 }
 
-fn parse_args() -> Result<Option<Opts>, String> {
+fn parse_args() -> Result<Parsed, String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut o = Opts {
         file: PathBuf::new(),
@@ -141,6 +164,10 @@ fn parse_args() -> Result<Option<Opts>, String> {
         compare: None,
         max_seconds: None,
         random_input: None,
+        debug: false,
+        standalone: false,
+        no_console: false,
+        new_console: false,
     };
     let mut file = None;
     let mut i = 0;
@@ -172,18 +199,23 @@ fn parse_args() -> Result<Option<Opts>, String> {
             }
             "--random-input" => o.random_input = Some(next()?.parse().map_err(|_| "bad --random-input")?),
             "--max-seconds" => o.max_seconds = Some(next()?.parse().map_err(|_| "bad --max-seconds")?),
+            "--debug" => o.debug = true,
+            "--no-console" => o.no_console = true,
+            "--new-console" => o.new_console = true,
             "--coverage" => {
+                use std::fmt::Write;
                 let (imp, stub, native, total) = gm_runner::builtins::coverage();
-                println!("builtin functions: {} total; {} native (gml crate), {} implemented by runner, {} stubbed, {} missing", total, native, imp, stub, total - native - imp - stub);
+                let mut t = format!("builtin functions: {} total; {} native (gml crate), {} implemented by runner, {} stubbed, {} missing
+", total, native, imp, stub, total - native - imp - stub);
                 for m in gm_runner::builtins::missing() {
-                    println!("  missing: {}", m);
+                    let _ = writeln!(t, "  missing: {}", m);
                 }
-                println!("action functions implemented: {}", gm_runner::action_lib::names().len());
-                return Ok(None);
+                let _ = writeln!(t, "action functions implemented: {}", gm_runner::action_lib::names().len());
+                return Ok(Parsed::Print(t));
             }
             "--help" | "-h" => {
-                println!("usage: gm-runner FILE.gmk|FILE.gm81 [--headless] [--frames N] [--screenshot OUT.png] [--screenshot-every K DIR] [--input SCRIPT] [--renderer gl|software] [--compare-renderers DIR] [--coverage] [--max-seconds S] [--random-input SEED]");
-                return Ok(None);
+                return Ok(Parsed::Print("usage: gm-runner FILE.gmk|FILE.gm81 [--debug] [--headless] [--frames N] [--screenshot OUT.png] [--screenshot-every K DIR] [--input SCRIPT] [--renderer gl|software] [--compare-renderers DIR] [--coverage] [--max-seconds S] [--random-input SEED] [--no-console] [--new-console]
+".into()));
             }
             _ if a.starts_with("--") => return Err(format!("unknown option {}", a)),
             _ => {
@@ -196,11 +228,18 @@ fn parse_args() -> Result<Option<Opts>, String> {
         i += 1;
     }
     // no file: a standalone executable carries its game (specs/exe-format.md)
-    o.file = file.or_else(standalone::extract_own_game).ok_or("no game file given")?;
+    o.file = match file {
+        Some(f) => f,
+        None => {
+            let f = standalone::extract_own_game().ok_or("no game file given")?;
+            o.standalone = true;
+            f
+        }
+    };
     if let Some(seed) = o.random_input {
         o.input.extend(random_input(seed, o.frames));
     }
-    Ok(Some(o))
+    Ok(Parsed::Run(o))
 }
 
 /// Compares the two renderers' back buffers; saves images when `save`.
@@ -232,6 +271,9 @@ fn run_headless(o: Opts) -> i32 {
             return 1;
         }
     };
+    if o.debug {
+        g.enable_debug();
+    }
     if let Some(dir) = &o.compare {
         let _ = std::fs::create_dir_all(dir);
         match gm_runner::draw::gl::GlBackend::hidden() {
@@ -364,14 +406,27 @@ fn run_headless(o: Opts) -> i32 {
 }
 
 pub fn run_main() {
+    let no_console = std::env::args().any(|a| a == "--no-console");
     let o = match parse_args() {
-        Ok(Some(o)) => o,
-        Ok(None) => return,
+        Ok(Parsed::Run(o)) => o,
+        Ok(Parsed::Print(t)) => {
+            if !no_console {
+                crate::console::init(false);
+            }
+            print!("{}", t);
+            return;
+        }
         Err(e) => {
+            if !no_console {
+                crate::console::init(false);
+            }
             eprintln!("gm-runner: {}", e);
             std::process::exit(2);
         }
     };
+    if !o.standalone && !o.no_console {
+        crate::console::init(o.new_console);
+    }
     let code = if o.headless {
         let h = std::thread::Builder::new()
             .name("game".into())
@@ -384,7 +439,7 @@ pub fn run_main() {
         // AppKit does not allow: default to the software renderer there.
         let default = if cfg!(target_os = "macos") { Renderer::Software } else { Renderer::Gl };
         let r = o.renderer.unwrap_or(default);
-        window::run(o.file, o.input, r)
+        window::run(o.file, o.input, r, o.debug)
     };
     std::process::exit(code);
 }

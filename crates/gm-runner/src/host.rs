@@ -333,7 +333,7 @@ impl Game {
             v::GAMEMAKER_VERSION => Value::Real(810.0),
             v::ERROR_OCCURRED => b(self.error_occurred),
             v::ERROR_LAST => s(&self.error_last),
-            v::DEBUG_MODE => b(false),
+            v::DEBUG_MODE => b(self.debug.is_some()),
             v::KEYBOARD_KEY => Value::Real(self.input.keyboard_key as f64),
             v::KEYBOARD_LASTKEY => Value::Real(self.input.keyboard_lastkey as f64),
             v::KEYBOARD_LASTCHAR => s(&self.input.keyboard_lastchar),

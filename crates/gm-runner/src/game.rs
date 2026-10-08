@@ -226,7 +226,8 @@ pub struct Game {
     pub window_visible: bool,
     pub cursor: i32,
     pub mp: crate::builtins::motion::MpState,
-    pub debug_messages: Vec<String>,
+    /// Debug mode state (`--debug`, specs/ide.md §20.3); `None` normally.
+    pub debug: Option<Box<crate::debug::Debugger>>,
     pub save_counter: u32,
     pub close_requested: bool,
     /// `sleep` time not yet waited (browser build: the frontend delays the next step).
@@ -434,7 +435,7 @@ impl Game {
             window_visible: true,
             cursor: 0,
             mp: Default::default(),
-            debug_messages: Vec::new(),
+            debug: None,
             save_counter: 0,
             close_requested: false,
             sleep_debt_ms: 0.0,
