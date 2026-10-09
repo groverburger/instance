@@ -34,12 +34,13 @@
   <!-- written by the build script: sets window.INSTANCE_SOUNDFONT when a SoundFont was bundled -->
   <script src="config.js"></script>
   <script type="module">
-    import init, { start_game, set_soundfont } from "./pkg/instance_runner.js";
+    import init, { start_game, set_soundfont, set_audio_debug } from "./pkg/instance_runner.js";
 
     // Configuration (URL parameters):
     //   game=URL | idb:KEY   game file to load (idb: = IndexedDB "instance"/"files", used by the IDE)
     //   soundfont=URL        SoundFont for MIDI music (default: window.INSTANCE_SOUNDFONT from config.js; "none" to skip)
     //   renderer=gl|software
+    //   audiodebug           log audio diagnostics (MIDI backend, synthesiser activity) to the console
     // A page can also embed a game: <script id="instance-game" type="application/octet-stream" data-src="URL">
     // or a base64 payload in window.INSTANCE_GAME_BASE64 (the names of earlier builds,
     // id="gm81-game" and window.GM81_GAME_BASE64, also work).
@@ -155,6 +156,7 @@
 
     try {
       await init();
+      if (params.has("audiodebug")) set_audio_debug(true);
       await loadSoundFont();
       const game = await initialGame();
       if (game) offer(game);

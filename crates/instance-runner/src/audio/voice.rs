@@ -256,28 +256,177 @@ impl Pcm {
     }
 }
 
-/// Decodes any format rodio/symphonia understands into stereo f32.
+/// Decodes any format rodio/symphonia understands into stereo f32 (MP3 encoder
+/// delay/padding removed, see [`Frames`]).
 pub fn decode(data: Arc<[u8]>) -> Option<Pcm> {
-    use rodio::Source;
-    let dec = rodio::Decoder::new(std::io::Cursor::new(data)).ok()?;
-    let ch = dec.channels().get() as usize;
-    let rate = dec.sample_rate().get();
+    let src = Frames::open(data)?;
+    let rate = src.rate;
     let mut out = Vec::new();
-    let mut frame = Vec::with_capacity(ch);
-    for s in dec {
-        frame.push(s);
-        if frame.len() == ch {
-            if ch == 1 {
-                out.push(frame[0]);
-                out.push(frame[0]);
-            } else {
-                out.push(frame[0]);
-                out.push(frame[1]);
-            }
-            frame.clear();
-        }
+    for (l, r) in src {
+        out.push(l);
+        out.push(r);
     }
     Some(Pcm { rate, data: out })
+}
+
+/// Where an MP3 stream's gapless information stands.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Mp3Gapless {
+    /// Not an MP3 file.
+    NotMp3,
+    /// The first frame carries a Xing/Info (LAME) tag: the decoder trims the
+    /// encoder delay and padding itself.
+    Tagged,
+    /// MPEG audio without gapless information.
+    Untagged,
+}
+
+/// Sniffs MPEG layer III data: skips an ID3v2 tag, checks the first frame header
+/// and looks for the Xing/Info tag after its side information.
+pub fn mp3_gapless(d: &[u8]) -> Mp3Gapless {
+    let mut pos = 0usize;
+    if d.len() >= 10 && &d[0..3] == b"ID3" {
+        let sz = d[6..10].iter().fold(0usize, |a, &b| (a << 7) | (b & 0x7f) as usize);
+        pos = 10 + sz + if d[5] & 0x10 != 0 { 10 } else { 0 };
+    } else if d.len() >= 4 && (&d[0..4] == b"RIFF" || &d[0..4] == b"OggS" || &d[0..4] == b"fLaC") {
+        return Mp3Gapless::NotMp3;
+    }
+    // first valid layer III frame header within a few KB
+    let end = d.len().min(pos + 4096);
+    while pos + 4 <= end {
+        let h = &d[pos..pos + 4];
+        let version = (h[1] >> 3) & 3; // 3 = MPEG1, 2 = MPEG2, 0 = MPEG2.5
+        let layer = (h[1] >> 1) & 3; // 1 = layer III
+        let bitrate = h[2] >> 4;
+        let srate = (h[2] >> 2) & 3;
+        if h[0] == 0xff && h[1] & 0xe0 == 0xe0 && version != 1 && layer == 1 && bitrate != 0 && bitrate != 15 && srate != 3 {
+            let mono = h[3] >> 6 == 3;
+            let side = match (version == 3, mono) {
+                (true, false) => 32,
+                (true, true) | (false, false) => 17,
+                (false, true) => 9,
+            };
+            let crc = if h[1] & 1 == 0 { 2 } else { 0 };
+            let t = pos + 4 + crc + side;
+            return match d.get(t..t + 4) {
+                Some(b"Xing") | Some(b"Info") => Mp3Gapless::Tagged,
+                _ => Mp3Gapless::Untagged,
+            };
+        }
+        pos += 1;
+    }
+    Mp3Gapless::NotMp3
+}
+
+/// Leading frames quieter than this (−80 dB) may be MP3 encoder/decoder delay.
+const LEAD_SILENCE: f32 = 1e-4;
+/// Most leading frames trimmed: LAME's encoder delay (576) + the decoder delay
+/// (529) + one frame of slack.
+const MAX_LEAD: usize = 576 + 529 + 1152;
+/// Trailing frames below one 16-bit step count as MP3 padding.
+const TAIL_SILENCE: f32 = 1.0 / 32768.0;
+
+/// Decoded stereo frames of a sound, read incrementally.
+///
+/// MP3 files without a Xing/Info tag carry the encoder delay as near-silence at
+/// the start and the encoder padding as digital silence at the end; played back
+/// to back (looping) these become an audible gap. For such files the leading
+/// near-silence (at most [`MAX_LEAD`] frames) and the trailing digital silence
+/// (at most half a second) are dropped. Tagged MP3s are trimmed exactly by the
+/// decoder (symphonia's gapless mode); other formats are sample-exact already.
+pub struct Frames {
+    src: Box<dyn Iterator<Item = (f32, f32)> + Send>,
+    pub rate: u32,
+    trim: bool,
+    started: bool,
+    /// Frames already decoded but not returned (look-ahead over silence).
+    ahead: std::collections::VecDeque<(f32, f32)>,
+}
+
+fn peak((l, r): (f32, f32)) -> f32 {
+    l.abs().max(r.abs())
+}
+
+impl Frames {
+    /// Opens a decoder over `data`.
+    pub fn open(data: Arc<[u8]>) -> Option<Self> {
+        use rodio::Source;
+        let trim = mp3_gapless(&data) == Mp3Gapless::Untagged;
+        let dec = rodio::Decoder::builder()
+            .with_data(std::io::Cursor::new(data))
+            .with_gapless(true)
+            .build()
+            .ok()?;
+        let ch = (dec.channels().get() as usize).max(1);
+        let rate = dec.sample_rate().get();
+        struct Interleaved<D> {
+            dec: D,
+            ch: usize,
+        }
+        impl<D: Iterator<Item = f32>> Iterator for Interleaved<D> {
+            type Item = (f32, f32);
+            fn next(&mut self) -> Option<(f32, f32)> {
+                let a = self.dec.next()?;
+                let b = if self.ch >= 2 { self.dec.next().unwrap_or(a) } else { a };
+                for _ in 2..self.ch {
+                    self.dec.next();
+                }
+                Some((a, b))
+            }
+        }
+        Some(Frames::new(Box::new(Interleaved { dec, ch }), rate, trim))
+    }
+
+    /// Wraps a frame source; `trim` drops MP3 delay/padding silence.
+    pub fn new(src: Box<dyn Iterator<Item = (f32, f32)> + Send>, rate: u32, trim: bool) -> Self {
+        Frames { src, rate, trim, started: false, ahead: Default::default() }
+    }
+}
+
+impl Iterator for Frames {
+    type Item = (f32, f32);
+    fn next(&mut self) -> Option<(f32, f32)> {
+        if !self.started {
+            self.started = true;
+            if self.trim {
+                for _ in 0..MAX_LEAD {
+                    match self.src.next() {
+                        Some(f) if peak(f) < LEAD_SILENCE => {}
+                        Some(f) => {
+                            self.ahead.push_back(f);
+                            break;
+                        }
+                        None => return None,
+                    }
+                }
+            }
+        }
+        if let Some(f) = self.ahead.pop_front() {
+            return Some(f);
+        }
+        let f = self.src.next()?;
+        if !self.trim || peak(f) >= TAIL_SILENCE {
+            return Some(f);
+        }
+        // Silence: look ahead; if the stream ends within the window, it was padding.
+        let max_tail = (self.rate as usize / 2).max(1);
+        self.ahead.push_back(f);
+        while self.ahead.len() < max_tail {
+            match self.src.next() {
+                Some(g) => {
+                    self.ahead.push_back(g);
+                    if peak(g) >= TAIL_SILENCE {
+                        break;
+                    }
+                }
+                None => {
+                    self.ahead.clear();
+                    return None;
+                }
+            }
+        }
+        self.ahead.pop_front()
+    }
 }
 
 /// A sample generator producing stereo frames at a fixed rate.
@@ -324,23 +473,27 @@ impl Gen for PcmGen {
     }
 }
 
-/// Streams through a decoder (multimedia sounds: no full decode in memory).
+/// Streams through a decoder (multimedia sounds: no full decode up front).
+/// A looped stream records the frames of its first pass and plays every later
+/// pass from that recording, so the loop is sample-exact: no re-open, no
+/// re-decode, no gap.
 pub struct StreamGen {
-    data: Arc<[u8]>,
-    dec: Option<rodio::Decoder<std::io::Cursor<Arc<[u8]>>>>,
-    ch: usize,
+    src: Option<Frames>,
     rate: u32,
     looped: bool,
-    produced: bool,
+    /// First pass, recorded (looped only), interleaved stereo.
+    rec: Vec<f32>,
+    /// Position in `rec` once the stream has ended.
+    rec_pos: Option<usize>,
 }
 
 impl StreamGen {
     pub fn new(data: Arc<[u8]>, looped: bool) -> Option<Self> {
-        use rodio::Source;
-        let dec = rodio::Decoder::new(std::io::Cursor::new(data.clone())).ok()?;
-        let ch = dec.channels().get() as usize;
-        let rate = dec.sample_rate().get();
-        Some(StreamGen { data, dec: Some(dec), ch, rate, looped, produced: false })
+        Some(Self::from_frames(Frames::open(data)?, looped))
+    }
+
+    pub fn from_frames(src: Frames, looped: bool) -> Self {
+        StreamGen { rate: src.rate, src: Some(src), looped, rec: Vec::new(), rec_pos: None }
     }
 }
 
@@ -349,24 +502,40 @@ impl Gen for StreamGen {
         self.rate.max(1)
     }
     fn next(&mut self, _pitch: f64) -> Option<(f32, f32)> {
-        for _attempt in 0..2 {
-            if let Some(dec) = self.dec.as_mut() {
-                let a = dec.next();
-                if let Some(a) = a {
-                    let b = if self.ch >= 2 { dec.next().unwrap_or(a) } else { a };
-                    for _ in 2..self.ch {
-                        dec.next();
-                    }
-                    self.produced = true;
-                    return Some((a, b));
-                }
-            }
-            if !self.looped || !self.produced {
+        if let Some(p) = self.rec_pos {
+            let n = self.rec.len() / 2;
+            if n == 0 {
                 return None;
             }
-            self.dec = rodio::Decoder::new(std::io::Cursor::new(self.data.clone())).ok();
+            let i = if p < n { p } else { 0 };
+            self.rec_pos = Some(i + 1);
+            return Some((self.rec[2 * i], self.rec[2 * i + 1]));
         }
-        None
+        match self.src.as_mut().and_then(|s| s.next()) {
+            Some(f) => {
+                if self.looped {
+                    self.rec.push(f.0);
+                    self.rec.push(f.1);
+                }
+                Some(f)
+            }
+            None => {
+                self.src = None;
+                if !self.looped || self.rec.is_empty() {
+                    return None;
+                }
+                self.rec.shrink_to_fit();
+                if super::debug() {
+                    super::log(&format!(
+                        "stream looped: {} frames ({:.3} s) recorded, later passes play from memory",
+                        self.rec.len() / 2,
+                        (self.rec.len() / 2) as f64 / self.rate.max(1) as f64
+                    ));
+                }
+                self.rec_pos = Some(1);
+                Some((self.rec[0], self.rec[1]))
+            }
+        }
     }
 }
 
@@ -380,16 +549,37 @@ pub struct SynthGen {
     pos: usize,
     rate: u32,
     tail: usize,
+    /// Diagnostics: note-ons sent, blocks rendered, peak level since the last report.
+    notes: u64,
+    blocks: u64,
+    peak: f32,
 }
 
 impl SynthGen {
     pub const BLOCK: usize = 64;
     pub fn new(player: SeqPlayer, synth: rustysynth::Synthesizer, globals: Arc<Globals>, rate: u32) -> Self {
-        SynthGen { player, synth, globals, buf_l: vec![0.0; Self::BLOCK], buf_r: vec![0.0; Self::BLOCK], pos: Self::BLOCK, rate, tail: 0 }
+        SynthGen {
+            player,
+            synth,
+            globals,
+            buf_l: vec![0.0; Self::BLOCK],
+            buf_r: vec![0.0; Self::BLOCK],
+            pos: Self::BLOCK,
+            rate,
+            tail: 0,
+            notes: 0,
+            blocks: 0,
+            peak: 0.0,
+        }
     }
-    fn send(synth: &mut rustysynth::Synthesizer, o: Out) {
+    fn send(synth: &mut rustysynth::Synthesizer, notes: &mut u64, o: Out) {
         match o {
-            Out::Short(m, _) => synth.process_midi_message((m[0] & 0x0F) as i32, (m[0] & 0xF0) as i32, m[1] as i32, m[2] as i32),
+            Out::Short(m, _) => {
+                if m[0] & 0xF0 == 0x90 && m[2] > 0 {
+                    *notes += 1;
+                }
+                synth.process_midi_message((m[0] & 0x0F) as i32, (m[0] & 0xF0) as i32, m[1] as i32, m[2] as i32)
+            }
             Out::SysEx(_) => {}
             Out::LoopReset => {
                 synth.note_off_all(true);
@@ -414,13 +604,29 @@ impl Gen for SynthGen {
             } else {
                 let dt = Self::BLOCK as f64 / self.rate as f64 * self.globals.tempo();
                 let synth = &mut self.synth;
-                self.player.advance(dt, &mut |o| SynthGen::send(synth, o));
+                let notes = &mut self.notes;
+                self.player.advance(dt, &mut |o| SynthGen::send(synth, notes, o));
                 if self.player.finished {
                     self.synth.note_off_all(false);
                 }
             }
             self.synth.render(&mut self.buf_l, &mut self.buf_r);
             self.pos = 0;
+            if super::debug() {
+                self.blocks += 1;
+                let p = self.buf_l.iter().chain(self.buf_r.iter()).fold(0f32, |m, x| m.max(x.abs()));
+                self.peak = self.peak.max(p);
+                // every 2 s of audio
+                if self.blocks % (self.rate as u64 * 2 / Self::BLOCK as u64).max(1) == 0 {
+                    super::log(&format!(
+                        "MIDI synth: {:.1} s rendered, {} note-ons so far, peak level {:.3} in the last 2 s",
+                        (self.blocks * Self::BLOCK as u64) as f64 / self.rate as f64,
+                        self.notes,
+                        self.peak
+                    ));
+                    self.peak = 0.0;
+                }
+            }
             if self.player.finished && self.tail > 0 {
                 let peak = self.buf_l.iter().chain(self.buf_r.iter()).fold(0f32, |m, x| m.max(x.abs()));
                 if peak < 3.2e-5 {
@@ -747,5 +953,113 @@ mod tests {
         }
         assert!(n > 300, "echo tail rendered ({} frames)", n);
         assert!(st.is_done());
+    }
+
+    /// 16-bit stereo WAV whose every frame is distinct (a ramp per channel).
+    fn ramp_wav(frames: usize) -> (Vec<u8>, Vec<(f32, f32)>) {
+        let mut pcm = Vec::new();
+        let mut expect = Vec::new();
+        for i in 0..frames {
+            let l = (i as i32 * 7 % 30000 - 15000) as i16;
+            let r = (15000 - i as i32 * 3 % 30000) as i16;
+            pcm.extend_from_slice(&l.to_le_bytes());
+            pcm.extend_from_slice(&r.to_le_bytes());
+            expect.push((l as f32 / 32768.0, r as f32 / 32768.0));
+        }
+        let mut v = Vec::new();
+        v.extend_from_slice(b"RIFF");
+        v.extend_from_slice(&(36 + pcm.len() as u32).to_le_bytes());
+        v.extend_from_slice(b"WAVEfmt ");
+        v.extend_from_slice(&16u32.to_le_bytes());
+        v.extend_from_slice(&1u16.to_le_bytes());
+        v.extend_from_slice(&2u16.to_le_bytes());
+        v.extend_from_slice(&22050u32.to_le_bytes());
+        v.extend_from_slice(&(22050u32 * 4).to_le_bytes());
+        v.extend_from_slice(&4u16.to_le_bytes());
+        v.extend_from_slice(&16u16.to_le_bytes());
+        v.extend_from_slice(b"data");
+        v.extend_from_slice(&(pcm.len() as u32).to_le_bytes());
+        v.extend_from_slice(&pcm);
+        (v, expect)
+    }
+
+    fn close(a: (f32, f32), b: (f32, f32)) -> bool {
+        (a.0 - b.0).abs() < 1e-4 && (a.1 - b.1).abs() < 1e-4
+    }
+
+    /// A looped sound repeats its decoded frames back to back: frame k of the
+    /// output is frame k mod N of the sound, across every loop boundary (no
+    /// missing, extra or repeated samples), for streamed and decoded playback.
+    #[test]
+    fn looping_is_sample_continuous() {
+        let n = 1500;
+        let (wav, expect) = ramp_wav(n);
+        let data: Arc<[u8]> = wav.into();
+        let pcm = Arc::new(decode(data.clone()).unwrap());
+        assert_eq!(pcm.frames(), n);
+        let mut gens: Vec<(&str, Box<dyn Gen>)> = vec![
+            ("stream", Box::new(StreamGen::new(data.clone(), true).unwrap())),
+            ("pcm", Box::new(PcmGen { pcm, pos: 0.0, looped: true })),
+        ];
+        for (name, g) in gens.iter_mut() {
+            for k in 0..n * 4 + 17 {
+                let f = g.next(1.0).unwrap_or_else(|| panic!("{name}: ended at frame {k}"));
+                assert!(close(f, expect[k % n]), "{name}: frame {k}: {f:?} != {:?}", expect[k % n]);
+            }
+        }
+        // not looped: exactly N frames
+        let mut g = StreamGen::new(data, false).unwrap();
+        assert_eq!(std::iter::from_fn(|| g.next(1.0)).count(), n);
+    }
+
+    fn tone(i: usize) -> (f32, f32) {
+        let t = i as f32 * 0.05;
+        (0.5 + 0.25 * t.sin(), -0.5 + 0.25 * t.cos())
+    }
+
+    /// MP3 without gapless info: the encoder delay (near-silence) at the start
+    /// and the padding (digital silence) at the end are dropped, so the loop
+    /// period is the music alone; silence inside the music is kept.
+    #[test]
+    fn untagged_mp3_delay_and_padding_trimmed() {
+        let mut src: Vec<(f32, f32)> = (0..1105).map(|i| (1e-6 * (i % 3) as f32, 0.0)).collect();
+        src.extend((0..3000).map(tone));
+        src.extend(std::iter::repeat((0.0, 0.0)).take(16224));
+        let frames = || Frames::new(Box::new(src.clone().into_iter()), 44100, true);
+        let out: Vec<(f32, f32)> = frames().collect();
+        assert_eq!(out.len(), 3000);
+        assert!(out.iter().enumerate().all(|(i, &f)| f == tone(i)));
+        let mut g = StreamGen::from_frames(frames(), true);
+        for k in 0..10_000 {
+            assert_eq!(g.next(1.0), Some(tone(k % 3000)), "frame {k}");
+        }
+        // untrimmed (other formats): everything is played
+        assert_eq!(Frames::new(Box::new(src.clone().into_iter()), 44100, false).count(), src.len());
+        // a long rest inside the music stays
+        let mut mid: Vec<(f32, f32)> = (0..100).map(tone).collect();
+        mid.extend(std::iter::repeat((0.0, 0.0)).take(30_000));
+        mid.extend((0..100).map(tone));
+        mid.extend(std::iter::repeat((0.0, 0.0)).take(500));
+        assert_eq!(Frames::new(Box::new(mid.into_iter()), 44100, true).count(), 30_200);
+    }
+
+    #[test]
+    fn mp3_gapless_tag_sniffing() {
+        // MPEG-1 layer III, 128 kbit/s, 44.1 kHz, joint stereo, no CRC: 32 bytes of side info
+        let mut frame = vec![0xff, 0xfb, 0x90, 0x64];
+        frame.extend([0u8; 32]);
+        let mut tagged = frame.clone();
+        tagged.extend_from_slice(b"Info");
+        tagged.extend([0u8; 100]);
+        let mut plain = frame.clone();
+        plain.extend([0x55u8; 104]);
+        let mut id3 = b"ID3\x04\x00\x00\x00\x00\x00\x05".to_vec();
+        id3.extend([0u8; 5]);
+        id3.extend_from_slice(&tagged);
+        assert_eq!(mp3_gapless(&tagged), Mp3Gapless::Tagged);
+        assert_eq!(mp3_gapless(&id3), Mp3Gapless::Tagged);
+        assert_eq!(mp3_gapless(&plain), Mp3Gapless::Untagged);
+        assert_eq!(mp3_gapless(&ramp_wav(10).0), Mp3Gapless::NotMp3);
+        assert_eq!(mp3_gapless(b"OggS\x00\x02"), Mp3Gapless::NotMp3);
     }
 }

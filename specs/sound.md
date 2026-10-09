@@ -35,6 +35,17 @@ Detect by content, not extension:
   friendlier and harmless).
 * DirectMusic segments (`.sgt`) — not supported: the sound exists but plays nothing
   and `sound_isplaying` is false.
+* **Gapless looping (implementation choice).** A looped sound repeats its decoded
+  samples back to back, sample-exactly: decode once (streamed sounds record their
+  first pass and play later passes from memory), never re-open the file per loop,
+  no fade at the loop point. MP3 adds silence of its own: the encoder delay at the
+  start (576 samples for LAME, plus the decoder's 529) and padding at the end. When
+  the first frame has a Xing/Info (LAME) tag its delay/padding fields are trimmed
+  exactly. Without that tag: drop leading near-silence (below −80 dB, at most
+  576 + 529 + 1152 samples) and trailing digital silence (below one 16-bit step,
+  at most 0.5 s). Example: Studio-converted Spelunky Classic music (LAME 3.98.2, no
+  Info tag) decodes to ~25 ms of delay plus ~370 ms of trailing digital silence,
+  which made an audible gap at each loop; trimmed, `mCave` is 96.02 s.
 
 ---
 

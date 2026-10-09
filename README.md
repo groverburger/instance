@@ -58,7 +58,9 @@ Sound: MIDI music plays through the Windows synthesiser (midiOut). Elsewhere (ma
 Linux), or
 with `INSTANCE_MIDI=soundfont`, it is rendered with a SoundFont looked up from
 `INSTANCE_SOUNDFONT`, then `<runner dir>/soundfonts/default.sf2`, then common system
-locations (none is shipped). `INSTANCE_AUDIO_DEBUG=1` logs MIDI activity.
+locations (none is in the repository: `scripts/fetch-soundfont.sh` / `.ps1` downloads
+GeneralUser GS, a freely redistributable General MIDI SoundFont, to `web/soundfonts/`;
+copy `default.sf2` from there next to the runner or point `INSTANCE_SOUNDFONT` at it). `INSTANCE_AUDIO_DEBUG=1` logs MIDI activity.
 Joysticks are read with gilrs (`INSTANCE_JOYSTICK=0` disables, `INSTANCE_JOY_DPAD_AS_STICK=1`,
 `INSTANCE_JOY_RAW=1`); `--input` also accepts `STEP:joy1:button:N:down|up`,
 `STEP:joy1:axis:x|y|z|r|u|v:VALUE`, `STEP:joy1:pov:ANGLE`, `STEP:joy1:connect|disconnect`.
@@ -135,7 +137,9 @@ HTTP, not opened as files).
   `show_message`/`show_question`/`get_string` use the browser's `alert`/`confirm`/`prompt`.
   Files written by the game (`file_*`, `ini_*`, saves, highscores, registry) live in a
   virtual file system stored in `localStorage` per game id.
-- **MIDI**: put a General MIDI SoundFont at `web/soundfonts/default.sf2` (ignored by git) or
+- **MIDI**: run `scripts/fetch-soundfont.sh` (or `.ps1`) to download GeneralUser GS
+  (S. Christian Collins, ~32 MB, free to redistribute; checksum-verified) to
+  `web/soundfonts/default.sf2` (ignored by git), or put another General MIDI SoundFont there, or
   set `INSTANCE_SOUNDFONT=/path/file.sf2` when running the build script; it is copied to
   `dist/web/soundfonts/default.sf2`. `?soundfont=URL` overrides it. Without one, MIDI music
   is silent and the console says so.

@@ -16,7 +16,8 @@
 //!        `/usr/share/soundfonts/default.sf2`, `/usr/share/soundfonts/FluidR3_GM.sf2`,
 //!        `~/Library/Audio/Sounds/Banks/default.sf2`).
 //!
-//!   No SoundFont ships with Instance. Without one MIDI is silent but
+//!   No SoundFont is in the repository (scripts/fetch-soundfont.* downloads
+//!   GeneralUser GS; the web build bundles it). Without one MIDI is silent but
 //!   `sound_isplaying` follows the logical state.
 //! * Without an audio device (or in headless runs) every call succeeds and
 //!   `sound_isplaying` follows the logical state (sound length in real time).
@@ -39,13 +40,30 @@ use voice::{Globals, Pcm, Sound3d, SoundCtl, VoiceState};
 /// Maximum simultaneous PCM voices (§2).
 pub const MAX_VOICES: usize = 128;
 
+static DEBUG_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Turns on audio diagnostics (the web player's `?audiodebug`; elsewhere
+/// `INSTANCE_AUDIO_DEBUG=1`).
+pub fn set_debug(on: bool) {
+    DEBUG_ON.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 pub(crate) fn debug() -> bool {
     static D: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *D.get_or_init(|| instance_brand::appdirs::env_var("AUDIO_DEBUG").map(|v| v != "0").unwrap_or(false))
+    DEBUG_ON.load(std::sync::atomic::Ordering::Relaxed)
+        || *D.get_or_init(|| instance_brand::appdirs::env_var("AUDIO_DEBUG").map(|v| v != "0").unwrap_or(false))
+}
+
+/// Writes one diagnostic line (stderr; the browser console on the web).
+pub(crate) fn log(msg: &str) {
+    #[cfg(target_arch = "wasm32")]
+    web_sys::console::log_1(&format!("audio: {msg}").into());
+    #[cfg(not(target_arch = "wasm32"))]
+    eprintln!("audio: {msg}");
 }
 
 macro_rules! alog {
-    ($($t:tt)*) => { if debug() { eprintln!("audio: {}", format!($($t)*)); } };
+    ($($t:tt)*) => { if debug() { log(&format!($($t)*)); } };
 }
 
 /// Sound kind clamped to 0..3 (§7: out of range → 0).
@@ -513,6 +531,13 @@ impl Audio {
                 }
             }
         } else if self.device().is_some() {
+            alog!(
+                "sound {}: {} PCM, kind {}{}",
+                idx,
+                if kind == 3 { "streamed" } else { "decoded" },
+                kind,
+                if looped { ", looped" } else { "" }
+            );
             let gen: Option<Box<dyn voice::Gen>> = if kind == 3 {
                 voice::StreamGen::new(data.clone(), looped).map(|g| Box::new(g) as Box<dyn voice::Gen>)
             } else {

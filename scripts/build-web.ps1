@@ -30,16 +30,18 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "wasm-bindgen failed for $name" }
     }
     Copy-Item -Force web\*.html, web\*.js $Out
-    # optional SoundFont for MIDI: $env:INSTANCE_SOUNDFONT ($env:GM81_SOUNDFONT) or web\soundfonts\default.sf2 (ignored by version control)
+    # optional SoundFont for MIDI: $env:INSTANCE_SOUNDFONT ($env:GM81_SOUNDFONT) or web\soundfonts\default.sf2
+    # (ignored by version control; scripts\fetch-soundfont.ps1 downloads GeneralUser GS there)
     $sf = if ($env:INSTANCE_SOUNDFONT) { $env:INSTANCE_SOUNDFONT } elseif ($env:GM81_SOUNDFONT) { $env:GM81_SOUNDFONT } elseif (Test-Path web\soundfonts\default.sf2) { "web\soundfonts\default.sf2" } else { $null }
     if ($sf) {
         New-Item -ItemType Directory -Force (Join-Path $Out "soundfonts") | Out-Null
         Copy-Item -Force $sf (Join-Path $Out "soundfonts\default.sf2")
+        Get-ChildItem (Join-Path (Split-Path -Parent $sf) "LICENSE*.txt") | Copy-Item -Force -Destination (Join-Path $Out "soundfonts")
         Set-Content -Encoding ascii (Join-Path $Out "config.js") 'window.INSTANCE_SOUNDFONT = "soundfonts/default.sf2";'
         Write-Host "SoundFont: $sf"
     } else {
         Set-Content -Encoding ascii (Join-Path $Out "config.js") 'window.INSTANCE_SOUNDFONT = null;'
-        Write-Host "no SoundFont bundled: MIDI music will be silent (set INSTANCE_SOUNDFONT to a .sf2 file)"
+        Write-Host "no SoundFont bundled: MIDI music will be silent (run scripts\fetch-soundfont.ps1 or set INSTANCE_SOUNDFONT to a .sf2 file)"
     }
     Write-Host "web build ready in $Out  (serve: python -m http.server -d $Out 8000)"
 } finally {

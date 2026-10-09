@@ -41,6 +41,12 @@ pub fn set_soundfont(data: Vec<u8>) {
     crate::audio::set_soundfont_bytes(data);
 }
 
+/// Logs audio diagnostics (MIDI backend, synthesiser activity) to the console.
+#[wasm_bindgen]
+pub fn set_audio_debug(on: bool) {
+    crate::audio::set_debug(on);
+}
+
 /// Dialogs through the browser's blocking `alert` / `confirm` / `prompt`.
 struct WebUi {
     title: Rc<RefCell<String>>,
