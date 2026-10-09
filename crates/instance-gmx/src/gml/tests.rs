@@ -206,3 +206,18 @@ fn eight_one_quirks_parse() {
         assert_eq!(t.code, src);
     }
 }
+
+#[test]
+fn outer_block_followed_by_code_is_wrapped() {
+    let src = "{ var __gmx_t0; __gmx_t0 = 1; }\r\nx = __gmx_t0;";
+    assert_eq!(wrap_outer_block(src).unwrap(), format!("{{ {src}\r\n}}"));
+    // A lone outer block (comments after it are fine), or code not starting with `{`.
+    assert!(wrap_outer_block("{ a = 1 } // done\r\n").is_none());
+    assert!(wrap_outer_block("a = 1; { b = 2 } c = 3").is_none());
+    assert!(wrap_outer_block("{ a = 1 { b } } ;").is_some());
+}
+
+#[test]
+fn crlf_line_endings() {
+    assert_eq!(to_crlf("a\nb\r\nc\rd\n"), "a\r\nb\r\nc\r\nd\r\n");
+}

@@ -180,7 +180,17 @@ call        = identifier "(" [ expr { "," expr } ] ")" ;
 Notes:
 1. **Program braces.** The manual describes a program as `{ … }`, but code without
    outer braces is accepted (the manual's own examples omit them). A program is
-   simply a statement list; an outer block is just a block.
+   simply a statement list; an outer block is just a block — with one exception:
+   if the **first token** of the code is `{`, that block is taken as the whole
+   program, and any token after its matching `}` (even a lone `;`) is the compile
+   error "Program ends before end of the code.", reported at the line/position of
+   that first following token. Comments and whitespace after the `}` are fine.
+   VERIFIED black-box in GM 8.1: a code action beginning `{ var __gmx_t0; … }`
+   followed by more statements failed with that message at line 9 position 1
+   (the first token after the block). Code that starts with anything else
+   (`;`, a statement, `begin`) may contain any number of blocks.
+   UNSPECIFIED – implementation choice: `begin` as the first token is NOT treated
+   this way (not observed).
 2. **Semicolons are optional.** Statements may be separated by `;` or by nothing.
    Extra `;` are empty statements. `;` may appear before `else` (`if a b=1; else b=2`).
    The parser must therefore determine statement ends from the grammar alone; this

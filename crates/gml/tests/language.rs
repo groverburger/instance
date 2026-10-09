@@ -120,7 +120,12 @@ fn no_short_circuit() {
 #[test]
 fn optional_syntax() {
     assert_eq!(real("a = 1 b = 2 return a + b"), 3.0);
-    assert_eq!(real("{ a = 1; b = 2; }; ; return a + b;"), 3.0);
+    assert_eq!(real("; { a = 1; b = 2; }; ; return a + b;"), 3.0);
+    assert_eq!(real("{ a = 1; b = 2; return a + b; }"), 3.0);
+    // Code starting with `{` is one outer block (spec §3 note 1, VERIFIED).
+    let e = compile_err("{ a = 1; b = 2; }; ; return a + b;");
+    assert_eq!(e.message, "Program ends before end of the code.");
+    assert_eq!((e.line, e.col), (1, 18));
     assert_eq!(real("begin a = 5 end return a"), 5.0);
     assert_eq!(real("a = 1 if a = 1 then b = 2 else b = 3 return b"), 2.0);
     assert_eq!(real("a = 0 if a b = 2; else b = 3; return b"), 3.0);

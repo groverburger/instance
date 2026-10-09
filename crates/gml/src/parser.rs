@@ -11,8 +11,17 @@ const MAX_DEPTH: u32 = 160;
 pub fn parse_program(src: &[u8]) -> Result<Vec<Stmt>, CompileError> {
     let mut p = Parser::new(src)?;
     let mut out = Vec::new();
+    // Spec §3 note 1: code whose first token is `{` is the program's single outer
+    // block; any token after its matching `}` is an error (VERIFIED black-box).
+    let outer_block = p.peek() == &Tok::LBrace;
     while p.peek() != &Tok::Eof {
         out.push(p.statement()?);
+        if outer_block && p.peek() != &Tok::Eof {
+            return Err(CompileError::new(
+                "Program ends before end of the code.",
+                p.span(),
+            ));
+        }
     }
     Ok(out)
 }
@@ -585,6 +594,25 @@ mod tests {
     }
     fn pe(s: &str) -> String {
         show(&parse_expression(s.as_bytes()).unwrap())
+    }
+
+    #[test]
+    fn outer_block_must_be_whole_program() {
+        // VERIFIED black-box (spec §3 note 1): reported at the first token after the block.
+        let e = perr("{ var t; t = 1 }\r\nx = 2");
+        assert_eq!(e.message, "Program ends before end of the code.");
+        assert_eq!((e.line, e.col), (2, 1));
+        let e = perr("{ a = 1 } ;");
+        assert_eq!(e.message, "Program ends before end of the code.");
+        assert_eq!((e.line, e.col), (1, 11));
+        // A block that is not the first token, or a lone outer block, is fine.
+        p("{ a = 1 }");
+        p("{ a = 1 }\r\n// trailing comment\r\n");
+        p("a = 0 { a = 1 } b = 2");
+        p("; { a = 1 } b = 2");
+        p("begin a = 1 end b = 2");
+        // Errors inside the block still win.
+        assert_ne!(perr("{ a = } b = 1").message, "Program ends before end of the code.");
     }
 
     #[test]

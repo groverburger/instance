@@ -325,7 +325,11 @@ fn check(p: &Project, warnings: &[instance_gmx::Warning]) {
     assert_eq!(room.instances[3].object, ctrl_i as i32);
     let cc = &room.instances[0].creation_code;
     assert!(cc.starts_with("image_xscale = 2;image_angle = 45;image_blend = 255;"), "{cc}");
-    assert!(cc.contains("event_perform(ev_other, ev_user14); __gmx_cc_done = true;\nspeed = 8;"), "{cc}");
+    assert!(cc.contains("event_perform(ev_other, ev_user14); __gmx_cc_done = true;\r\nspeed = 8;"), "{cc}");
+    // All code uses CR LF line endings, like GM-saved code.
+    let lone_lf = |c: &str| c.replace("\r\n", "").contains('\n');
+    assert!(!p.scripts.iter().flatten().any(|s| lone_lf(&s.code)));
+    assert!(!p.rooms.iter().flatten().any(|r| lone_lf(&r.creation_code) || r.instances.iter().any(|i| lone_lf(&i.creation_code))));
     assert_eq!(room.tiles.len(), 1);
     assert_eq!((room.tiles[0].tile_x, room.tiles[0].background), (16, 0));
 

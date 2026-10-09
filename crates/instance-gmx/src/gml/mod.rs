@@ -1013,5 +1013,51 @@ impl Ctx<'_> {
     }
 }
 
+/// GM 8.1 takes code whose first token is `{` as one outer block and rejects any
+/// token after its matching `}` ("Program ends before end of the code.", spec
+/// gml-language.md §3 note 1). When `code` (GM 8.1 syntax) has that shape, returns
+/// it wrapped in one more block; the `{` goes on the first line so line numbers
+/// are unchanged.
+pub fn wrap_outer_block(code: &str) -> Option<String> {
+    let toks = lexer::lex(code).ok()?;
+    if toks.first().map(|t| &t.tok) != Some(&lexer::Tok::Op("{")) {
+        return None;
+    }
+    let mut depth = 0usize;
+    for (i, t) in toks.iter().enumerate() {
+        match t.tok {
+            lexer::Tok::Op("{") => depth += 1,
+            lexer::Tok::Op("}") => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    let rest = toks[i + 1..].iter().any(|t| t.tok != lexer::Tok::Eof);
+                    return rest.then(|| format!("{{ {code}\r\n}}"));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Converts all line breaks (`\r\n`, `\n`, lone `\r`) to CR LF, as GM-saved code has.
+pub fn to_crlf(code: &str) -> String {
+    let mut out = String::with_capacity(code.len() + code.len() / 16);
+    let mut it = code.chars().peekable();
+    while let Some(c) = it.next() {
+        match c {
+            '\r' => {
+                if it.peek() == Some(&'\n') {
+                    it.next();
+                }
+                out.push_str("\r\n");
+            }
+            '\n' => out.push_str("\r\n"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests;

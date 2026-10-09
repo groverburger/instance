@@ -436,6 +436,18 @@ pub fn convert(mut l: Loaded, opts: &Options) -> (Project, Vec<Warning>) {
     if let Some(v) = opts.uninit_as_zero {
         p.settings.treat_uninitialized_as_zero = v;
     }
+    // 9. GM 8.1 shape of every code piece: no outer block followed by more code
+    // (a compile error in GM 8.1), CR LF line endings.
+    visit_code(&mut p, &mut extra, &mut |_, code, kind| {
+        if kind == CodeKind::Program {
+            if let Some(w) = gml::wrap_outer_block(code) {
+                *code = w;
+            }
+        }
+        if code.contains('\n') || code.contains('\r') {
+            *code = gml::to_crlf(code);
+        }
+    });
     p.resource_tree = crate::loader::build_tree(&l, &p);
     (p, warnings)
 }
