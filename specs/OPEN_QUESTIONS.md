@@ -791,3 +791,13 @@ and 72 of 75 bb_instances keys.
   - Keyboard / mouse phase order: instance-runner assumes object-major as for Step.
     Proposed test: two objects with Keyboard <K> events whose instances are placed in
     reverse object order, key press simulated the step before.
+
+## [SURF] Surface target across the automatic draw (runtime.md §14.1, 2026-10-09)
+
+- SURF-1: When a surface is still the drawing target as the automatic draw begins
+  (set in End Step, not reset), GM 7/8-era games (Spelunky 1.1, ChevyRay's view-scaling
+  scripts) evidently get the room drawn into that surface with each view mapped onto the
+  whole surface even though the port (e.g. 960x720) is larger than the surface (320x240).
+  Recommended behaviour recorded in runtime.md §14.1. Open: exact mapping when the port
+  fits inside the surface or only partly overlaps it, whether the back buffer is cleared,
+  and what happens with several views. Pro-only (surfaces), so not testable with Lite.
