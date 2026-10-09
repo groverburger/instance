@@ -806,8 +806,12 @@ that must run in the Lite IDE must avoid Standard-only features. Our evidence:
   `execute_string`, `keyboard_key_press`, sounds, timelines, triggers, paths, views,
   `random*`.
 
-Exactly what a Standard-only call does in Lite (error vs no-op) is not recorded in our
-specs; assume it fails. **Instance has no editions** — everything works there, so
+Observed directly in GM 8.1 Lite: calling a Standard-only function is a run-time
+ERROR (non-fatal) with the message `This function is not available in the Lite
+Edition.` (seen for `ds_list_create`), and *writing* a Standard-only variable raises
+`image_blend: This variable is not available in the Lite Edition.` every time it is
+assigned (seen for `image_blend` in a collision event — so it floods the error log).
+Assume every other Standard-only feature fails the same way. **Instance has no editions** — everything works there, so
 test Lite compatibility by reviewing the code (grep for `ds_`, `surface_`, `d3d_`,
 `part_`, `effect_`, `draw_set_blend_mode`, `external_`, `mplay_`, `image_angle`,
 `image_blend`, `draw_sprite_ext`, `draw_self`) or in the real GM.
