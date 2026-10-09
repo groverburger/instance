@@ -1174,6 +1174,16 @@ backgrounds, tiles `[302_01]` (same flag as `texture_set_interpolation`).
 * Changing the target inside Draw events is discouraged by the manual (projection
   problems); a clean-room implementation should nonetheless support it correctly by
   saving and restoring the projection.
+* **UNSPECIFIED – recommended** (Pro-only, not black-box testable with Lite; required
+  by GM 7/8-era "view scaling" scripts, e.g. Spelunky 1.1, which set a surface as the
+  target in End Step and show it in Begin Step with `draw_surface_stretched` +
+  `screen_refresh`): a surface that is still the target when the automatic draw
+  begins receives the whole room draw instead of the screen. The back buffer is not
+  cleared or drawn to; the surface is cleared with the outside-room colour first. Each
+  view's port is used inside the surface when it fits; a port that does not fit
+  inside the surface maps the view onto the whole surface. The target remains set
+  after the draw. Drawing in Draw events uses the view transform while that surface is
+  the target; `surface_reset_target` there goes to the back buffer.
 * `surface_getpixel`, `surface_save[_part]` (PNG), `surface_get_texture`,
   `draw_surface*` (same family as sprites), `surface_copy[_part]` (no blending).
 

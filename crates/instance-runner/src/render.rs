@@ -19,6 +19,10 @@ pub struct Gfx {
     pub surfaces: Vec<Option<(u32, u32)>>,
     /// -1 = back buffer.
     pub target: i32,
+    /// Where the automatic draw renders: -1 = back buffer, else a surface that
+    /// was the target when the draw began (runtime.md §14.1). While `target`
+    /// equals it, drawing uses the view transform (`pass_xf`, `pass_clip`).
+    pub pass_target: i32,
     pub pass_xf: Xf,
     pub pass_clip: Clip,
     pub color: i32,
@@ -76,6 +80,7 @@ impl Gfx {
             be,
             surfaces: Vec::new(),
             target: -1,
+            pass_target: -1,
             pass_xf: Xf::IDENTITY,
             pass_clip: Clip { x0: 0, y0: 0, x1: 640, y1: 480 },
             color: 0,
@@ -138,6 +143,9 @@ impl Gfx {
 
     /// Target of the current drawing, with its transform and clip.
     fn current(&self) -> (Target, Xf, Clip, bool) {
+        if self.target >= 0 && self.target == self.pass_target && self.surface_size(self.target).is_some() {
+            return (Target::Surface(self.target), self.pass_xf, self.pass_clip, false);
+        }
         if let Some((w, h)) = self.surface_size(self.target) {
             return (Target::Surface(self.target), Xf::IDENTITY, Clip { x0: 0, y0: 0, x1: w as i32, y1: h as i32 }, true);
         }
@@ -661,7 +669,7 @@ impl Game {
         self.gfx.d3d.proj = crate::d3d::Proj::Default;
         self.gfx.d3d.depth = 0.0;
         if self.gfx.d3d.on {
-            self.gfx.be.set_target(Target::Back);
+            self.gfx.be.set_target(self.pass_backend_target());
             self.gfx.be.clear_depth();
         }
         if self.rs.show_color {
@@ -778,12 +786,43 @@ impl Game {
     }
 
     /// Renders the whole frame into the back buffer (§13.1).
+    /// Backend target of the automatic draw.
+    fn pass_backend_target(&self) -> Target {
+        if self.gfx.pass_target >= 0 {
+            Target::Surface(self.gfx.pass_target)
+        } else {
+            Target::Back
+        }
+    }
+
     pub fn draw_frame(&mut self, vm: &mut Vm) -> Result<(), Error> {
         let saved_target = self.gfx.target;
-        self.gfx.target = -1;
+        // A surface still set as the target when the draw begins (set outside the
+        // Draw event and not reset) receives the whole room draw instead of the
+        // screen (runtime.md §14.1); the back buffer is left untouched.
+        let into = self.gfx.surface_size(saved_target).map(|(w, h)| (saved_target, w, h));
+        self.gfx.target = into.map_or(-1, |s| s.0);
+        self.gfx.pass_target = self.gfx.target;
+        let r = self.draw_frame_into(vm, into);
+        self.gfx.pass_target = -1;
+        self.gfx.target = if saved_target >= 0 { saved_target } else { -1 };
+        r
+    }
+
+    fn draw_frame_into(&mut self, vm: &mut Vm, into: Option<(i32, u32, u32)>) -> Result<(), Error> {
         let outside = rgba8(self.settings.color_outside_room as i32, 1.0);
-        let full = self.gfx.back_clip();
-        self.gfx.be.set_target(Target::Back);
+        let (full, region) = match into {
+            Some((_, w, h)) => (Clip { x0: 0, y0: 0, x1: w as i32, y1: h as i32 }, (w, h)),
+            None => (self.gfx.back_clip(), (self.region_w, self.region_h)),
+        };
+        // a view port that does not fit inside the surface maps onto the whole surface
+        let port_of = |x: f64, y: f64, w: f64, h: f64| -> (f64, f64, f64, f64) {
+            match into {
+                Some((_, sw, sh)) if x < 0.0 || y < 0.0 || x + w > sw as f64 || y + h > sh as f64 => (0.0, 0.0, sw as f64, sh as f64),
+                _ => (x, y, w, h),
+            }
+        };
+        self.gfx.be.set_target(self.pass_backend_target());
         self.gfx.be.clear(full, outside, true);
         self.gfx.d3d.saved_proj = None;
         let use_views = self.rs.views_enabled && self.rs.views.iter().any(|v| v.visible);
@@ -792,7 +831,8 @@ impl Game {
                 if !self.rs.views[v].visible {
                     continue;
                 }
-                let vs = self.rs.views[v].clone();
+                let mut vs = self.rs.views[v].clone();
+                (vs.xport, vs.yport, vs.wport, vs.hport) = port_of(vs.xport, vs.yport, vs.wport, vs.hport);
                 self.rs.view_current = v as i32;
                 self.gfx.pass_xf = Xf::view(
                     vs.xview, vs.yview, vs.wview, vs.hview, vs.angle, vs.xport, vs.yport, vs.wport, vs.hport,
@@ -821,14 +861,14 @@ impl Game {
                 let r = self.draw_pass(vm, area);
                 if r.is_err() || self.pending.is_some() {
                     self.gfx.pass_xf = Xf::IDENTITY;
-                    self.gfx.pass_clip = full;
+                    self.gfx.pass_clip = self.gfx.back_clip();
                     return r;
                 }
             }
         } else {
             self.rs.view_current = 0;
-            let sx = self.region_w as f64 / self.rs.width.max(1) as f64;
-            let sy = self.region_h as f64 / self.rs.height.max(1) as f64;
+            let sx = region.0 as f64 / self.rs.width.max(1) as f64;
+            let sy = region.1 as f64 / self.rs.height.max(1) as f64;
             self.gfx.pass_xf = Xf {
                 a: sx,
                 b: 0.0,
@@ -847,16 +887,15 @@ impl Game {
                 angle: 0.0,
                 px: 0.0,
                 py: 0.0,
-                pw: self.region_w as f64,
-                ph: self.region_h as f64,
+                pw: region.0 as f64,
+                ph: region.1 as f64,
             };
             let area = (0.0, 0.0, rw, rh);
             self.draw_pass(vm, area)?;
         }
         // drawing outside the draw event uses plain room coordinates
         self.gfx.pass_xf = Xf::IDENTITY;
-        self.gfx.pass_clip = full;
-        self.gfx.target = if saved_target >= 0 { saved_target } else { -1 };
+        self.gfx.pass_clip = self.gfx.back_clip();
         Ok(())
     }
 
@@ -944,7 +983,7 @@ impl Game {
     /// `surface_set_target`: installs the surface's orthographic projection,
     /// remembering the pass projection (d3d.md §5.5).
     pub fn set_surface_target(&mut self, id: i32) {
-        if self.gfx.target < 0 {
+        if self.gfx.target < 0 || self.gfx.target == self.gfx.pass_target {
             self.gfx.d3d.saved_proj = Some(self.gfx.d3d.proj);
         }
         self.gfx.d3d.proj = crate::d3d::Proj::Default;
@@ -957,7 +996,7 @@ impl Game {
 
     /// `surface_reset_target`: back to the back buffer and the pass projection.
     pub fn reset_surface_target(&mut self) {
-        if self.gfx.target >= 0 {
+        if self.gfx.target >= 0 && self.gfx.target != self.gfx.pass_target {
             if let Some(p) = self.gfx.d3d.saved_proj.take() {
                 self.gfx.d3d.proj = p;
             }

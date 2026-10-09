@@ -435,6 +435,58 @@ fn surfaces_and_blend_modes() {
     assert_eq!(img.get(110, 102)[..3], [255, 0, 0]);
 }
 
+/// A surface left as the target from End Step receives the automatic room draw
+/// (views mapped onto the whole surface when the port does not fit); the screen
+/// shows what Begin Step drew (GM 8.0-era view-scaling scripts, e.g. Spelunky).
+#[test]
+fn automatic_draw_into_surface_target() {
+    let mut b = B::new();
+    let s = b.sprite(square(8, 8));
+    let o = b.object("o", s, vec![]);
+    let c = b.object(
+        "c",
+        -1,
+        vec![
+            event(3, 2, "if (!variable_global_exists('s')) global.s = surface_create(100, 75); surface_set_target(global.s);"),
+            event(
+                3,
+                1,
+                "if (variable_global_exists('s')) { surface_set_target(global.s); draw_set_color(c_lime); \
+                 draw_rectangle(0, 0, 3, 3, false); surface_reset_target(); draw_clear(c_blue); \
+                 draw_surface_stretched(global.s, 0, 0, 400, 300); global.px = surface_getpixel(global.s, 12, 12); }",
+            ),
+        ],
+    );
+    let r = b.room(&[(o, 60, 60), (c, 0, 0)]);
+    {
+        let rm = b.p.rooms[r as usize].as_mut().unwrap();
+        rm.views_enabled = true;
+        rm.views[0] = fmt::View {
+            visible: true,
+            view_x: 50,
+            view_y: 50,
+            view_w: 100,
+            view_h: 75,
+            port_w: 400,
+            port_h: 300,
+            follow_object: -1,
+            ..Default::default()
+        };
+        rm.background_color = 0x00C0C0C0;
+        rm.draw_background_color = true;
+    }
+    let (mut g, mut vm) = b.start();
+    run(&mut g, &mut vm, 3);
+    // the instance at (60,60) lands at (10,10) in the surface
+    assert_eq!(greal(&mut vm, "px"), 0x0000FF as f64);
+    let img = g.frame_image();
+    // the screen holds the stretched surface (x4), not a direct room draw
+    assert_eq!(img.get(4 * 12, 4 * 12)[..3], [255, 0, 0]);
+    assert_eq!(img.get(4 * 30, 4 * 30)[..3], [192, 192, 192]);
+    // drawn into the surface in Begin Step before it was shown (a HUD)
+    assert_eq!(img.get(6, 6)[..3], [0, 255, 0]);
+}
+
 #[test]
 fn paths_and_timelines() {
     let mut b = B::new();
