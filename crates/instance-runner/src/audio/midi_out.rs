@@ -335,7 +335,9 @@ mod win {
     }
 }
 
-fn open_device() -> Result<(Box<dyn MidiDevice>, String), String> {
+/// Opens the OS MIDI output (MIDI mapper first) and sends a GS reset; returns the
+/// device and its name. Public for tools (examples/record_midi_reference.rs).
+pub fn open_device() -> Result<(Box<dyn MidiDevice>, String), String> {
     #[cfg(windows)]
     {
         win::open()
