@@ -226,7 +226,16 @@ pub fn dialog<T>(
         .frame(egui::Frame::NONE)
         .backdrop_color(Color32::from_black_alpha(24))
         .show(ctx, |ui| {
-            ui.ctx().move_to_top(ui.layer_id());
+            // Bring the dialog to the front only when it first appears: doing it every
+            // frame would also push it above popup menus opened from inside it (e.g. the
+            // event selector's key / collision submenus), making them unclickable.
+            let frame = ui.ctx().cumulative_frame_nr();
+            let seen_key = id.with("last_frame");
+            let last: Option<u64> = ui.ctx().data(|d| d.get_temp(seen_key));
+            if last.is_none_or(|f| f + 1 < frame) {
+                ui.ctx().move_to_top(ui.layer_id());
+            }
+            ui.ctx().data_mut(|d| d.insert_temp(seen_key, frame));
             let bg = ui.painter().add(egui::Shape::Noop);
             let side = (BORDER + 10.0) as i8;
             let inner = egui::Frame::NONE

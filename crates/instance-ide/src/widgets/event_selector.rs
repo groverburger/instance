@@ -55,7 +55,11 @@ fn ev_button(ui: &mut Ui, ty: i32, number: i32, text: &str) -> egui::Response {
 /// An event button that opens a menu of sub-events.
 fn ev_menu(ui: &mut Ui, ty: i32, number: i32, text: &str, add: impl FnOnce(&mut Ui)) {
     let r = ev_button(ui, ty, number, text);
-    egui::Popup::menu(&r).show(add);
+    if let Some(shown) = egui::Popup::menu(&r).show(add) {
+        // Keep the menu above the modal dialog it was opened from: a click inside the
+        // dialog brings the dialog's layer to the front, which would otherwise cover it.
+        ui.ctx().set_sublayer(ui.layer_id(), shown.response.layer_id);
+    }
 }
 
 fn key_menu(ui: &mut Ui, title: &str, ty: i32, out: &mut Option<(i32, i32)>) {

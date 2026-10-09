@@ -419,6 +419,47 @@ fn ui_object_events_and_actions() {
     assert_eq!(a.args[0], "000000010");
 }
 
+/// The event selector's submenus (Alarm, keys, collision objects) must be drawn above
+/// the "Choose the Event" dialog: a real pointer click on a submenu item must land on
+/// it (regression: the dialog was moved to the top every frame, covering the menu).
+#[test]
+fn ui_event_submenu_above_dialog() {
+    use eframe::egui::{Event, PointerButton};
+    use egui_kittest::kittest::Queryable;
+    let mut h = harness();
+    let mut p = ops::new_project();
+    ops::create_resource(&mut p, ResourceKind::Object, &ops::Placement::End);
+    h.state_mut().test_set_project(p);
+    h.state_mut().open_form(ResKey::Res(ResourceKind::Object, 0));
+    h.run_steps(3);
+    h.get_by_label("Add Event").click();
+    h.run_steps(3);
+    h.get_by_label("Alarm").click();
+    h.run_steps(3);
+    // click "Alarm 3" with the pointer at its on-screen position (not via accesskit)
+    let pos = h.get_by_label("Alarm 3").rect().center();
+    h.event(Event::PointerMoved(pos));
+    h.run_steps(1);
+    for pressed in [true, false] {
+        h.event(Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Default::default() });
+        h.run_steps(1);
+    }
+    h.run_steps(3);
+    // events without actions are dropped on OK, so give it one
+    h.get_by_label("Move Fixed").click();
+    h.run_steps(3);
+    h.get_by_label("↑").click();
+    h.run_steps(2);
+    h.get_by_label("OK").click();
+    h.run_steps(3);
+    h.get_by_label("✔ OK").click();
+    h.run_steps(3);
+    let (p, _, _, _) = h.state().test_state();
+    let o = p.objects[0].as_ref().unwrap();
+    assert_eq!(o.events.len(), 1, "the submenu click reached the menu item");
+    assert_eq!((o.events[0].event_type, o.events[0].number), (2, 3));
+}
+
 /// Room form: click on the canvas places an instance with a fresh id.
 #[test]
 fn ui_room_place_instance() {
