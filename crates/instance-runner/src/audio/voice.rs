@@ -875,10 +875,13 @@ mod tests {
     #[test]
     fn fade_from_current_value_and_cancel() {
         let c = SoundCtl::new(0, 1.0, 0.0, 0);
-        c.fade(0.0, 200.0);
-        std::thread::sleep(Duration::from_millis(100));
+        let t0 = Instant::now();
+        c.fade(0.0, 2000.0);
+        std::thread::sleep(Duration::from_millis(500));
         let v = c.volume_now();
-        assert!(v > 0.25 && v < 0.75, "mid-fade volume {}", v);
+        // compare with the time that actually passed (CI machines oversleep)
+        let expect = (1.0 - t0.elapsed().as_secs_f64() / 2.0).max(0.0);
+        assert!((v - expect).abs() < 0.1 && v < 0.95, "mid-fade volume {} (expected ~{})", v, expect);
         // a new fade starts from the current value
         c.fade(1.0, 10_000.0);
         let v2 = c.volume_now();

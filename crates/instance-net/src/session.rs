@@ -113,6 +113,11 @@ pub(crate) fn bind_host_udp(port: u16) -> Option<UdpSocket> {
     use socket2::{Domain, Protocol, Socket, Type};
     let s = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)).ok()?;
     s.set_reuse_address(true).ok()?;
+    // macOS/BSD also need SO_REUSEPORT for a second UDP bind to the same port (a new
+    // host taking over after migration while the old socket is still closing); on
+    // Linux SO_REUSEADDR is enough.
+    #[cfg(all(unix, not(any(target_os = "linux", target_os = "android"))))]
+    s.set_reuse_port(true).ok()?;
     let _ = s.set_broadcast(true);
     let addr: SocketAddr = ([0, 0, 0, 0], port).into();
     s.bind(&addr.into()).ok()?;

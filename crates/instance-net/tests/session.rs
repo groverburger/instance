@@ -136,7 +136,8 @@ fn lan_session_players_data_messages_leave_end() {
     // a late joiner receives the host's table
     let mut c = Mplay::new(GAME, cfg(41010));
     c.init_tcpip("");
-    assert_eq!(c.session_find(), 1);
+    // the new host's discovery responder may take a moment on slow (CI) machines
+    wait("carol finds the migrated session", || c.session_find() == 1);
     assert!(c.session_join(0, b"carol"));
     assert_eq!(c.data_read(6.0), s("from alice"));
     wait("carol listed", || h.player_find() == 3);
@@ -230,7 +231,8 @@ fn host_migration() {
     // a new player can still join the migrated session
     let mut c = Mplay::new(GAME, cfg(41090));
     c.init_tcpip("");
-    assert_eq!(c.session_find(), 1);
+    // the new host's discovery responder may take a moment on slow (CI) machines
+    wait("carol finds the migrated session", || c.session_find() == 1);
     assert!(c.session_join(0, b"carol"));
     wait("carol visible", || b.player_find() == 3);
     a.session_end();
