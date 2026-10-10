@@ -79,13 +79,15 @@ pub fn song_info(song: &Song) -> SongInfo {
     let mut all_evs = Vec::new();
     for tr in &song.tracks {
         let d = &tr.def;
-        let instrument = if d.drums {
+        let instrument = if let Some(s) = &d.synth {
+            format!("synth {s}")
+        } else if d.drums {
             format!("drums ({} kit)", gm::KITS.iter().find(|k| k.1 == d.program).map(|k| k.0).unwrap_or("?"))
         } else {
             format!("{} ({})", gm::PROGRAMS[d.program as usize], d.program as u32 + 1)
         };
         let n = &tr.notes;
-        let (lo, hi) = if d.drums { (0, 127) } else { gm::range(d.program) };
+        let (lo, hi) = if d.drums || d.synth.is_some() { (0, 127) } else { gm::range(d.program) };
         let out_of_range = n.iter().filter(|x| (x.key as i32) < lo || (x.key as i32) > hi).count();
         let out_of_key = match (&song.key, d.drums) {
             (Some(k), false) => n.iter().filter(|x| !k.contains(x.key as i32)).count(),

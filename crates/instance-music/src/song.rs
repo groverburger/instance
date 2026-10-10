@@ -108,6 +108,10 @@ pub struct TrackDef {
     /// Swing ratio for this track (0.5 straight .. 0.75); None = song swing.
     pub swing: Option<f64>,
     pub bend_range: u8,
+    /// Built-in synth preset for WAV renders (`synth=NAME`), see [`crate::synth`].
+    pub synth: Option<String>,
+    /// Synth options (`cutoff=`, `detune=`, `duck=` …) in order.
+    pub synth_opts: Vec<(String, f64)>,
 }
 
 impl TrackDef {
@@ -129,6 +133,8 @@ impl TrackDef {
             transpose: 0,
             swing: None,
             bend_range: 2,
+            synth: None,
+            synth_opts: Vec::new(),
         }
     }
 }
@@ -162,6 +168,8 @@ pub struct Variant {
     /// New base tempo (all tempi are scaled by new/old).
     pub tempo: Option<f64>,
     pub inst: Vec<(String, u8)>,
+    /// Synth preset changes: (track, preset).
+    pub synth: Vec<(String, String)>,
     pub mute: Vec<String>,
     pub vol: Vec<(String, u8)>,
     /// Per-track transposition in semitones.
@@ -411,6 +419,7 @@ fn parse_control(k: &str, v: &str, ctx: &StreamCtx) -> Result<Item, String> {
         "reso" | "resonance" => Ctl::Cc(71),
         "attack" => Ctl::Cc(73),
         "release" => Ctl::Cc(72),
+        "delay" => Ctl::Cc(94),
         "bend" => Ctl::Bend,
         "vel" => {
             let n: u32 = v.parse().map_err(|_| format!("vel={v}: expected 1..127"))?;
@@ -421,7 +430,7 @@ fn parse_control(k: &str, v: &str, ctx: &StreamCtx) -> Result<Item, String> {
             if let Some(n) = k.strip_prefix("cc").and_then(|n| n.parse::<u8>().ok()).filter(|n| *n < 120) {
                 Ctl::Cc(n)
             } else {
-                return Err(format!("unknown control '{k}' (vol expr pan mod reverb chorus cutoff reso attack release bend ccN vel inst)"));
+                return Err(format!("unknown control '{k}' (vol expr pan mod reverb chorus cutoff reso attack release delay bend ccN vel inst)"));
             }
         }
     };
@@ -988,6 +997,7 @@ pub fn parse_into(src: &mut SongSrc, text: &str) -> Result<(), String> {
                 }
                 let mut td = TrackDef::new(name);
                 let mut kit = None;
+                let mut inst_given = false;
                 for (k, v) in options(opts).map_err(err)? {
                     let int = |v: &str, lo: i32, hi: i32| -> Result<i32, String> {
                         v.parse::<i32>().ok().filter(|n| (lo..=hi).contains(n)).ok_or_else(|| err(format!("{k}={v}: expected {lo}..{hi}")))
@@ -999,7 +1009,20 @@ pub fn parse_into(src: &mut SongSrc, text: &str) -> Result<(), String> {
                                 kit = Some(v.clone());
                             }
                         }
-                        "inst" | "instrument" | "program" => td.program = gm::program(&v.replace('_', " ")).map_err(err)?,
+                        "inst" | "instrument" | "program" => {
+                            td.program = gm::program(&v.replace('_', " ")).map_err(err)?;
+                            inst_given = true;
+                        }
+                        "synth" => {
+                            if crate::synth::Patch::preset(&v).is_none() {
+                                return Err(err(format!("unknown synth preset '{v}' (known: {})", crate::synth::preset_names())));
+                            }
+                            td.synth = Some(v.clone());
+                        }
+                        k if crate::synth::is_option(k) => {
+                            let x: f64 = v.parse().map_err(|_| err(format!("{k}={v}: expected a number")))?;
+                            td.synth_opts.push((k.to_string(), x));
+                        }
                         "ch" | "channel" => td.channel = Some(int(&v, 1, 16)? as u8),
                         "vol" | "volume" => td.vol = int(&v, 0, 127)? as u8,
                         "pan" => td.pan = int(&v, -100, 100)?,
@@ -1013,8 +1036,22 @@ pub fn parse_into(src: &mut SongSrc, text: &str) -> Result<(), String> {
                         "transpose" => td.transpose = int(&v, -48, 48)?,
                         "swing" => td.swing = Some(parse_swing(&v).map_err(err)?),
                         "bendrange" => td.bend_range = int(&v, 1, 24)? as u8,
-                        _ => return Err(err(format!("unknown track option '{k}' (inst ch vol pan expr reverb chorus oct vel gate human transpose swing bendrange drums)"))),
+                        _ => return Err(err(format!("unknown track option '{k}' (inst ch vol pan expr reverb chorus oct vel gate human transpose swing bendrange drums synth)"))),
                     }
+                }
+                if let Some(s) = &td.synth {
+                    if (s == "drums") != td.drums {
+                        return Err(err(format!("synth={s}: {}", if td.drums { "drum tracks use synth=drums" } else { "synth=drums needs a drum track (`drums`)" })));
+                    }
+                    let mut probe = crate::synth::Patch::preset(s).unwrap();
+                    for (k, x) in &td.synth_opts {
+                        probe.apply(k, *x).map_err(err)?;
+                    }
+                    if !inst_given && !td.drums {
+                        td.program = crate::synth::gm_fallback(s);
+                    }
+                } else if let Some((k, _)) = td.synth_opts.first() {
+                    return Err(err(format!("track option '{k}' needs a synth track (add synth=PRESET; presets: {})", crate::synth::preset_names())));
                 }
                 if td.drums {
                     td.program = match kit {
@@ -1124,10 +1161,10 @@ pub fn parse_into(src: &mut SongSrc, text: &str) -> Result<(), String> {
                     _ => src.arrange = Some(a),
                 }
             }
-            "transpose" | "inst" | "mute" | "vol" | "shift" if !matches!(ctx, Ctx::Variant(_)) => {
+            "transpose" | "inst" | "synth" | "mute" | "vol" | "shift" if !matches!(ctx, Ctx::Variant(_)) => {
                 return Err(err(format!("`{word}` is only valid inside a variant (indent the variant's lines)")));
             }
-            "transpose" | "inst" | "mute" | "vol" | "shift" => {
+            "transpose" | "inst" | "synth" | "mute" | "vol" | "shift" => {
                 let Ctx::Variant(vi) = ctx else { unreachable!() };
                 let v = &mut src.variants[vi];
                 let mut words = rest.split_whitespace();
@@ -1139,6 +1176,12 @@ pub fn parse_into(src: &mut SongSrc, text: &str) -> Result<(), String> {
                         let val: String = words.collect::<Vec<_>>().join(" ");
                         match word {
                             "inst" => v.inst.push((track, gm::program(val.trim_matches('"')).map_err(err)?)),
+                            "synth" => {
+                                if crate::synth::Patch::preset(&val).is_none() {
+                                    return Err(err(format!("unknown synth preset '{val}' (known: {})", crate::synth::preset_names())));
+                                }
+                                v.synth.push((track, val));
+                            }
                             "vol" => v.vol.push((track, val.parse::<u8>().ok().filter(|v| *v <= 127).ok_or_else(|| err(format!("vol '{val}'")))?)),
                             _ => v.shift.push((track, val.parse().map_err(|_| err(format!("shift '{val}'")))?)),
                         }
@@ -1209,7 +1252,7 @@ pub fn validate(src: &SongSrc) -> Result<(), String> {
         if let Some(a) = &v.arrange {
             check(a, &format!("variant {}", v.name))?;
         }
-        for t in v.mute.iter().chain(v.inst.iter().map(|x| &x.0)).chain(v.vol.iter().map(|x| &x.0)).chain(v.shift.iter().map(|x| &x.0)) {
+        for t in v.mute.iter().chain(v.inst.iter().map(|x| &x.0)).chain(v.synth.iter().map(|x| &x.0)).chain(v.vol.iter().map(|x| &x.0)).chain(v.shift.iter().map(|x| &x.0)) {
             if src.track(t).is_none() {
                 return Err(format!("variant {}: unknown track '{t}'", v.name));
             }
