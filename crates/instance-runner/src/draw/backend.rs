@@ -209,6 +209,12 @@ pub trait Backend {
         None
     }
 
+    /// Starts or stops discarding back-buffer rendering (see
+    /// [`super::discard::DiscardBackend`]); false if this backend cannot.
+    fn set_discard(&mut self, _on: bool) -> bool {
+        false
+    }
+
     /// Downcast helper for window presentation.
     fn as_gl(&mut self) -> Option<&mut super::gl::GlBackend> {
         None

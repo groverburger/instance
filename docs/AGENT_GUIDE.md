@@ -342,6 +342,7 @@ Public API (`crates/instance-format/src/lib.rs`):
 | `builtin_action(lib_id, action_id)` → `ActionDef`; `.instantiate(lib_id)` → `Action` | an action with the right metadata copies |
 | `TreeNode::standard_roots()`, `TreeNode::leaf(kind, index, name)` | resource tree |
 | `read_sprite_export` / `write_sprite_export`, `read_library` / `write_library` | `.gmspr`, `.lib` |
+| `write_folder(&Project, dir)`, `read_folder(dir)`, `read_project_any(path)` | lossless project folder form (below); `read_project_any` takes a file or a folder |
 
 `Project::default()` is an empty IDE-like project (12 tree roots, default settings,
 `last_instance_id = 100000`). The model types implement serde `Serialize`/`Deserialize`,
@@ -410,7 +411,34 @@ A larger, battle-tested builder (sprites from colours, scripts, paths, timelines
 triggers, constants, rooms, placement, tree) is `crates/instance-blackbox/src/builder.rs`;
 the projects it generates were loaded and run in the real GM 8.1.
 
-### 4.2 Other languages
+### 4.2 Project folders: editing a game as plain files
+
+Often the easiest route for an agent is not to build a `Project` in code but to edit a
+**project folder**: GML in `.gml` files, images as PNG, sounds as their original files,
+metadata in small TOML files, references by name. The conversion is lossless both ways
+(`canonical_bytes`-identical; verified on the sample games and a corpus of 35 real
+GM 8.1 projects). Full description: `docs/project-folder.md`.
+
+```sh
+cargo run -p instance-format --bin gmk-unpack -- game.gm81 game/   # file -> folder
+# edit game/objects/obj_player/step.gml, add game/scripts/scr_new.gml, ...
+cargo run -p instance-format --bin gmk-pack -- game/ game.gm81     # folder -> file
+cargo run -p instance-runner -- game/ --headless --frames 60       # or run the folder directly
+```
+
+* One directory per resource kind (`sprites/<name>/0.png`, `objects/<name>/step.gml`,
+  `rooms/<name>/room.toml`, `scripts/<name>.gml`, ...). An event holding exactly one
+  default Execute Code action is a plain `.gml`; anything else is
+  `<event>.actions.toml`.
+* Write `.gml` with LF: packing converts to CR LF. Text must be Windows-1252
+  representable (packing reports the file and line otherwise).
+* A new `.gml` in `scripts/` or a new directory in `objects/` / `sprites/` (no
+  metadata file needed) becomes a new resource in the next free slot, with a tree leaf.
+* Pack errors name the file and key, e.g. an unknown sprite referenced by an object.
+* `gmk-unpack DIR --force` refreshes an existing folder in place (only the resource
+  directories are pruned; `.git` etc. are kept).
+
+### 4.3 Other languages
 
 Implement §3 directly (zlib via any library; check exact consumption when reading).
 `specs/tools/gmk_dump.py` is a complete Python reader of the same layout: run
@@ -425,9 +453,28 @@ leftover or missing byte, which catches most writer bugs.
 |---|---|---|
 | `gmk-info` | `cargo run -p instance-format --bin gmk-info -- game.gm81 --tree` | version, resources per list with slots, events/actions per object, rooms, room order, tree |
 | `gmk_dump.py` | `python -I specs/tools/gmk_dump.py game.gm81` | full JSON dump; strict exact-consumption check |
+| `gmk-check` | `cargo run -p instance-check --bin gmk-check -- game.gm81` | static check without running: GML compile errors (GM's messages, with location), script argument counts, broken references, duplicate instance ids, name clashes; warnings for variables never assigned, no-short-circuit hazards, LF-only code |
 | `instance-runner` | `instance-runner game.gm81 --headless --frames 120 --screenshot out.png` | runs the game without a window (software renderer) and writes the last frame |
 | Instance IDE | `instance-ide game.gm81` | editor; F5 runs |
 | Real GM 8.1 | open the `.gm81`, F5 | the reference; the only way to be sure about Lite restrictions |
+
+Run `gmk-check` first on every generated project; it compiles every code piece
+(scripts, code actions, Set Variable / expression arguments, time-line moments,
+room and instance creation code, trigger conditions, constants) and reports, e.g.:
+
+```
+error: obj_player / Step / action 1, line 12 col 2: Assignment operator expected. [compile]
+    i++;
+     ^
+1 error, 0 warnings in 113 code pieces           (the last line is always the summary)
+```
+
+Flags: `--pedantic` (also "possibly uninitialised" instance variables: read in an
+event but not set in the Create chain), `--lite` (Standard-only functions, variables
+and actions, §8), `--strict` (warnings fail too), `--json` (array of `{severity, kind,
+resource, event, action, line, col, message, source_line}`), `--quiet` (summary only).
+Exit codes: 0 no errors, 1 errors (or warnings with `--strict`), 2 cannot load.
+It does not find run-time errors (wrong types, missing instances) — run the game too.
 
 Headless runner output (stderr): a summary line `ran N steps …; room R (name),
 K instances, caption "…"`, every runtime error as `ERROR: …` / `FATAL ERROR: …`
@@ -783,6 +830,24 @@ music** (one at a time; starting one stops the current — usual for MIDI), **2 
 Sounds continue across room changes; `game_restart` stops them. Sound data is
 stored uncompressed in the project — keep files small (MIDI music is tiny).
 
+**Composing and checking sound without ears** (`crates/instance-music`, full
+reference in its README):
+
+* `gmk-music` compiles a compact text notation (tracks with GM instruments,
+  notes like `E5q. D5e`, chord symbols `{Am7}w`, accompaniment patterns played
+  `over | Am | F | C | G |`, drum grids, sections, `arrange |: A B :|`,
+  per-area `variant`s) to a type-1 MIDI file (a few KB; add as a kind 1 sound,
+  `sound_loop`) or, with a SoundFont (`INSTANCE_SOUNDFONT`), to a WAV;
+  `--loop` renders a seamless loop. `gmk-music info SONG.txt` reports length,
+  ranges, density and mistakes (failed `|` bar checks, flat dynamics, silent bars).
+  Prefer this to hand-placing samples: 60–120 s loops in ~80 lines of text.
+* `gmk-sounds GAME.gm81` measures every sound: peak/RMS dBFS, clipping,
+  silence, attack, spectral centroid and band energies, a one-line description
+  ("short percussive bright noise"), seam checks for looped sounds (kind 1,
+  `sound_loop` in code, "loop" in the name) and a similarity table that flags
+  sound effects that sound alike. Run it after adding sounds and act on its
+  `check`, `loop` and **THESE SOUND ALIKE** lines.
+
 ---
 
 ## 8. Lite vs Standard edition restrictions
@@ -901,6 +966,12 @@ or backgrounds for static scenery instead of instances.
 
 * Background music as MIDI with kind 1; effects as short WAV with kind 0. MP3 needs
   kind 3 (multimedia), one at a time.
+* Write music with `gmk-music` (§7.7): 60–120 s loops with bass, harmony,
+  a melody built on a motif, drums and section-to-section dynamics; derive
+  per-area tracks from one theme with `variant`s. Then run `gmk-sounds` on the
+  .gm81: no clipping, music RMS below the effects' RMS, smooth loop seams,
+  and no two effects for different actions above the similarity threshold
+  (players notice when e.g. a drill and a jetpack loop sound the same).
 
 **Robustness**
 
@@ -918,7 +989,15 @@ instance-runner game.gm81 --headless --frames 300 --screenshot-every 30 frames/
 instance-runner game.gm81 --headless --frames 600 --input "10:down:right,40:up:right,45:press:space"
 instance-runner game.gm81 --headless --frames 600 --random-input 1 --max-seconds 60
 instance-runner game.gm81 --debug          # windowed, with the Debug Information window
+
+# a typical automated test: through the title menu, cheat money in, watch it,
+# fast (no rendering), reproducible, with its own save folder, sound recorded
+instance-runner game.gm81 --headless --frames 600 --seed 1 --save-dir test_save \
+    --input 30:press:enter --exec "120:global.cash = 100000" --watch 60:global.cash \
+    --screenshot-at 200,600 shots --no-draw --audio-out a.wav --log run.log
 ```
+
+**Input**
 
 * `--input` takes comma-separated items keyed by step number: `STEP:down:KEY`,
   `STEP:up:KEY`, `STEP:press:KEY` (down, then up two steps later), `STEP:move:X:Y`,
@@ -927,15 +1006,99 @@ instance-runner game.gm81 --debug          # windowed, with the Debug Informatio
   KEY: `left right up down space enter escape shift ctrl alt backspace tab`, a single
   letter/digit (`3` is the digit key, code 51), `f1`…`f12`, or a virtual-key code of
   two or more digits (`37`).
-* `--random-input SEED` adds a deterministic "monkey" script (arrows, WASD, space,
-  enter, Z, X, shift, mouse clicks in 640×480; never Escape/function keys) — good for
-  smoke-testing that nothing crashes.
+* `--random-input SEED[@START]` adds a deterministic "monkey" script (held arrows,
+  WASD, space, enter, Z, X, shift; mouse moves and clicks inside the window size of
+  the room the game starts in; never Escape/function keys) from step START (default
+  3) — give a START after your scripted `--input` prefix (e.g. getting through a
+  title menu) so random keys do not interfere with it. `--random-keys LIST` replaces
+  the key set (names as in `--input`: `--random-keys left,right,up,space,1,2`);
+  `--random-no-mouse` leaves out mouse events. Good for smoke-testing that nothing
+  crashes.
+
+**Injecting code and watching values** (headless only)
+
+* `--exec STEP:CODE` (repeatable) and `--exec-file STEP:FILE.gml` run GML at the
+  start of step STEP, before that step's events and input (STEP 0 = after the first
+  room's Create / Game Start / Room Start events, before the first step). The code
+  is compiled and run as by `execute_string`. Context: `self` and `other` are the
+  **first live instance of the current room** (creation order), or the global
+  pseudo-instance when the room has none (then only `global.*`, `with`, functions
+  and scripts work). Don't rely on which instance that is — name the target:
+  `--exec "120:with (obj_player) { x = 100; }"`, `--exec "0:global.cash = 1e5"`,
+  `--exec "300:room_goto(rm_level3)"`. Errors print as `ERROR in --exec at step N:`
+  (with the code excerpt) and never stop the run.
+* `--watch K:EXPR` (repeatable) prints `watch step N: EXPR = value` on stderr after
+  every K-th step, same context; reals in full precision, strings quoted
+  (`--watch 60:global.cash`, `--watch 30:obj_player.x`,
+  `--watch "60:instance_number(obj_enemy)"`). A failing watch (e.g. the instance does
+  not exist yet) prints its error once, and again only after it has succeeded in
+  between. Watches never change `error_occurred`/`error_last`.
+* `--exec-room ROOM` (name or number) goes to ROOM before the first step: the first
+  room is entered as usual (its Create, Game Start and Room Start events run, no
+  step is played), then ROOM as by `room_goto`, so globals and persistent
+  controllers the first room sets up exist. `--exec-room-direct ROOM` replaces the
+  first room instead (Game Start runs in ROOM; whatever the first room initialises
+  is missing). State a menu sets up when you press Enter (e.g. "new game") is not
+  there either way — script the menu with `--input` or call the set-up script with
+  `--exec 0:...`.
+* `--seed N` makes `randomize()` (including the one at game start) seed from N:
+  `random`/`irandom`/`choose` repeat exactly from run to run, so two runs (or a run
+  with and without `--no-draw`) can be compared. Real-time sources
+  (`current_time`, dates, `fps`) still vary.
+
+**Files** — where relative file names go
+
+* A game's `working_directory` (and `program_directory`) is **the folder of the
+  game file** (`game.gm81`), not the directory you start the runner from: `ini_open
+  ("save.ini")`, `file_text_open_write("save.txt")`, `game_save("x.sav")`, the error
+  log and F9 screenshots all land next to the game file. (Exception: a game file in
+  the system temp folder — the IDE's test runs — uses the current directory.)
+* `--save-dir DIR` makes DIR the `working_directory` (created if missing) so a test
+  run never touches the real save next to the game: everything written with a
+  relative name goes to DIR, and included files set to export to the working
+  directory are exported there. `program_directory` still names the game's folder.
+  Bundled files keep loading: the first time the game uses a relative name that is
+  missing from DIR but exists next to the game, it is copied into DIR (copy on first
+  use; the original is never written, a file the game deletes stays deleted). That
+  also copies an existing save file — add `--no-read-fallback` for a clean start
+  (only what is in DIR exists). Use a fresh DIR per test for reproducible runs.
+
+**Frames, speed, sound, logs**
+
+* `--screenshot-at LIST DIR` saves the frames after the listed steps
+  (`--screenshot-at 60,200,450 shots/` → `shots/frame00060.png` …), with the same
+  naming as `--screenshot-every K DIR`; both can be combined.
+* `--no-draw` renders only the frames that are saved (`--screenshot`,
+  `--screenshot-at`, `--screenshot-every`). On the other frames the game's **Draw
+  events still run** (games with logic in Draw behave the same), `image_index`
+  still advances and Animation End still fires, but backgrounds, tiles, default
+  sprite draws, particles and the cursor are skipped and every drawing operation
+  into the screen is discarded (drawing into surfaces still happens). Caveats: code
+  that reads the screen back — `draw_getpixel`, `screen_save`, `surface_copy` /
+  `background_create_from_screen` from the screen — sees the last
+  rendered frame; if the game ends before the final step, `--screenshot` shows the
+  last rendered frame. With `--seed`, runs with and without `--no-draw` produce the
+  same game state. Speed-ups measured over 2000 steps: 7–20× (deepcore 16.6 →
+  1.2 ms/step, skyhook 3.3 → 0.44, neon_swarm 1.3 → 0.43, lantern 2.6 → 0.13).
+* `--audio-out FILE.wav` records the game's audio offline into a 44.1 kHz 16-bit
+  stereo WAV: each step advances exactly `1/room_speed` seconds of audio, so the
+  file is the same on every run (with `--seed`) and as long as the game time,
+  however fast the run goes. PCM sounds go through the same voice code as live
+  playback (volume, pan, fades, 3D, effects); MIDI is rendered with the SoundFont
+  synthesiser (set `INSTANCE_SOUNDFONT=path/to/file.sf2`; without one MIDI is
+  silent). `sound_isplaying` and fades follow this audio clock. At the end the
+  runner prints `audio-out: FILE: <seconds> s, peak <dB> dBFS, RMS <dB> dBFS, <x>%
+  clipped samples` — the peak is measured before clipping, so a peak above 0 dBFS
+  or a non-zero clip percentage means the mix is too loud.
+* `--log FILE` also writes everything printed on stderr (errors, `watch` lines,
+  `show_debug_message` output, the summary) to FILE — useful on Windows, where the
+  runner is a GUI program and a shell may not capture its output.
 * `--max-seconds S` kills hung games (exit 4).
 * Look at the screenshot (an image the agent can read) and at stderr for `ERROR`
   lines and the "stubbed/unsupported functions" list.
 * A practical self-test pattern: let the game write its own assertions via
   `show_debug_message('ok: …')` (printed on stderr by Instance) or to a text file with
-  `file_text_*`, then grep the output.
+  `file_text_*`, then grep the output; or check state from outside with `--watch`.
 * `INSTANCE_PROFILE=1` prints per-event/function timings.
 * Headless runs use the software renderer, where every background layer that covers
   the view costs roughly 15 ms per frame (measured: about 11 ms/frame with no layer,
@@ -1000,8 +1163,10 @@ Caveats:
 | What is unknown / resolved | `specs/OPEN_QUESTIONS.md` (`[RESOLVED-*]` sections list the verified results) |
 | Black-box test projects and key manifest | `specs/blackbox-tests.md`, `crates/instance-blackbox` |
 | Reader/writer crate + `gmk-info` | `crates/instance-format` (example: `examples/make_game.rs`) |
+| Project folders (`gmk-unpack` / `gmk-pack`, `instance_format::folder`) | `docs/project-folder.md`, `crates/instance-format/src/folder/` |
 | GML compiler/interpreter (+ verified regression tests) | `crates/gml` (`tests/verified.rs`) |
 | Runner | `crates/instance-runner` |
+| Music notation → MIDI/WAV (`gmk-music`), sound analysis (`gmk-sounds`) | `crates/instance-music` (README = notation reference, `examples/*.txt`) |
 
 **Black-box harness** (to settle a question against real GM 8.1):
 

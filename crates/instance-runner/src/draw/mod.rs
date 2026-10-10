@@ -3,6 +3,7 @@
 //! (runtime.md §13.4).
 
 pub mod backend;
+pub mod discard;
 pub mod dual;
 pub mod font;
 pub mod gl;

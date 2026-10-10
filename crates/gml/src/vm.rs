@@ -66,6 +66,10 @@ pub struct Settings {
     /// correctly" (GM 8.1, settings flag bit 1): script calls check the argument
     /// count and `argument[i]` beyond `argument_count` is an error.
     pub check_script_args: bool,
+    /// Reproducible runs (a test harness's `--seed`): when set, [`Vm::randomize`]
+    /// derives the seed from this value and the number of earlier calls instead
+    /// of the clock.
+    pub randomize_seed: Option<u32>,
 }
 
 impl Default for Settings {
@@ -74,6 +78,7 @@ impl Default for Settings {
             uninitialized_as_zero: false,
             max_call_depth: 256,
             check_script_args: false,
+            randomize_seed: None,
         }
     }
 }
@@ -96,6 +101,8 @@ pub struct Vm {
     /// Data structures (`ds_*`).
     pub ds: DsStore,
     pub(crate) rng_state: i32,
+    /// Calls of [`Vm::randomize`] so far (with [`Settings::randomize_seed`]).
+    randomize_calls: u32,
     pub(crate) depth: u32,
     pub(crate) arg_pool: Vec<Vec<Value>>,
     pub(crate) select_pool: Vec<Vec<i32>>,
@@ -139,6 +146,7 @@ impl Vm {
             settings: Settings::default(),
             ds: DsStore::default(),
             rng_state: 0,
+            randomize_calls: 0,
             depth: 0,
             arg_pool: Vec::new(),
             select_pool: Vec::new(),
@@ -375,6 +383,12 @@ impl Vm {
 
     /// Seeds the generator from the system clock (`randomize`).
     pub fn randomize(&mut self) {
+        if let Some(base) = self.settings.randomize_seed {
+            self.randomize_calls = self.randomize_calls.wrapping_add(1);
+            let k = self.randomize_calls.wrapping_sub(1);
+            self.rng_state = base.wrapping_add(k.wrapping_mul(0x9E37_79B9)) as i32;
+            return;
+        }
         let t = crate::clock::seed_nanos();
         self.rng_state = (t ^ (t >> 32)) as u32 as i32;
     }

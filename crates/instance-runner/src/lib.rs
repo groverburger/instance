@@ -16,6 +16,7 @@ pub mod events;
 pub mod ext;
 pub mod frontend;
 pub mod game;
+pub mod harness;
 pub mod host;
 pub mod input;
 pub mod instance;
@@ -71,14 +72,41 @@ pub fn load_game_bytes(data: &[u8], dir: &str, vm: &mut gml::Vm, headless: bool)
     Ok(g)
 }
 
-/// Loads a project file and prepares a game (no room entered yet).
+/// Loads a project file — or a project folder written by `gmk-unpack` — and prepares
+/// a game (no room entered yet). The working and program directories are the
+/// project file's folder, or the project folder itself (the current directory for a
+/// project in the temp folder, i.e. started from the IDE).
 pub fn load_game(path: &std::path::Path, vm: &mut gml::Vm, headless: bool) -> Result<Game, String> {
-    ext::bundle::set_project_dir(path.parent().map(|p| p.to_path_buf()));
-    let (project, _) = instance_format::read_project_file(path).map_err(|e| format!("{}: {}", path.display(), e))?;
+    load_game_with(path, vm, headless, None)
+}
+
+/// Where a test run keeps the files a game writes (the headless runner's
+/// `--save-dir`).
+#[derive(Clone, Debug)]
+pub struct SaveDir {
+    /// Becomes `working_directory` (created if missing); relative file names
+    /// resolve here, included files are exported here.
+    pub dir: std::path::PathBuf,
+    /// Copy files missing from `dir` from the game's folder on first use (see
+    /// [`Game::resolve_path`]).
+    pub read_fallback: bool,
+}
+
+/// [`load_game`] with an optional [`SaveDir`]. `program_directory` stays the
+/// game's folder.
+pub fn load_game_with(path: &std::path::Path, vm: &mut gml::Vm, headless: bool, save: Option<&SaveDir>) -> Result<Game, String> {
+    let is_folder = path.is_dir();
+    let dir = if is_folder { Some(path) } else { path.parent() };
+    ext::bundle::set_project_dir(dir.map(|p| p.to_path_buf()));
+    let project = if is_folder {
+        instance_format::read_folder(path)
+    } else {
+        instance_format::read_project_file(path).map(|(p, _)| p)
+    }
+    .map_err(|e| format!("{}: {}", path.display(), e))?;
     vm.settings.max_call_depth = MAX_CALL_DEPTH;
     let mut g = Game::new(project, vm, headless)?;
-    let dir = path
-        .parent()
+    let dir = dir
         .map(|p| if p.as_os_str().is_empty() { std::path::Path::new(".") } else { p })
         .unwrap_or(std::path::Path::new("."));
     let dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
@@ -91,7 +119,15 @@ pub fn load_game(path: &std::path::Path, vm: &mut gml::Vm, headless: bool) -> Re
         }
     }
     g.working_directory = d.clone();
-    g.program_directory = d;
+    g.program_directory = d.clone();
+    if let Some(sd) = save {
+        std::fs::create_dir_all(&sd.dir).map_err(|e| format!("cannot create {}: {}", sd.dir.display(), e))?;
+        let w = std::fs::canonicalize(&sd.dir).unwrap_or_else(|_| sd.dir.clone());
+        g.working_directory = w.to_string_lossy().trim_start_matches("\\\\?\\").to_string();
+        if sd.read_fallback {
+            g.read_fallback_dir = Some(d);
+        }
+    }
     g.export_included_files();
     Ok(g)
 }

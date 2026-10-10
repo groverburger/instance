@@ -187,6 +187,12 @@ impl Tok {
     }
 }
 
+/// Whether `name` is a GML keyword (`if`, `var`, `div`, ...) and so cannot name a
+/// variable, script or resource usable from code.
+pub fn is_keyword(name: &str) -> bool {
+    keyword(name).is_some()
+}
+
 fn keyword(s: &str) -> Option<Tok> {
     use Tok::*;
     Some(match s {

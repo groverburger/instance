@@ -9,6 +9,8 @@
 //! * [`read_library`] / [`write_library`] handle `.lib` action libraries;
 //!   [`builtin_libraries`] returns the bundled built-in action definitions.
 //! * [`read_sprite_export`] / [`write_sprite_export`] handle `.gmspr` files.
+//! * [`write_folder`] / [`read_folder`] convert to and from the diff-friendly project
+//!   folder form ([`folder`]); [`read_project_any`] reads a file or a folder.
 //!
 //! Strings are decoded as Windows-1252 (lossless; see [`text`]).
 
@@ -17,6 +19,7 @@ pub mod error;
 pub mod exe;
 pub mod export;
 pub mod extpkg;
+pub mod folder;
 pub mod gmk;
 pub mod image;
 mod io;
@@ -29,6 +32,7 @@ pub use actionlib::{
 };
 pub use error::{Error, Result};
 pub use export::{read_sprite_export, write_sprite_export};
+pub use folder::{read_folder, read_project_any, write_folder};
 pub use gmk::{
     canonical_bytes, detect_version, read_project, read_project_file, read_project_versioned,
     write_project, write_project_file, FormatVersion,

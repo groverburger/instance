@@ -272,6 +272,8 @@ mod tests {
         assert!(signature_supported(&[true, true, true, true]));
     }
 
+    /// The test binary is a PE file only on Windows.
+    #[cfg(windows)]
     #[test]
     fn own_exe_machine() {
         let exe = std::env::current_exe().unwrap();

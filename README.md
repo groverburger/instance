@@ -30,6 +30,9 @@ target/release/gmk-info game.gm81 [--tree]    # print a resource summary
 target/release/gmx2gm81 Game.gmx -o game.gm81  # convert a Studio project (folder, .project.gmx or .gmz)
 cargo test --workspace                        # sample tests read $GM81_SAMPLES
 target/release/instance-runner game.gm81 --headless --frames 600 --random-input 1 --max-seconds 60
+target/release/instance-runner game.gm81 --headless --frames 600 --seed 1 --save-dir s --input 30:press:enter \
+    --exec "120:global.cash = 1e5" --watch 60:global.cash --screenshot-at 200 shots --no-draw --audio-out a.wav
+                                              # test harness: see docs/AGENT_GUIDE.md §10 and --help
 INSTANCE_PROFILE=1 target/release/instance-runner game.gm81 --headless   # per-phase/event/function timings
 cargo test --release -p instance-runner --test corpus -- --ignored --nocapture   # runs every game in $GM81_CORPUS
 ```

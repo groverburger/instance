@@ -231,6 +231,11 @@ pub struct Game {
     pub fullscreen: bool,
     pub working_directory: String,
     pub program_directory: String,
+    /// Folder whose files are copied into the working directory on first use
+    /// (`--save-dir`, see [`Game::resolve_path`]); `None` normally.
+    pub read_fallback_dir: Option<String>,
+    /// Names already resolved with the read fallback.
+    pub fallback_seen: std::cell::RefCell<std::collections::HashSet<String>>,
     pub temp_directory: String,
     /// Open text files, binary files, ini.
     pub files: crate::builtins::files::FileState,
@@ -255,6 +260,14 @@ pub struct Game {
     pub sleep_debt_ms: f64,
     /// Accumulated seconds spent drawing (diagnostics).
     pub draw_time: f64,
+    /// Headless `--no-draw`: the automatic draw of the coming frames only runs
+    /// the game's Draw events (game code), without rendering to the back buffer:
+    /// backgrounds, tiles, default sprite draws, particles and the cursor are
+    /// left out and the backend discards back-buffer drawing (surfaces are still
+    /// drawn). Set by the frontend per step.
+    pub skip_render: bool,
+    /// The draw in progress is such a non-rendering draw.
+    pub skipping_draw: bool,
     pub pending_lives_event: bool,
     pub pending_health_event: bool,
     pub win: WinState,
@@ -452,6 +465,8 @@ impl Game {
             fullscreen: p.settings.start_fullscreen,
             working_directory: String::new(),
             program_directory: String::new(),
+            read_fallback_dir: None,
+            fallback_seen: Default::default(),
             temp_directory: crate::vfs::temp_dir().to_string_lossy().trim_end_matches('\\').to_string(),
             files: Default::default(),
             transitions: HashMap::new(),
@@ -468,6 +483,8 @@ impl Game {
             close_requested: false,
             sleep_debt_ms: 0.0,
             draw_time: 0.0,
+            skip_render: false,
+            skipping_draw: false,
             pending_lives_event: false,
             pending_health_event: false,
             win: WinState {
@@ -1264,16 +1281,32 @@ impl Game {
 
     /// Starts the game: first room with Game Start (§2 step 7).
     pub fn start(&mut self, vm: &mut Vm) -> Result<(), Error> {
+        self.start_in(vm, None, false)
+    }
+
+    /// Starts the game in `room` (the headless runner's `--exec-room`). Normally
+    /// the first room is entered as usual (Create, Game Start, Room Start; no
+    /// step), then `room` as by `room_goto`, so whatever the first room sets up
+    /// (globals, persistent controllers) exists. `direct`: `room` replaces the
+    /// first room (Game Start events run there).
+    pub fn start_in(&mut self, vm: &mut Vm, room: Option<i32>, direct: bool) -> Result<(), Error> {
         vm.randomize();
         self.audio.preload(&self.sounds);
         let first = match self.room_order.first() {
-            Some(&r) => r,
+            Some(&r) => if direct { room.unwrap_or(r) } else { r },
             None => return Err(Error::fatal("The game has no rooms.")),
         };
         crate::ext::run_inits(self, vm)?;
         self.goto_room(vm, first, true)?;
         // a room change requested while entering the room is performed at once
-        self.process_pending(vm)
+        self.process_pending(vm)?;
+        if let (Some(r), false) = (room, direct) {
+            if !self.ended && self.room != r {
+                self.pending = Some(Pending::Goto(r));
+                self.process_pending(vm)?;
+            }
+        }
+        Ok(())
     }
 
     /// Runs one complete step (§4.2), including drawing.

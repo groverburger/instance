@@ -63,6 +63,9 @@ pub enum Error {
     InvalidModel(String),
     /// The bundled built-in action table could not be decoded.
     BuiltinTable(String),
+    /// A project folder (see [`crate::folder`]) is malformed: `path` names the file or
+    /// directory, `message` what is wrong with it.
+    Folder { path: String, message: String },
 }
 
 impl fmt::Display for Error {
@@ -120,6 +123,7 @@ impl fmt::Display for Error {
             ),
             Error::InvalidModel(m) => write!(f, "cannot encode project: {m}"),
             Error::BuiltinTable(m) => write!(f, "built-in action table: {m}"),
+            Error::Folder { path, message } => write!(f, "{path}: {message}"),
         }
     }
 }

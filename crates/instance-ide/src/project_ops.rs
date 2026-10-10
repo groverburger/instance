@@ -549,11 +549,9 @@ pub fn move_node(
 
 // ------------------------------------------------------------------- load / save
 
-/// Read a project file (any supported version).
+/// Read a project file (any supported version) or a project folder (`gmk-unpack`).
 pub fn load_project(path: &Path) -> Result<Project, String> {
-    instance_format::read_project_file(path)
-        .map(|(p, _)| p)
-        .map_err(|e| format!("{}: {e}", path.display()))
+    instance_format::read_project_any(path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// Serialize a project in the native `.gm81` (v810) format.
@@ -561,8 +559,12 @@ pub fn project_bytes(p: &Project) -> Result<Vec<u8>, String> {
     instance_format::write_project(p, FormatVersion::V810).map_err(|e| e.to_string())
 }
 
-/// Save a project as `.gm81`, writing to a temporary file first.
+/// Save a project as `.gm81`, writing to a temporary file first. A project opened
+/// from a project folder is saved back into that folder.
 pub fn save_project(p: &Project, path: &Path) -> Result<(), String> {
+    if path.is_dir() {
+        return instance_format::write_folder(p, path).map_err(|e| format!("{}: {e}", path.display()));
+    }
     let bytes = project_bytes(p)?;
     let tmp = path.with_extension("gm81~");
     std::fs::write(&tmp, &bytes).map_err(|e| format!("{}: {e}", tmp.display()))?;

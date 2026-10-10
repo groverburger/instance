@@ -347,6 +347,21 @@ impl GlBackend {
             let ver = gl.get_parameter_string(glow::VERSION);
             let renderer = gl.get_parameter_string(glow::RENDERER);
             eprintln!("instance-runner: OpenGL {} ({})", ver, renderer);
+            // Refuse contexts that can't run our shaders: e.g. Windows' built-in GDI
+            // OpenGL 1.1 on machines without a GPU driver, where the first GL 3 call
+            // would panic. Callers then fall back to the software renderer.
+            let v = gl.version();
+            let (need_major, need_minor) = if v.is_embedded { (3, 0) } else { (3, 3) };
+            if (v.major, v.minor) < (need_major, need_minor) {
+                return Err(format!(
+                    "OpenGL {}.{} is too old (need {}{}.{})",
+                    v.major,
+                    v.minor,
+                    if v.is_embedded { "ES " } else { "" },
+                    need_major,
+                    need_minor
+                ));
+            }
             let prog = Self::program(&gl)?;
             let vao = gl.create_vertex_array().map_err(gl_err)?;
             let vbo = gl.create_buffer().map_err(gl_err)?;

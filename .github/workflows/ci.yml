@@ -18,7 +18,7 @@ jobs:
         os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Linux system libraries
@@ -37,17 +37,17 @@ jobs:
           cargo build -p instance-dllhost32 -p instance-testdll --target i686-pc-windows-msvc
       - name: Test (Windows, macOS)
         if: runner.os != 'Linux'
-        run: cargo test --workspace
+        run: cargo test --workspace --no-fail-fast
       - name: Test (Linux, virtual X display)
         if: runner.os == 'Linux'
-        run: xvfb-run -a cargo test --workspace
+        run: xvfb-run -a cargo test --workspace --no-fail-fast
 
   macos-bundles:
     name: macOS app bundles
     needs: test
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build .app bundles
@@ -63,7 +63,7 @@ jobs:
     name: web (wasm32)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown

@@ -1,0 +1,16 @@
+[package]
+name = "instance-check"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+description = "gmk-check: static checker for GameMaker 8.1 projects (GML compile errors, script argument counts, references, suspicious variable use)"
+
+[dependencies]
+instance-format = { path = "../instance-format" }
+gml = { path = "../gml" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+
+[[bin]]
+name = "gmk-check"
+path = "src/bin/gmk-check.rs"

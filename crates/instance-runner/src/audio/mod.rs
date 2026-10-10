@@ -21,11 +21,16 @@
 //!   `sound_isplaying` follows the logical state.
 //! * Without an audio device (or in headless runs) every call succeeds and
 //!   `sound_isplaying` follows the logical state (sound length in real time).
+//! * Offline rendering (`--audio-out`, headless only, [`offline`]): voices are
+//!   mixed in game time into a WAV file instead of a device, MIDI always through
+//!   the SoundFont path; the audio clock ([`voice::Globals::now`]) is then the
+//!   rendered time, so `sound_isplaying` and fades follow it.
 //! * `INSTANCE_AUDIO_DEBUG=1` logs backend choices and MIDI message counts.
 
 pub mod dsp;
 pub mod midi;
 pub mod midi_out;
+pub mod offline;
 pub mod voice;
 
 use crate::res::SoundRes;
@@ -167,6 +172,8 @@ pub struct Audio {
     seqs: HashMap<i32, (usize, Arc<Sequence>)>,
     durations: HashMap<i32, (usize, f64)>,
     midi: MidiBackend,
+    /// Offline mixer (`--audio-out`); replaces the device.
+    offline: Option<offline::Offline>,
 }
 
 impl Audio {
@@ -183,6 +190,43 @@ impl Audio {
             seqs: HashMap::new(),
             durations: HashMap::new(),
             midi: MidiBackend::Untried,
+            offline: None,
+        }
+    }
+
+    /// Switches to offline rendering into `path` (`None`: mix without writing a
+    /// file). Call before the game starts.
+    pub fn start_offline(&mut self, path: Option<&std::path::Path>) -> std::io::Result<()> {
+        self.offline = Some(offline::Offline::create(path)?);
+        self.globals.set_virtual();
+        Ok(())
+    }
+
+    /// Offline rendering: renders `secs` seconds of game time (one step is
+    /// `1 / room_speed`). `sink` receives the mixed frames (tests).
+    pub fn offline_advance(&mut self, secs: f64, sink: Option<&mut Vec<(f32, f32)>>) {
+        let globals = self.globals.clone();
+        if let Some(o) = self.offline.as_mut() {
+            o.advance(secs, &globals, sink);
+        }
+    }
+
+    /// Offline rendering: finishes the WAV file; returns the loudness summary.
+    pub fn offline_finish(&mut self) -> Option<String> {
+        self.offline.as_mut().map(|o| o.finish())
+    }
+
+    /// Whether voices are rendered (device or offline mixer).
+    fn can_render(&mut self) -> bool {
+        self.offline.is_some() || self.device().is_some()
+    }
+
+    /// Hands a voice to the device mixer or the offline mixer.
+    fn add_voice(&mut self, v: voice::Voice) {
+        if let Some(o) = self.offline.as_mut() {
+            o.add(v);
+        } else if let Some(dev) = self.device() {
+            dev.mixer().add(v);
         }
     }
 
@@ -318,7 +362,7 @@ impl Audio {
     pub fn restore(&mut self, idx: i32, res: &SoundRes) {
         let Some(d) = res.data.clone() else { return };
         match detect(&d) {
-            Format::Pcm if !self.headless && kind_of(res) != 3 => {
+            Format::Pcm if (!self.headless || self.offline.is_some()) && kind_of(res) != 3 => {
                 let _ = self.pcm(idx, &d);
             }
             Format::Midi => {
@@ -355,11 +399,13 @@ impl Audio {
 
     /// Current (possibly fading) volume.
     pub fn volume(&mut self, idx: i32, res: &SoundRes) -> f64 {
-        self.ctl(idx, res).volume_now()
+        let now = self.globals.now();
+        self.ctl(idx, res).volume_at(now)
     }
 
     pub fn fade(&mut self, idx: i32, res: &SoundRes, v: f64, ms: f64) {
-        self.ctl(idx, res).fade(v, ms);
+        let now = self.globals.now();
+        self.ctl(idx, res).fade_at(v, ms, now);
     }
 
     pub fn set_pan(&mut self, idx: i32, res: &SoundRes, pan: f64) {
@@ -408,9 +454,11 @@ impl Audio {
     fn midi_backend(&mut self) -> &MidiBackend {
         if let MidiBackend::Untried = self.midi {
             self.midi = MidiBackend::Silent;
-            if !self.headless {
-                // no OS synthesiser (nor threads) in the browser
+            if !self.headless || self.offline.is_some() {
+                // no OS synthesiser (nor threads) in the browser; offline
+                // rendering needs the samples
                 let force_sf = cfg!(target_arch = "wasm32")
+                    || self.offline.is_some()
                     || instance_brand::appdirs::env_var("MIDI").map(|v| v.eq_ignore_ascii_case("soundfont")).unwrap_or(false);
                 if !force_sf {
                     match MidiThread::start(self.globals.clone()) {
@@ -496,11 +544,11 @@ impl Audio {
         let state = Arc::new(VoiceState::default());
         self.serial += 1;
         let mut h = VoiceHandle { state: state.clone(), kind, midi: is_midi, looped, serial: self.serial, simulated: None };
-        let now = Instant::now();
+        let now = self.globals.now();
         let logical = |secs: f64| if looped { None } else { Some(now + Duration::from_secs_f64(secs.max(0.0))) };
         if is_midi {
             let Some(seq) = self.sequence(idx, &data) else { return };
-            let has_device = self.device().is_some();
+            let has_device = self.can_render();
             let globals = self.globals.clone();
             self.midi_backend();
             let sf = match &self.midi {
@@ -520,9 +568,7 @@ impl Audio {
                     Ok(synth) => {
                         let gen = voice::SynthGen::new(midi::SeqPlayer::new(seq, looped), synth, globals.clone(), 44100);
                         let v = voice::Voice::new(Box::new(gen), ctl, globals, state);
-                        if let Some(dev) = self.device() {
-                            dev.mixer().add(v);
-                        }
+                        self.add_voice(v);
                     }
                     Err(e) => {
                         alog!("synth error {:?}", e);
@@ -530,7 +576,7 @@ impl Audio {
                     }
                 }
             }
-        } else if self.device().is_some() {
+        } else if self.can_render() {
             alog!(
                 "sound {}: {} PCM, kind {}{}",
                 idx,
@@ -546,9 +592,7 @@ impl Audio {
             match gen {
                 Some(g) => {
                     let v = voice::Voice::new(g, ctl, self.globals.clone(), state);
-                    if let Some(dev) = self.device() {
-                        dev.mixer().add(v);
-                    }
+                    self.add_voice(v);
                 }
                 None => {
                     alog!("sound {}: cannot decode", idx);
@@ -564,7 +608,7 @@ impl Audio {
     }
 
     fn limit_voices(&mut self) {
-        let now = Instant::now();
+        let now = self.globals.now();
         let mut pcm: Vec<(u64, bool, i32)> = Vec::new();
         for (k, l) in &self.voices {
             for v in l {
@@ -583,7 +627,7 @@ impl Audio {
     }
 
     fn cleanup(&mut self) {
-        let now = Instant::now();
+        let now = self.globals.now();
         for v in self.voices.values_mut() {
             v.retain(|p| p.alive(now));
         }
@@ -609,7 +653,7 @@ impl Audio {
     }
 
     pub fn is_playing(&mut self, idx: i32) -> bool {
-        let now = Instant::now();
+        let now = self.globals.now();
         self.voices.get(&idx).map(|v| v.iter().any(|p| p.alive(now))).unwrap_or(false)
     }
 }
@@ -717,6 +761,62 @@ mod tests {
         a.set_3d(1, &s2, |s| s.pos = [5.0, 0.0, 0.0]);
         assert_eq!(a.ctl(0, &s0).p.lock().unwrap().s3d.pos, [0.0; 3]);
         assert_eq!(a.ctl(1, &s2).p.lock().unwrap().s3d.pos, [5.0, 0.0, 0.0]);
+    }
+
+    /// A constant-level 16-bit mono WAV at 8 kHz.
+    fn dc_wav(secs: f64, level: i16) -> Vec<u8> {
+        let mut v = wav(secs);
+        let n = v.len();
+        for k in (44..n).step_by(2) {
+            v[k..k + 2].copy_from_slice(&level.to_le_bytes());
+        }
+        v
+    }
+
+    #[test]
+    fn offline_mix_follows_game_time() {
+        let mut a = Audio::new(true);
+        a.start_offline(None).unwrap();
+        let s = res(0, dc_wav(0.5, 16384));
+        a.play(0, &s, false, &[]);
+        assert!(a.is_playing(0));
+        let mut out = Vec::new();
+        // 0.4 s of game time in 1/30 s steps: still playing, whatever the wall clock
+        for _ in 0..12 {
+            a.offline_advance(1.0 / 30.0, Some(&mut out));
+        }
+        assert_eq!(out.len(), (0.4f64 * 44100.0).round() as usize);
+        assert!(a.is_playing(0), "0.4 s of a 0.5 s sound rendered");
+        // resampled 8 kHz → 44.1 kHz, unity gain, centred (linear pan: 1, 1)
+        let (l, r) = out[10_000];
+        assert!((l - 0.5).abs() < 1e-3 && (r - 0.5).abs() < 1e-3, "{l} {r}");
+        for _ in 0..6 {
+            a.offline_advance(1.0 / 30.0, Some(&mut out));
+        }
+        assert!(!a.is_playing(0), "ended after 0.5 s of rendered audio");
+        let end = (0.5f64 * 44100.0) as usize;
+        assert!(out[end + 50].0.abs() < 1e-6, "silence after the end");
+        let stats = a.offline_finish().unwrap();
+        assert!(stats.contains("0.60 s") && stats.contains("peak -6.0 dBFS"), "{stats}");
+    }
+
+    #[test]
+    fn offline_fade_uses_the_offline_clock() {
+        let mut a = Audio::new(true);
+        a.start_offline(None).unwrap();
+        let s = res(0, dc_wav(2.0, 16384));
+        a.play(0, &s, true, &[]);
+        a.fade(0, &s, 0.0, 1000.0);
+        let mut out = Vec::new();
+        a.offline_advance(0.5, Some(&mut out));
+        // halfway through the fade in game time
+        assert!((a.volume(0, &s) - 0.5).abs() < 1e-6, "{}", a.volume(0, &s));
+        let (l, _) = out[out.len() - 1];
+        assert!((l - 0.25).abs() < 0.01, "level at 0.5 s: {l}");
+        a.offline_advance(0.6, Some(&mut out));
+        assert_eq!(a.volume(0, &s), 0.0);
+        assert!(out[out.len() - 1].0.abs() < 1e-3);
+        assert!(a.is_playing(0), "a looping sound faded out still plays");
     }
 
     #[test]

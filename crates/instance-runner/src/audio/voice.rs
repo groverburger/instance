@@ -7,19 +7,50 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use web_time::Instant;
 
-/// Engine-wide values read by voices and the MIDI thread.
+/// Engine-wide values read by voices and the MIDI thread, and the audio clock.
+///
+/// The clock is real time, except in offline rendering (`--audio-out`), where
+/// it is a virtual time advanced by the offline mixer: fades, `sound_isplaying`
+/// and simulated playbacks then follow the rendered audio, not the wall clock.
 pub struct Globals {
     volume: AtomicU32,
     tempo: AtomicU64,
+    base: Instant,
+    virt: AtomicBool,
+    /// Virtual time since `base`, nanoseconds.
+    offset_ns: AtomicU64,
 }
 
 impl Default for Globals {
     fn default() -> Self {
-        Globals { volume: AtomicU32::new(1f32.to_bits()), tempo: AtomicU64::new(1f64.to_bits()) }
+        Globals {
+            volume: AtomicU32::new(1f32.to_bits()),
+            tempo: AtomicU64::new(1f64.to_bits()),
+            base: Instant::now(),
+            virt: AtomicBool::new(false),
+            offset_ns: AtomicU64::new(0),
+        }
     }
 }
 
 impl Globals {
+    /// The audio clock (see the type docs).
+    pub fn now(&self) -> Instant {
+        if self.virt.load(Ordering::Relaxed) {
+            self.base + std::time::Duration::from_nanos(self.offset_ns.load(Ordering::Relaxed))
+        } else {
+            Instant::now()
+        }
+    }
+    /// Switches to the virtual clock, at time 0.
+    pub fn set_virtual(&self) {
+        self.offset_ns.store(0, Ordering::Relaxed);
+        self.virt.store(true, Ordering::Relaxed);
+    }
+    /// Sets the virtual clock to `secs` seconds after its start.
+    pub fn set_virtual_time(&self, secs: f64) {
+        self.offset_ns.store((secs.max(0.0) * 1e9) as u64, Ordering::Relaxed);
+    }
     pub fn volume(&self) -> f64 {
         f32::from_bits(self.volume.load(Ordering::Relaxed)) as f64
     }
@@ -175,7 +206,11 @@ impl SoundCtl {
     }
 
     pub fn volume_now(&self) -> f64 {
-        self.p.lock().unwrap().volume.value_at(Instant::now())
+        self.volume_at(Instant::now())
+    }
+
+    pub fn volume_at(&self, now: Instant) -> f64 {
+        self.p.lock().unwrap().volume.value_at(now)
     }
 
     pub fn set_volume(&self, v: f64) {
@@ -183,7 +218,11 @@ impl SoundCtl {
     }
 
     pub fn fade(&self, v: f64, ms: f64) {
-        let now = Instant::now();
+        self.fade_at(v, ms, Instant::now())
+    }
+
+    /// `sound_fade` starting at `now` (the audio clock).
+    pub fn fade_at(&self, v: f64, ms: f64, now: Instant) {
         let mut p = self.p.lock().unwrap();
         let cur = p.volume.value_at(now);
         p.volume = Fade { from: cur, to: v.clamp(0.0, 1.0), start: now, dur: (ms / 1000.0).max(0.0) };
@@ -700,9 +739,14 @@ impl Voice {
         v
     }
 
+    /// Sample rate of the frames [`Voice::next_frame`] returns.
+    pub fn rate(&self) -> u32 {
+        self.rate.max(1)
+    }
+
     fn refresh(&mut self) {
         let Ok(p) = self.ctl.p.try_lock() else { return };
-        let m = mix_of(&p, self.globals.volume(), Instant::now());
+        let m = mix_of(&p, self.globals.volume(), self.globals.now());
         self.tl = m.left as f32;
         self.tr = m.right as f32;
         self.doppler = m.doppler;

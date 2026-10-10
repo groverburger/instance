@@ -672,14 +672,16 @@ impl Game {
             self.gfx.be.set_target(self.pass_backend_target());
             self.gfx.be.clear_depth();
         }
-        if self.rs.show_color {
+        // --no-draw: only the Draw events run (see Game::skip_render)
+        let render = !self.skipping_draw;
+        if self.rs.show_color && render {
             let c = rgba8(self.rs.bg_color, 1.0);
             self.gfx.painter().clear_clip(c);
         }
         self.gfx.d3d.no_depth = true;
         for i in 0..8 {
             let b = &self.rs.backgrounds[i];
-            if b.visible && !b.foreground {
+            if b.visible && !b.foreground && render {
                 self.draw_layer(i, area);
             }
         }
@@ -687,7 +689,7 @@ impl Game {
         // depth-sorted list: (depth, kind, index); kind 0 tile, 1 instance, 2 particles
         let mut items: Vec<(f64, u8, usize, i32)> = Vec::new();
         for (k, t) in self.rs.tiles.iter().enumerate() {
-            if t.visible {
+            if t.visible && render {
                 items.push((t.depth, 0, k, t.id));
             }
         }
@@ -699,8 +701,10 @@ impl Game {
                 }
             }
         }
-        for (k, d) in self.particles.drawable_systems() {
-            items.push((d, 2, k, k as i32));
+        if render {
+            for (k, d) in self.particles.drawable_systems() {
+                items.push((d, 2, k, k as i32));
+            }
         }
         let key = |a: &(f64, u8, usize, i32), b: &(f64, u8, usize, i32)| {
             b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2))
@@ -748,7 +752,7 @@ impl Game {
                             self.gfx.d3d.depth = 0.0;
                             return Ok(());
                         }
-                    } else {
+                    } else if render {
                         let i = self.inst(id).unwrap();
                         let (s, ii, x, y, xs, ys, a, c, al) = (
                             i.sprite_index,
@@ -771,11 +775,11 @@ impl Game {
         self.gfx.d3d.no_depth = true;
         for i in 0..8 {
             let b = &self.rs.backgrounds[i];
-            if b.visible && b.foreground {
+            if b.visible && b.foreground && render {
                 self.draw_layer(i, area);
             }
         }
-        if self.cursor_sprite >= 0 {
+        if self.cursor_sprite >= 0 && render {
             let (mx, my) = self.mouse_room_pos();
             let sub = (self.frame as f64) * 1.0;
             let cs = self.cursor_sprite;
@@ -803,7 +807,12 @@ impl Game {
         let into = self.gfx.surface_size(saved_target).map(|(w, h)| (saved_target, w, h));
         self.gfx.target = into.map_or(-1, |s| s.0);
         self.gfx.pass_target = self.gfx.target;
+        // --no-draw (only when the frame goes to the screen: a surface keeps it)
+        self.skipping_draw = self.skip_render && into.is_none() && self.gfx.be.set_discard(true);
         let r = self.draw_frame_into(vm, into);
+        if std::mem::take(&mut self.skipping_draw) {
+            self.gfx.be.set_discard(false);
+        }
         self.gfx.pass_target = -1;
         self.gfx.target = if saved_target >= 0 { saved_target } else { -1 };
         r

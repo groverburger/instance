@@ -760,13 +760,33 @@ impl Host for Game {
 
 impl Game {
     /// Resolves a file name relative to the working directory.
+    ///
+    /// With a read fallback (the headless runner's `--save-dir`), the first
+    /// time a relative name is resolved and the file is missing from the
+    /// working directory but exists in the fallback folder (the game's folder),
+    /// it is copied into the working directory first: reads see the bundled
+    /// file, writes never touch the original. Later resolutions of the same name
+    /// do not fall back again (a file the game deleted stays deleted).
     pub fn resolve_path(&self, path: &str) -> std::path::PathBuf {
         let p = std::path::Path::new(path);
         if p.is_absolute() || self.working_directory.is_empty() {
-            p.to_path_buf()
-        } else {
-            std::path::Path::new(&self.working_directory).join(p)
+            return p.to_path_buf();
         }
+        let full = std::path::Path::new(&self.working_directory).join(p);
+        if let Some(fb) = &self.read_fallback_dir {
+            let wild = path.contains(['*', '?']);
+            let key = full.to_string_lossy().to_ascii_lowercase().replace('/', "\\");
+            if !wild && self.fallback_seen.borrow_mut().insert(key) && !crate::vfs::exists(&full) {
+                let src = std::path::Path::new(fb).join(p);
+                if crate::vfs::is_file(&src) {
+                    if let Some(d) = full.parent() {
+                        let _ = crate::vfs::create_dir_all(d);
+                    }
+                    let _ = crate::vfs::copy(&src, &full);
+                }
+            }
+        }
+        full
     }
 }
 
