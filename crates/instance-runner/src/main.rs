@@ -736,10 +736,7 @@ pub fn run_main() {
             .expect("spawn game thread");
         h.join().unwrap_or(3)
     } else {
-        // On macOS the OpenGL context would be created off the main thread, which
-        // AppKit does not allow: default to the software renderer there.
-        let default = if cfg!(target_os = "macos") { Renderer::Software } else { Renderer::Gl };
-        let r = o.renderer.unwrap_or(default);
+        let r = o.renderer.unwrap_or(Renderer::Gl);
         window::run(o.file, o.input, r, o.debug)
     };
     log::finish();

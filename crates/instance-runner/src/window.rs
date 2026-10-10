@@ -5,10 +5,10 @@
 
 use crate::debug_window::{DebugWindow, SharedLink};
 use crate::error_dialog::{self, ErrorDialog};
-use instance_runner::draw::gl::{GlBackend, WindowHandles};
+use instance_runner::draw::gl::{GlBackend, WindowGl};
 
-/// The window and its raw handles, sent to the game thread for OpenGL.
-type WinMsg = (Arc<Window>, Result<WindowHandles, String>);
+/// The window, made ready for OpenGL, sent to the game thread.
+type WinMsg = (Arc<Window>, Result<WindowGl, String>);
 use instance_runner::draw::Backend;
 use instance_runner::frontend::{self, mapping, Mapping, Pacer};
 use instance_runner::{Game, InputEvent, UiHooks};
@@ -96,6 +96,7 @@ struct App {
     slot: Arc<Mutex<Slot>>,
     input: Sender<InputEvent>,
     window: Option<Arc<Window>>,
+    /// Set for the OpenGL renderer: where the window goes once it exists.
     win_tx: Option<Sender<WinMsg>>,
     surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
     exit_code: i32,
@@ -139,7 +140,7 @@ impl App {
             s.win_h = size.height;
         }
         if let Some(tx) = self.win_tx.take() {
-            let _ = tx.send((win.clone(), WindowHandles::of(&win)));
+            let _ = tx.send((win.clone(), WindowGl::of(&win)));
         }
         if let Some(link) = self.debug_link.clone() {
             match DebugWindow::new(el, link, Some(&win)) {
@@ -736,7 +737,7 @@ pub fn run(path: PathBuf, input: Vec<(u64, InputEvent)>, renderer: Renderer, deb
         slot,
         input: tx,
         window: None,
-        win_tx: Some(win_tx),
+        win_tx: (renderer == Renderer::Gl).then_some(win_tx),
         surface: None,
         exit_code: 0,
         last_caption: String::new(),

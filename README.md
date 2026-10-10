@@ -81,16 +81,16 @@ test material for the test suites and keep their names.)
 | | Windows | macOS | Linux | Browser (wasm32) |
 |---|---|---|---|---|
 | IDE | yes | yes¹ | yes¹ | yes (`ide.html`) |
-| Runner | OpenGL / software | software by default¹ ² | OpenGL (EGL) / software¹ | WebGL2 / software (`play.html`) |
+| Runner | OpenGL / software | OpenGL (CGL) / software² | OpenGL (EGL) / software¹ | WebGL2 / software (`play.html`) |
 | MIDI | Windows synthesiser, else SoundFont | SoundFont | SoundFont | SoundFont fetched by the page |
 | DLLs (`external_*`) | x64 in-process, x86 via helper | native `.dylib` only | native `.so` only | no (GML extensions work) |
 | Multiplayer (`mplay_*`) | yes | yes | yes | no (`mplay_init_tcpip` fails) |
 
 ¹ Built and tested by CI (`.github/workflows/ci.yml`) and type-checked from Windows with
 `scripts\cross-check.ps1`; not run interactively by the developers.
-² On macOS the runner would create its OpenGL context off the main thread, which AppKit
-does not support (unverified without a Mac; the main
-thread is expected), so the windowed runner uses the software renderer; `--renderer gl` tries OpenGL.
+² The window surface is created on the main thread (AppKit requires it) and the context
+is made current on the game thread; tested on Apple Silicon (OpenGL 4.1 Metal).
+`--renderer software` forces the CPU renderer.
 
 Per-user data of games (the emulated `registry_*` keys as `registry_<game id>.ini`, and
 highscores) lives with the IDE's settings (`ide.json`, recent files) and installed

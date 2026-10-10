@@ -20,7 +20,7 @@ use glow::HasContext;
 #[cfg(not(target_arch = "wasm32"))]
 use glutin::config::{ConfigTemplateBuilder, GlConfig};
 #[cfg(not(target_arch = "wasm32"))]
-use glutin::context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContext, PossiblyCurrentContext, Version};
+use glutin::context::{ContextApi, ContextAttributesBuilder, NotCurrentContext, NotCurrentGlContext, PossiblyCurrentContext, Version};
 #[cfg(not(target_arch = "wasm32"))]
 use glutin::display::{Display, DisplayApiPreference, GlDisplay};
 #[cfg(not(target_arch = "wasm32"))]
@@ -148,6 +148,44 @@ impl WindowHandles {
     }
 }
 
+/// A winit window made ready for OpenGL on its event-loop thread; the context
+/// is then created from it on the game thread ([`GlBackend::for_window`]).
+/// On macOS the surface is created here already: glutin's CGL surface sets up
+/// the NSView, which AppKit only allows on the main thread (glutin itself sends
+/// its later NSView/NSOpenGLContext calls to the main thread).
+#[cfg(not(target_arch = "wasm32"))]
+pub struct WindowGl {
+    #[cfg(not(target_os = "macos"))]
+    handles: WindowHandles,
+    #[cfg(target_os = "macos")]
+    prepared: Prepared,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl WindowGl {
+    /// Call on the thread that owns the event loop.
+    pub fn of(win: &winit::window::Window) -> Result<WindowGl, String> {
+        let handles = WindowHandles::of(win)?;
+        #[cfg(target_os = "macos")]
+        {
+            let size = win.inner_size();
+            // SAFETY: the window outlives the surface (the backend holds an Arc to it).
+            let prepared = unsafe { GlBackend::prepare(handles.display, handles.window, size.width, size.height)? };
+            Ok(WindowGl { prepared })
+        }
+        #[cfg(not(target_os = "macos"))]
+        Ok(WindowGl { handles })
+    }
+}
+
+/// A display, context (not yet current) and window surface.
+#[cfg(not(target_arch = "wasm32"))]
+struct Prepared {
+    display: Display,
+    context: NotCurrentContext,
+    surface: Surface<WindowSurface>,
+}
+
 /// What keeps the native window alive.
 #[cfg(not(target_arch = "wasm32"))]
 enum WindowHold {
@@ -263,13 +301,17 @@ fn gl_err(e: impl std::fmt::Display) -> String {
 }
 
 impl GlBackend {
-    /// Creates a context for a winit window (vsync per `vsync`). The raw
-    /// handles must have been obtained on the window's thread (see
-    /// [`WindowHandles::of`]); the context may be created on another thread.
+    /// Creates a context for a winit window (vsync per `vsync`). `w` must have
+    /// been made on the window's thread (see [`WindowGl::of`]); the context may
+    /// be created and used on another thread.
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn for_window(win: std::sync::Arc<winit::window::Window>, h: WindowHandles, vsync: bool) -> Result<GlBackend, String> {
+    pub fn for_window(win: std::sync::Arc<winit::window::Window>, w: WindowGl, vsync: bool) -> Result<GlBackend, String> {
         let size = win.inner_size();
-        Self::create(h.display, h.window, size.width.max(1), size.height.max(1), vsync, WindowHold::Winit(win))
+        let (sw, sh) = (size.width.max(1), size.height.max(1));
+        #[cfg(target_os = "macos")]
+        return Self::finish(w.prepared, sw, sh, vsync, WindowHold::Winit(win));
+        #[cfg(not(target_os = "macos"))]
+        Self::create(w.handles.display, w.handles.window, sw, sh, vsync, WindowHold::Winit(win))
     }
 
     /// Creates a context on a hidden native window (offscreen rendering for
@@ -299,46 +341,64 @@ impl GlBackend {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     fn create(rdh: RawDisplayHandle, rwh: RawWindowHandle, w: u32, h: u32, vsync: bool, hold: WindowHold) -> Result<GlBackend, String> {
+        // SAFETY: the handles are valid for the lifetime of `hold`, which the
+        // backend keeps alive (dropped after the context and surface).
+        let p = unsafe { Self::prepare(rdh, rwh, w, h)? };
+        Self::finish(p, w, h, vsync, hold)
+    }
+
+    /// Creates the display, context and window surface (on macOS: call on the
+    /// main thread).
+    ///
+    /// # Safety
+    /// The handles must stay valid while the result (and the backend made from it) lives.
+    #[cfg(not(target_arch = "wasm32"))]
+    unsafe fn prepare(rdh: RawDisplayHandle, rwh: RawWindowHandle, w: u32, h: u32) -> Result<Prepared, String> {
         #[cfg(windows)]
         let pref = DisplayApiPreference::Wgl(Some(rwh));
         #[cfg(target_os = "macos")]
         let pref = DisplayApiPreference::Cgl;
         #[cfg(all(unix, not(target_os = "macos")))]
         let pref = DisplayApiPreference::Egl;
-        // SAFETY: the handles are valid for the lifetime of `hold`, which the
-        // backend keeps alive (dropped after the context and surface).
-        unsafe {
-            let display = Display::new(rdh, pref).map_err(gl_err)?;
-            let tmpl = ConfigTemplateBuilder::new()
-                .compatible_with_native_window(rwh)
-                .with_alpha_size(8)
-                .with_depth_size(24)
-                .build();
-            let config = display
-                .find_configs(tmpl)
-                .map_err(gl_err)?
-                .reduce(|a, b| if b.num_samples() < a.num_samples() { b } else { a })
-                .ok_or("no suitable OpenGL pixel format")?;
-            let attrs = ContextAttributesBuilder::new()
-                .with_context_api(ContextApi::OpenGl(Some(Version::new(3, 3))))
-                .build(Some(rwh));
-            let ctx = display.create_context(&config, &attrs).map_err(gl_err)?;
-            let sattrs = SurfaceAttributesBuilder::<WindowSurface>::new().build(
-                rwh,
-                NonZeroU32::new(w.max(1)).unwrap(),
-                NonZeroU32::new(h.max(1)).unwrap(),
-            );
-            let surface = display.create_window_surface(&config, &sattrs).map_err(gl_err)?;
-            let context = ctx.make_current(&surface).map_err(gl_err)?;
-            let _ = surface.set_swap_interval(
-                &context,
-                if vsync { SwapInterval::Wait(NonZeroU32::new(1).unwrap()) } else { SwapInterval::DontWait },
-            );
-            let gl = glow::Context::from_loader_function_cstr(|s| display.get_proc_address(s));
-            let host = Host::Native { surface, context, _display: display, _hold: hold };
-            Self::init(gl, host, w, h)
-        }
+        let display = Display::new(rdh, pref).map_err(gl_err)?;
+        let tmpl = ConfigTemplateBuilder::new()
+            .compatible_with_native_window(rwh)
+            .with_alpha_size(8)
+            .with_depth_size(24)
+            .build();
+        let config = display
+            .find_configs(tmpl)
+            .map_err(gl_err)?
+            .reduce(|a, b| if b.num_samples() < a.num_samples() { b } else { a })
+            .ok_or("no suitable OpenGL pixel format")?;
+        let attrs = ContextAttributesBuilder::new()
+            .with_context_api(ContextApi::OpenGl(Some(Version::new(3, 3))))
+            .build(Some(rwh));
+        let context = display.create_context(&config, &attrs).map_err(gl_err)?;
+        let sattrs = SurfaceAttributesBuilder::<WindowSurface>::new().build(
+            rwh,
+            NonZeroU32::new(w.max(1)).unwrap(),
+            NonZeroU32::new(h.max(1)).unwrap(),
+        );
+        let surface = display.create_window_surface(&config, &sattrs).map_err(gl_err)?;
+        Ok(Prepared { display, context, surface })
+    }
+
+    /// Makes a prepared context current on this thread and sets the backend up.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn finish(p: Prepared, w: u32, h: u32, vsync: bool, hold: WindowHold) -> Result<GlBackend, String> {
+        let Prepared { display, context, surface } = p;
+        let context = context.make_current(&surface).map_err(gl_err)?;
+        let _ = surface.set_swap_interval(
+            &context,
+            if vsync { SwapInterval::Wait(NonZeroU32::new(1).unwrap()) } else { SwapInterval::DontWait },
+        );
+        let gl = unsafe { glow::Context::from_loader_function_cstr(|s| display.get_proc_address(s)) };
+        let host = Host::Native { surface, context, _display: display, _hold: hold };
+        // SAFETY: the context was just made current.
+        unsafe { Self::init(gl, host, w, h) }
     }
 
     /// Common setup of a fresh, current context.
