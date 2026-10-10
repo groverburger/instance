@@ -286,9 +286,14 @@ pub fn key_name(k: i32) -> String {
     }
 }
 
-/// Parses a key name for the scripted input syntax ("left", "a", "37", ...).
+/// Parses a key name for the scripted input syntax ("left", "a", "3", "37", ...).
+/// A single character is that key (so "3" is the digit key, code 51); longer
+/// numbers are virtual-key codes.
 pub fn parse_key(s: &str) -> Option<u8> {
     let l = s.to_ascii_lowercase();
+    if l.len() == 1 && l.as_bytes()[0].is_ascii_alphanumeric() {
+        return Some(l.as_bytes()[0].to_ascii_uppercase());
+    }
     Some(match l.as_str() {
         "left" => vk::LEFT,
         "right" => vk::RIGHT,
@@ -332,6 +337,16 @@ mod tests {
         i.apply(&InputEvent::KeyUp(37));
         assert!(i.released[37] && !i.held[37]);
         assert!(i.check(&i.held, 0));
+    }
+
+    #[test]
+    fn key_names() {
+        assert_eq!(parse_key("3"), Some(b'3')); // the digit key, not code 3
+        assert_eq!(parse_key("a"), Some(b'A'));
+        assert_eq!(parse_key("37"), Some(37));
+        assert_eq!(parse_key("left"), Some(vk::LEFT));
+        assert_eq!(parse_key("f5"), Some(116));
+        assert_eq!(parse_key("nope"), None);
     }
 }
 
