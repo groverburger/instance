@@ -6,3 +6,7 @@
 game_errors.log
 /dist
 /web/soundfonts/
+# game save/settings files written when running games from the repo root
+/*.sav
+/*.cfg
+/*.ini
