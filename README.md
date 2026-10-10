@@ -158,3 +158,19 @@ footer (specs/exe-format.md); executables made by earlier builds (old footer mag
 
 Not supported yet: loading .exe files compiled by YoYo's GameMaker.
 Open spec questions and implementation choices: `specs/OPEN_QUESTIONS.md`.
+
+## Releases
+
+Publishing a GitHub release runs `.github/workflows/release.yml`, which builds and
+attaches:
+
+- `Instance-<tag>-windows-x64.zip`: instance-ide, instance-runner, gmx2gm81,
+  gmk-info, the 32-bit DLL helper and the MIDI SoundFont
+- `Instance-<tag>-macos-arm64.zip` / `-macos-x64.zip` (and the matching
+  `Instance-Runner-…` zips): ad-hoc signed `.app` bundles (right-click > Open on
+  first launch, or `xattr -dr com.apple.quarantine Instance.app`)
+- `Instance-<tag>-web.zip`: the static browser build; serve the folder with any
+  static web server
+
+The workflow can also be re-run by hand for an existing tag (Actions > Release >
+Run workflow).

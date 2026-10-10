@@ -1,0 +1,124 @@
+# Builds Instance for Windows, macOS and the web whenever a GitHub release is
+# published, and attaches the packages to that release. Can also be run by hand
+# (Actions > Release > Run workflow) for an existing release tag.
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and upload to (the release must exist)
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  windows:
+    name: Windows (x64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: i686-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: |
+          cargo build --release -p instance-ide -p instance-runner -p instance-format -p instance-gmx
+          cargo build --release -p instance-dllhost32 --target i686-pc-windows-msvc
+      - name: SoundFont (MIDI)
+        run: bash scripts/fetch-soundfont.sh
+      - name: Package
+        run: |
+          pkg="Instance-$TAG-windows-x64"
+          mkdir -p "$pkg/soundfonts"
+          cp target/release/instance-ide.exe target/release/instance-runner.exe \
+             target/release/gmx2gm81.exe target/release/gmk-info.exe "$pkg/"
+          cp target/i686-pc-windows-msvc/release/instance-dllhost32.exe "$pkg/"
+          cp web/soundfonts/default.sf2 web/soundfonts/LICENSE-GeneralUser-GS.txt "$pkg/soundfonts/"
+          cp README.md CLEANROOM.md "$pkg/"
+          7z a -tzip "$pkg.zip" "$pkg" > /dev/null
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "Instance-$TAG-windows-x64.zip" --clobber
+
+  macos:
+    name: macOS (${{ matrix.arch }})
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            target: aarch64-apple-darwin
+          - arch: x64
+            target: x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Build .app bundles
+        run: bash scripts/macos-bundle.sh --target ${{ matrix.target }} dist/macos
+      - name: SoundFont (MIDI) inside the bundles
+        run: |
+          bash scripts/fetch-soundfont.sh
+          for app in "dist/macos/Instance.app" "dist/macos/Instance Runner.app"; do
+            mkdir -p "$app/Contents/MacOS/soundfonts"
+            cp web/soundfonts/default.sf2 web/soundfonts/LICENSE-GeneralUser-GS.txt "$app/Contents/MacOS/soundfonts/"
+            codesign --force --deep --sign - "$app" || true
+          done
+      - name: Package
+        run: |
+          cd dist/macos
+          ditto -c -k --keepParent "Instance.app" "Instance-$TAG-macos-${{ matrix.arch }}.zip"
+          ditto -c -k --keepParent "Instance Runner.app" "Instance-Runner-$TAG-macos-${{ matrix.arch }}.zip"
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" dist/macos/*.zip --clobber
+
+  web:
+    name: Web (WebAssembly)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-bindgen-cli (version from Cargo.lock)
+        run: |
+          v=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')
+          cargo install wasm-bindgen-cli --version "$v" --locked
+      - name: SoundFont (MIDI)
+        run: bash scripts/fetch-soundfont.sh
+      - name: Build the static site
+        run: bash scripts/build-web.sh dist/web
+      - name: Package
+        run: cd dist && mv web "Instance-$TAG-web" && zip -qr "Instance-$TAG-web.zip" "Instance-$TAG-web"
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "dist/Instance-$TAG-web.zip" --clobber
