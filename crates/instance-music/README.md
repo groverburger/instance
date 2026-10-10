@@ -201,7 +201,7 @@ timbale_hi/lo agogo_hi/lo guiro whistle vibraslap castanets jingle sticks …
 * Dynamics set the velocity of following notes: `ppp 24`, `pp 36`, `p 50`,
   `mp 64`, `mf 80`, `f 96`, `ff 112`, `fff 124`; or `vel=90`.
 * `vol=` `expr=` `pan=` `mod=` `reverb=` `chorus=` `cutoff=` `reso=`
-  `attack=` `release=` `ccN=` (any controller), `bend=` (semitones),
+  `attack=` `release=` `delay=` (synth delay send) `ccN=` (any controller), `bend=` (semitones),
   `inst=NAME` (program change; use `_` for spaces).
 * Ramps: `expr=40->120:4bar`, `pan=-60->60:2w` (smooth steps over the length).
   Use `expr` for swells and fades — `vol` is the mix level.
@@ -223,6 +223,7 @@ variant cave            # lines must be indented
   tempo 80              # new base tempo (all tempi scale)
   transpose -2          # pitched tracks
   inst lead Ocarina
+  synth lead supersaw   # another built-in synth preset (§2.10)
   vol drums 60
   shift bells 12        # transpose one track
   mute drums bass
@@ -232,6 +233,47 @@ variant cave            # lines must be indented
 `--variant cave` renders it; `--variant all` renders the base and every
 variant (`out.mid`, `out_cave.mid`, …). Keep the leitmotif in patterns and
 build area variants by re-orchestrating, transposing and re-arranging.
+
+### Built-in synthesiser (`synth=`) — for synthwave, electronic, chiptune-ish
+
+General MIDI SoundFont patches sound like "MIDI": no filter sweeps, no
+detuned supersaws, no sidechain pumping. A track with `synth=PRESET` is played
+by a built-in synthesiser instead when rendering **WAV** (MIDI output writes
+its `inst=` program, or a GM stand-in, so it still plays in GameMaker). A song
+whose tracks are all `synth=` needs no SoundFont.
+
+```text
+track lead  synth=lead oct=5 vol=104 delay=38 reverb=45
+track arp   synth=pluck oct=4 vol=90 pan=-30 delay=50 duck=35 gate=60
+track pad   synth=pad oct=4 vol=76 reverb=70 duck=80 gate=100     # pumps with the kick
+track bass  synth=bass oct=2 vol=112 duck=45 gate=80
+track drums drums synth=drums vol=108 reverb=25
+...
+  arp: mf cutoff=30->95:4bar arp16 over | F#m | D | A | E |     # filter sweep
+```
+
+`gmk-music synths` lists presets and options. Presets: `supersaw` (7 detuned
+saws), `lead` (3 saws, mono, glide, delayed vibrato), `square` (PWM), `pluck`
+(snappy filter envelope: arpeggios), `pad` (slow, drifting, chorus), `strings`
+(string machine), `brass` (swelling filter), `bass` (saw + sub, punchy), `reese`
+(detuned dark bass), `sub` (sine), `bell` (FM), `epiano` (FM tine), `riser`
+(noise swept up by the filter), `drums` (drum machine: 808/Linn-style kick,
+gated-reverb snare, clap, metallic hats, toms, cymbals — on a `drums` track).
+
+Track options (synth tracks only): `cutoff` 0..127 (20 Hz·1000^(v/127):
+64 ≈ 650 Hz, 90 ≈ 2.7 kHz, 110 ≈ 8 kHz), `reso` 0..127, `envamt` (filter
+envelope, octaves), `attack` `decay` `release` 0..127 (1 ms·10000^(v/127): 64 ≈
+100 ms), `sustain` 0..127, `detune` (cents), `unison` 1..8, `width` 0..100,
+`glide` (ms), `drive` 0..100, `vib` (cents), `duck` 0..100 (sidechain: the kick
+— any note 35/36 on the drum channel — pushes the track down; 60–80 on pads
+gives the classic pump), `delay` 0..127 (send to a ping-pong delay in dotted
+eighths). The inline controls `cutoff=` `reso=` `attack=` `release=` `delay=`
+`mod=` (vibrato), `vol` `expr` `pan` `reverb` `chorus`, pitch bend and the pedal
+drive it during the song; ramps make filter sweeps.
+
+Balance by rendering each track alone (a variant that mutes the others,
+`--normalize off`) and comparing RMS: lead ≈ bass ≈ drums, pads and arps
+4–6 dB below. Render stereo (omit `--mono`): the unison, chorus and delay are wide.
 
 ---
 
@@ -249,7 +291,8 @@ build area variants by re-orchestrating, transposing and re-arranging.
   `--loop` renders the loop region as the second of two passes, so the release
   tail of the end already sounds at the start: no gap, no click (the loop is
   stretched by at most 32 samples to a whole number of synth blocks).
-  WAV is stored uncompressed in the project: 22050 Hz mono = 2.6 MB/min.
+  WAV is stored uncompressed in the project: 22050 Hz mono = 2.6 MB/min
+  (32000 Hz stereo = 7.7 MB/min). `synth=` tracks only sound like themselves in WAV.
   Prefer MIDI for long music; use WAV when it must sound identical everywhere.
 
 Adding a rendered song to a project with `instance-format`:

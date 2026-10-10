@@ -8,6 +8,7 @@
 //! GL and audio-device dependencies for nothing.
 
 use crate::compile::Song;
+use crate::synth::Engine;
 use crate::wav::Audio;
 use std::sync::Arc;
 
@@ -80,11 +81,23 @@ pub struct RenderInfo {
 /// returns interleaved stereo audio covering `[0, until)` seconds.
 /// When `until` is None it renders past the last event until silence or
 /// `tail` seconds.
-pub fn render_events(sf: &Arc<SoundFont>, rate: u32, mut events: Vec<(f64, Vec<u8>)>, until: Option<f64>, tail: f64) -> Result<Vec<f32>, String> {
-    let mut settings = rustysynth::SynthesizerSettings::new(rate as i32);
-    settings.maximum_polyphony = 128;
-    settings.block_size = BLOCK;
-    let mut synth = rustysynth::Synthesizer::new(sf, &settings).map_err(|e| format!("synth: {e:?}"))?;
+pub fn render_events(sf: &Arc<SoundFont>, rate: u32, events: Vec<(f64, Vec<u8>)>, until: Option<f64>, tail: f64) -> Result<Vec<f32>, String> {
+    render_events_with(Some(sf), None, rate, events, until, tail)
+}
+
+/// [`render_events`] with the built-in synthesiser: messages for its
+/// channels go to `engine`, the rest to the SoundFont (which may be absent
+/// when the engine plays every channel).
+pub fn render_events_with(sf: Option<&Arc<SoundFont>>, mut engine: Option<&mut Engine>, rate: u32, mut events: Vec<(f64, Vec<u8>)>, until: Option<f64>, tail: f64) -> Result<Vec<f32>, String> {
+    let mut synth = match sf {
+        Some(sf) => {
+            let mut settings = rustysynth::SynthesizerSettings::new(rate as i32);
+            settings.maximum_polyphony = 128;
+            settings.block_size = BLOCK;
+            Some(rustysynth::Synthesizer::new(sf, &settings).map_err(|e| format!("synth: {e:?}"))?)
+        }
+        None => None,
+    };
     events.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
     let last = events.last().map(|e| e.0).unwrap_or(0.0);
     let stop_at = until.map(|u| (u * rate as f64).round() as usize);
@@ -98,9 +111,14 @@ pub fn render_events(sf: &Arc<SoundFont>, rate: u32, mut events: Vec<(f64, Vec<u
         while i < events.len() && (events[i].0 * rate as f64).round() as usize <= pos {
             let m = &events[i].1;
             if !m.is_empty() && m[0] >= 0x80 && m[0] < 0xF0 {
-                let d1 = m.get(1).copied().unwrap_or(0) as i32;
-                let d2 = m.get(2).copied().unwrap_or(0) as i32;
-                synth.process_midi_message((m[0] & 0x0F) as i32, (m[0] & 0xF0) as i32, d1, d2);
+                let d1 = m.get(1).copied().unwrap_or(0);
+                let d2 = m.get(2).copied().unwrap_or(0);
+                let mine = engine.as_mut().map(|e| e.message(m[0] & 0x0F, m[0] & 0xF0, d1, d2)).unwrap_or(false);
+                if !mine {
+                    if let Some(s) = synth.as_mut() {
+                        s.process_midi_message((m[0] & 0x0F) as i32, (m[0] & 0xF0) as i32, d1 as i32, d2 as i32);
+                    }
+                }
             }
             i += 1;
         }
@@ -109,7 +127,16 @@ pub fn render_events(sf: &Arc<SoundFont>, rate: u32, mut events: Vec<(f64, Vec<u
         }
         let next_ev = events.get(i).map(|e| (e.0 * rate as f64).round() as usize).unwrap_or(usize::MAX);
         let n = 256.min(max - pos).min(next_ev.saturating_sub(pos).max(1));
-        synth.render(&mut l[..n], &mut r[..n]);
+        match synth.as_mut() {
+            Some(s) => s.render(&mut l[..n], &mut r[..n]),
+            None => {
+                l[..n].iter_mut().for_each(|x| *x = 0.0);
+                r[..n].iter_mut().for_each(|x| *x = 0.0);
+            }
+        }
+        if let Some(e) = engine.as_mut() {
+            e.render(&mut l[..n], &mut r[..n]);
+        }
         for k in 0..n {
             out.push(l[k]);
             out.push(r[k]);
@@ -157,7 +184,22 @@ fn song_events(song: &Song, filter: impl Fn(u64) -> bool, shift_secs: f64) -> Ve
 /// passes so the release tail of the end is already sounding at the start:
 /// played in a loop it has no gap and no click.
 pub fn render_song(song: &Song, sf: &Arc<SoundFont>, opts: &RenderOpts) -> Result<(Audio, RenderInfo), String> {
+    render_song_with(song, Some(sf), opts)
+}
+
+/// Whether rendering `song` needs a SoundFont (some track is not a `synth=` track).
+pub fn needs_soundfont(song: &Song) -> bool {
+    song.tracks.iter().any(|t| t.def.synth.is_none())
+}
+
+/// [`render_song`]; `synth=` tracks are played by the built-in synthesiser,
+/// the others by the SoundFont (required only if there are such tracks).
+pub fn render_song_with(song: &Song, sf: Option<&Arc<SoundFont>>, opts: &RenderOpts) -> Result<(Audio, RenderInfo), String> {
     let rate = opts.rate;
+    if sf.is_none() && needs_soundfont(song) {
+        return Err("this song has tracks without synth=: WAV output needs a SoundFont".into());
+    }
+    let mut engine = Engine::for_song(song, rate)?;
     let st = if opts.looped {
         let (ls, le) = song.loop_range;
         let (s0, s1) = (song.secs_at(ls), song.secs_at(le));
@@ -172,13 +214,13 @@ pub fn render_song(song: &Song, sf: &Arc<SoundFont>, opts: &RenderOpts) -> Resul
         ev.extend(song_events(song, |t| t >= ls && t < le, s1 - s0));
         ev.iter_mut().for_each(|e| e.0 *= f);
         let start = (s1 * f * rate as f64).round() as usize;
-        let all = render_events(sf, rate, ev, Some((start + n) as f64 / rate as f64), 0.0)?;
+        let all = render_events_with(sf, engine.as_mut(), rate, ev, Some((start + n) as f64 / rate as f64), 0.0)?;
         let mut v = all[(start * 2).min(all.len())..].to_vec();
         v.resize(n * 2, 0.0);
         v
     } else {
         let ev = song_events(song, |_| true, 0.0);
-        let mut v = render_events(sf, rate, ev, None, opts.tail)?;
+        let mut v = render_events_with(sf, engine.as_mut(), rate, ev, None, opts.tail)?;
         let min = (song.duration() * rate as f64).round() as usize * 2;
         if v.len() < min {
             v.resize(min, 0.0);

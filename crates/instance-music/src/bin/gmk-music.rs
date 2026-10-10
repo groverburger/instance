@@ -6,10 +6,11 @@
 //! gmk-music info SONG.txt [--variant NAME|all] [--json]
 //! gmk-music instruments        list General MIDI instrument names/numbers
 //! gmk-music drums              list drum sound names
+//! gmk-music synths             list built-in synth presets and options
 //! ```
 
 use instance_music::analysis;
-use instance_music::render::{find_soundfont, load_soundfont, render_song, RenderOpts};
+use instance_music::render::{find_soundfont, load_soundfont, needs_soundfont, render_song_with, RenderOpts};
 use instance_music::{compile, gm, info, smf, song, wav};
 use std::path::{Path, PathBuf};
 
@@ -17,9 +18,10 @@ const USAGE: &str = "usage:
   gmk-music render SONG.txt -o OUT.mid|OUT.wav [--variant NAME|all] [--soundfont PATH]
                    [--rate 44100|22050] [--mono] [--loop] [--normalize DBFS|off] [--tail SECS]
   gmk-music info SONG.txt [--variant NAME|all] [--json]
-  gmk-music instruments | drums
+  gmk-music instruments | drums | synths
 WAV output is peak-normalised to -1 dBFS unless --normalize says otherwise; the
-SoundFont comes from --soundfont or INSTANCE_SOUNDFONT.";
+SoundFont comes from --soundfont or INSTANCE_SOUNDFONT (not needed when every
+track uses the built-in synth, synth=PRESET).";
 
 fn die(msg: &str) -> ! {
     eprintln!("gmk-music: {msg}");
@@ -100,6 +102,18 @@ fn main() {
             println!("\ndrum kits (track option drums=KIT): {}", gm::KITS.iter().map(|k| k.0).collect::<Vec<_>>().join(" "));
             return;
         }
+        "synths" => {
+            println!("built-in synth presets (track option synth=NAME; WAV renders only):");
+            for (n, d, _) in instance_music::synth::PRESETS {
+                println!("  {n:<9} {d}");
+            }
+            println!("
+synth track options:");
+            for (n, d) in instance_music::synth::OPTIONS {
+                println!("  {n:<8} {d}");
+            }
+            return;
+        }
         "drums" => {
             let mut keys: Vec<u8> = gm::DRUMS.iter().map(|d| d.1).collect();
             keys.sort();
@@ -147,8 +161,10 @@ fn main() {
     if !is_wav && !out.to_ascii_lowercase().ends_with(".mid") && !out.to_ascii_lowercase().ends_with(".midi") {
         die("output must end in .mid or .wav");
     }
-    let sf = if is_wav {
-        let p = find_soundfont(a.soundfont.as_deref()).unwrap_or_else(|| die("WAV output needs a SoundFont: pass --soundfont PATH or set INSTANCE_SOUNDFONT"));
+    // a SoundFont is only needed for tracks the built-in synth does not play
+    let need_sf = vs.iter().any(|v| compile(&src, v.as_deref()).map(|s| needs_soundfont(&s)).unwrap_or(true));
+    let sf = if is_wav && need_sf {
+        let p = find_soundfont(a.soundfont.as_deref()).unwrap_or_else(|| die("WAV output needs a SoundFont (or synth= on every track): pass --soundfont PATH or set INSTANCE_SOUNDFONT"));
         Some(load_soundfont(&p).unwrap_or_else(|e| die(&e)))
     } else {
         None
@@ -159,9 +175,9 @@ fn main() {
             eprintln!("warning: {w}");
         }
         let path = out_path(&out, v, many);
-        if let Some(sf) = &sf {
+        if is_wav {
             let opts = RenderOpts { rate: a.rate, mono: a.mono, looped: a.looped, tail: a.tail, normalize: a.normalize };
-            let (audio, ri) = render_song(&s, sf, &opts).unwrap_or_else(|e| die(&e));
+            let (audio, ri) = render_song_with(&s, sf.as_ref(), &opts).unwrap_or_else(|e| die(&e));
             std::fs::write(&path, wav::encode_wav(audio.rate, audio.channels, &audio.samples)).unwrap_or_else(|e| die(&format!("{}: {e}", path.display())));
             let r = analysis::analyse(&audio, a.looped);
             println!(

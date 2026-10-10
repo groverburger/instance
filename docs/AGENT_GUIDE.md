@@ -841,6 +841,10 @@ reference in its README):
   `--loop` renders a seamless loop. `gmk-music info SONG.txt` reports length,
   ranges, density and mistakes (failed `|` bar checks, flat dynamics, silent bars).
   Prefer this to hand-placing samples: 60–120 s loops in ~80 lines of text.
+  GM patches sound like "MIDI"; for synthwave/electronic music give tracks
+  `synth=PRESET` (supersaw, lead, pluck, pad, bass, drums, …; `gmk-music
+  synths`): a built-in synth with filter sweeps, sidechain `duck=`, chorus,
+  delay and reverb, rendered to WAV (no SoundFont needed).
 * `gmk-sounds GAME.gm81` measures every sound: peak/RMS dBFS, clipping,
   silence, attack, spectral centroid and band energies, a one-line description
   ("short percussive bright noise"), seam checks for looped sounds (kind 1,

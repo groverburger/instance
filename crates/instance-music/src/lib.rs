@@ -8,6 +8,9 @@
 //! * [`smf`] — writes a Standard MIDI File (what GameMaker plays as music).
 //! * [`render`] — renders to PCM through a SoundFont, optionally as a
 //!   seamless loop; [`wav`] encodes/decodes audio files.
+//! * [`synth`] — the built-in synthesiser that plays `synth=` tracks in WAV
+//!   renders (subtractive/FM voices, drum machine, chorus, delay, reverb,
+//!   sidechain).
 //! * [`analysis`] — levels, spectrum, envelope, description, loop seams,
 //!   loudness over time and similarity between sounds.
 //! * [`info`] — a musical report of a compiled song with warnings.
@@ -23,6 +26,7 @@ pub mod info;
 pub mod render;
 pub mod smf;
 pub mod song;
+pub mod synth;
 pub mod theory;
 pub mod wav;
 

@@ -89,6 +89,18 @@ impl Song {
         let mut ev: Vec<(u64, u8, Vec<u8>)> = Vec::new();
         let cc = |n: u8, v: u8| vec![0xB0 | ch, n, v.min(127)];
         let mut init = vec![cc(0, 0), cc(32, 0), vec![0xC0 | ch, d.program], cc(7, d.vol), cc(10, pan_value(d.pan as f64)), cc(11, d.expr), cc(91, d.reverb), cc(93, d.chorus)];
+        // synth options that are also inline controls start at the track's value
+        for (k, v) in &d.synth_opts {
+            let n = match k.as_str() {
+                "cutoff" => 74,
+                "reso" => 71,
+                "attack" => 73,
+                "release" => 72,
+                "delay" => 94,
+                _ => continue,
+            };
+            init.push(cc(n, v.round().clamp(0.0, 127.0) as u8));
+        }
         if d.bend_range != 2 {
             init.extend([cc(101, 0), cc(100, 0), cc(6, d.bend_range), cc(38, 0), cc(101, 127), cc(100, 127)]);
         }
@@ -402,6 +414,11 @@ pub fn compile(src: &SongSrc, variant: Option<&str>) -> Result<Song, String> {
         for (t, p) in &v.inst {
             if let Some(d) = defs.iter_mut().find(|d| &d.name == t) {
                 d.program = *p;
+            }
+        }
+        for (t, s) in &v.synth {
+            if let Some(d) = defs.iter_mut().find(|d| &d.name == t) {
+                d.synth = Some(s.clone());
             }
         }
         for (t, vol) in &v.vol {
