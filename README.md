@@ -1,7 +1,7 @@
 <h1 align="center">Instance</h1>
 
 <p align="center">
-  An open-source game development environment that opens, edits and runs GameMaker 8.1 projects.
+  An open-source game development environment: a visual editor and a game engine for <code>.gmk</code> and <code>.gm81</code> projects.
 </p>
 
 <p align="center">
@@ -20,14 +20,14 @@
   <img src="docs/images/deepcore.png" alt="Deepcore, a game made with Instance" width="49%">
 </p>
 
-Instance is a reimplementation of GameMaker 8.1, both the editor and the engine that
-runs the games, written from scratch in Rust. Load a `.gmk` or `.gm81` file and it
-looks, edits and plays the way you remember, on Windows, macOS, Linux and in the
-browser.
+Instance is a classic 2D game creation tool, written from scratch in Rust. You build games
+from sprites, objects, events and rooms, with drag-and-drop actions or the GML
+scripting language. It opens existing `.gmk` and `.gm81` projects and plays them the
+way you remember, on Windows, macOS, Linux and in the browser.
 
-Old GameMaker games rely on all kinds of engine quirks: the order events run in, the
-exact random number generator, how `sound_isplaying` lags behind the audio. Instance
-reproduces them, checked against the real GameMaker with black-box tests.
+Older games rely on all kinds of engine quirks: the order events run in, the exact
+random number generator, how `sound_isplaying` lags behind the audio. Instance
+reproduces them faithfully, checked with black-box tests.
 
 ## Features
 
@@ -42,7 +42,7 @@ reproduces them, checked against the real GameMaker with black-box tests.
 - **Runs in the browser**: the whole IDE and player, compiled to WebAssembly.
 - **Project folders**: a project can be kept as plain text and PNG files, ready for
   git, and converted back to a `.gm81` without losing anything.
-- **Imports GameMaker: Studio 1.x projects** (`.gmx`, `.gmz`) with `gmx2gm81`.
+- **Imports `.gmx` / `.gmz` projects** from later engine versions with `gmx2gm81`.
 
 ## Getting started
 
@@ -72,13 +72,10 @@ test harness, the web build, DLLs and platform notes.
 
 ## Clean-room implementation
 
-Instance contains no code or assets from YoYo Games, and none of their programs were
-disassembled or decompiled. The behaviour is written up in [`specs/`](specs) from the
-manual, from the project file data and from observing the real program, and the code
-is written from those specs. [CLEANROOM.md](CLEANROOM.md) describes the process.
-
-Instance is not affiliated with or endorsed by YoYo Games. GameMaker is a trademark of
-YoYo Games Ltd.
+Instance is an independent implementation. Its behaviour is written up in
+[`specs/`](specs) from documentation, project file data and black-box observation,
+and the code is written from those specs; no existing engine code was disassembled,
+decompiled or copied. [CLEANROOM.md](CLEANROOM.md) describes the process.
 
 ## Project layout
 
@@ -89,16 +86,15 @@ YoYo Games Ltd.
 | `instance-ide` | the editor |
 | `instance-format` | reading and writing `.gmk` / `.gm81` files and project folders |
 | `instance-check` | `gmk-check`, a static checker for projects |
-| `instance-gmx` | the GameMaker: Studio converter |
+| `instance-gmx` | the `.gmx` / `.gmz` project converter |
 | `instance-net` | multiplayer |
 | `instance-dllcall`, `instance-dllhost32` | calling native DLLs, including 32-bit ones |
-| `instance-blackbox` | test projects to compare Instance against the real GameMaker |
+| `instance-blackbox` | black-box test projects for checking compatibility |
 
 Tools and example games for *making* games with Instance live in the separate
 `instance-gamekit` repository.
 
 ## License
 
-Instance is dual-licensed under the MIT and Apache 2.0 licenses; use it under
-whichever you prefer. The bundled fonts keep their own licenses (Liberation Sans:
-SIL Open Font License; Roboto: Apache 2.0).
+Instance is released under the [MIT License](LICENSE). The bundled fonts keep their
+own licenses (Liberation Sans: SIL Open Font License; Roboto: Apache 2.0).

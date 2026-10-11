@@ -15,7 +15,7 @@ instance-runner game.gm81 --renderer software  # force the CPU renderer (default
 gmk-info game.gm81 [--tree]                    # resource summary
 gmk-unpack game.gm81 game/                     # project file -> project folder (gmk-pack goes back)
 gmk-check game/ [--pedantic]                   # static checks: GML errors, argument counts, broken references
-gmx2gm81 Game.gmx -o game.gm81                 # convert a GameMaker: Studio 1.x project (folder, .project.gmx or .gmz)
+gmx2gm81 Game.gmx -o game.gm81                 # convert a .gmx project (folder, .project.gmx or .gmz)
 ```
 
 Project folders store a project as plain files (`.gml`, PNG, TOML) and convert
@@ -45,7 +45,7 @@ The runner is a GUI program. A standalone game made with Create Executable never
 opens a console. Running a project file prints `show_debug_message` output, errors and
 runner messages to the calling console (or a new console window); `--no-console`
 turns that off. The IDE uses `--no-console` and shows the output in its Output Log
-(Window > Output Log). Runtime errors appear in a GameMaker-style dialog (Ignore /
+(Window > Output Log). Runtime errors appear in an error dialog (Ignore /
 Abort), following the game's error settings.
 
 Shells don't wait for GUI programs, so redirect the output (`2>&1 | ...`) or use
@@ -58,11 +58,11 @@ cargo test --workspace
 cargo test --release -p instance-runner --test corpus -- --ignored --nocapture
 ```
 
-Some suites need folders of GameMaker 8.1 test material: `GM81_SAMPLES`,
+Some suites need folders of external test projects: `GM81_SAMPLES`,
 `GM81_CORPUS*` and `GM81_BLACKBOX_DIR`. They are skipped when the folders are missing.
 The black-box projects (`crates/instance-blackbox`, manifest in
-[specs/blackbox-tests.md](../specs/blackbox-tests.md)) are run in the real GameMaker
-8.1 and in Instance, and the results are compared key by key.
+[specs/blackbox-tests.md](../specs/blackbox-tests.md)) are run in the reference engine
+and in Instance, and the results are compared key by key.
 
 ## Sound
 
@@ -77,7 +77,7 @@ No SoundFont is in the repository. `scripts/fetch-soundfont.sh` (or `.ps1`) down
 GeneralUser GS (free to redistribute, checksum-verified) to `web/soundfonts/`. Copy
 `default.sf2` next to the runner, or point `INSTANCE_SOUNDFONT` at it.
 
-Like GameMaker 8.1, `sound_isplaying` reports about 105 ms late in both directions.
+For compatibility, `sound_isplaying` reports about 105 ms late in both directions.
 `--sound-status-delay MS` (or `INSTANCE_SOUND_STATUS_DELAY`) changes the delay; `0`
 reports the current state.
 
@@ -92,8 +92,8 @@ logs raw input. Scripted input (`--input`) also accepts `STEP:joy1:button:N:down
 ## Multiplayer
 
 The `mplay_*` functions work over TCP/IP with Instance's own protocol
-([specs/multiplayer.md](../specs/multiplayer.md), part B). It does not talk to
-GameMaker's DirectPlay sessions. There is a demo with two headless runners:
+([specs/multiplayer.md](../specs/multiplayer.md), part B). It is not compatible
+with DirectPlay sessions. There is a demo with two headless runners:
 
 ```sh
 cargo build -p instance-runner && cargo run -p instance-runner --example mplay_demo
@@ -109,8 +109,8 @@ first match wins):
 3. `extensions/` in the per-user data folder (where the IDE installs packages)
 4. `extensions/` next to the project
 
-64-bit DLLs load in-process. 32-bit DLLs, which covers everything from the GameMaker
-8.1 era, need the helper:
+64-bit DLLs load in-process. 32-bit DLLs, which covers most DLLs written for older
+games, need the helper:
 
 ```sh
 rustup target add i686-pc-windows-msvc
@@ -207,7 +207,7 @@ The older `GM81_*` names (and `GM_PROFILE`) still work as fallbacks.
 
 Create Executable appends the game to a copy of the runner, followed by a footer
 ([specs/exe-format.md](../specs/exe-format.md)). Executables made by earlier builds
-still run. Executables compiled by YoYo's GameMaker can't be loaded.
+still run. Executables built by other tools can't be loaded.
 
 ## Releases
 
