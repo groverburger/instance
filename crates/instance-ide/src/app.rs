@@ -608,6 +608,11 @@ Restore it?"
     }
 
     #[cfg(test)]
+    pub(crate) fn test_set_path(&mut self, p: PathBuf) {
+        self.path = Some(p);
+    }
+
+    #[cfg(test)]
     pub(crate) fn test_state(&self) -> (&Project, bool, usize, usize) {
         (
             &self.project,
@@ -1224,6 +1229,7 @@ Restore it?"
                     names: &self.names,
                     prefs: &self.prefs,
                     alloc: &mut self.alloc,
+                    project_path: self.path.as_deref(),
                     action: None,
                 };
                 let out = mdi::show(

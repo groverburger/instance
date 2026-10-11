@@ -46,12 +46,16 @@ to code; the manual recommends packages instead `[414_00]`.
 * The IDE's package form lists "used" and "available" packages; Install adds a
   package from a distribution file (`.gex`), Uninstall removes it `[215_00]`
   (`ide.md` §18.4). The `.gex` layout is **not known** (EXT-1). Instance's IDE
-  additionally accepts installing a `.ged`+`.dat`(+`.chm`) set by copying it.
-* **Recommended** search path for packages (first hit wins, by package name):
+  instead installs a `.ged`+`.dat`(+`.chm`) set by copying it into the user's
+  extension folder (item 3 below), named `<package name>.*` after the `.ged`'s
+  `name` field; `.gex` files are refused with a message until EXT-1 is resolved.
+* Search path for packages (first hit wins, by package name = `.ged` file name):
   1. `<IDE exe dir>/extensions/`
-  2. `%APPDATA%/Instance/extensions/` (`gm81-clean` in earlier builds, copied over on first start) (where Instance's IDE installs `.gex`/
-     `.ged` packages when the IDE folder is not writable)
-  3. `<project dir>/extensions/`
+  2. each folder in the `INSTANCE_EXTENSIONS` environment variable (path list)
+  3. `%APPDATA%/Instance/extensions/` (`gm81-clean` in earlier builds, copied over
+     on first start): the user's extension folder, where Instance's IDE installs
+     packages; Uninstall only removes packages from here
+  4. `<project dir>/extensions/`
 
 ### 2.2 Project side
 * A project stores only the **names** of the packages it uses, in order

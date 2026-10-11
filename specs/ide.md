@@ -873,7 +873,34 @@ between; Information box for the selected package (Author, Version, Date, Licens
 Description); buttons OK, Help (package help file), Install. Install dialog: list of
 installed packages, Install (choose a `.gex` file), Uninstall, Find More (web).
 Data: `extensions: Vec<package name>`. Installed packages live in an IDE-level
-folder (shipped ones are `.ged` + `.dat` + `.chm`). Used packages contribute
+folder (shipped ones are `.ged` + `.dat` + `.chm`).
+
+**Instance's form** (settles details the above leaves open):
+* Installed packages are scanned from the search path of `extensions.md` §2.1
+  (first hit wins by package name = `.ged` file name without extension; listed
+  sorted case-insensitively). Packages whose `.ged` has `hidden = true` are not
+  offered in Available (they stay listed when used).
+* The Used list keeps the project's order; a package is added at the end. Used
+  packages that are not installed stay in the list, shown in red as
+  "`<name>` (not installed)", and are saved unchanged.
+* Move: the left arrow (or a double-click in Available) adds the selected
+  package; the right arrow (or a double-click in Used) removes it.
+* Information box for the selection: name, Version, Author, Date, License, Uses,
+  the folder it was found in, Description, then the non-hidden functions as
+  signatures `name(string, real)` (`name(...)` for variadic; help line as tooltip)
+  and the non-hidden constants `NAME = value`. Missing / unreadable packages and a
+  missing `.dat` are reported there.
+* Install, Uninstall and Help are on the form itself (no separate install dialog).
+  Help opens `<name>.chm` (or the `.ged`'s help file name in the same folder) with
+  the system. Install picks a `.ged` (plus, optionally, its `.dat` / `.chm`, which
+  otherwise must be beside it with the same base name), validates both files, and
+  copies them to the user's extension folder named after the package's `name`
+  field (falling back to the file name). `.gex` files are refused with a message
+  (EXT-1). Uninstall (after a Yes/No confirmation) deletes the `.ged`/`.dat`/`.chm`
+  of the selected package, only for packages in the user's extension folder;
+  packages next to the IDE or in the project folder cannot be removed here.
+  Install and Uninstall change the disk immediately and are not undone by Cancel;
+  OK/Cancel only concern the project's list. Used packages contribute
 functions/constants to code completion and colouring, and actions (if any) to the
 palette.
 
