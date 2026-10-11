@@ -2075,19 +2075,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "instance-music"
-version = "0.1.0"
-dependencies = [
- "instance-format",
- "instance-runner",
- "midly",
- "rustysynth",
- "serde",
- "serde_json",
- "symphonia",
-]
-
-[[package]]
 name = "instance-net"
 version = "0.1.0"
 dependencies = [

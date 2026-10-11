@@ -5,8 +5,8 @@
 //! argument count, broken resource references, duplicate instance ids, names that
 //! clash with each other or with built-ins, and — as warnings — variables that are
 //! read but never assigned, no-short-circuit hazards, Lite-edition-only features
-//! and LF-only line endings. The rules come from `docs/AGENT_GUIDE.md` §1–§8 and
-//! `specs/gml-language.md`.
+//! and LF-only line endings. The rules come from `specs/gml-language.md`,
+//! `specs/runtime.md`, `specs/file-formats.md` and `specs/lite-edition.md`.
 //!
 //! ```no_run
 //! let project = instance_check::load_project("game.gm81".as_ref()).unwrap();
@@ -96,13 +96,11 @@ impl Report {
     }
 }
 
-/// Loads a project to check: a `.gmk` / `.gm81` file (any version `instance_format`
+/// Loads a project to check: a project folder (`gmk-unpack`) or a `.gmk` / `.gm81` file (any version `instance_format`
 /// reads).
 pub fn load_project(path: &Path) -> Result<Project, String> {
     if path.is_dir() {
-        // TODO: when instance_format::folder::read_folder exists, load project folders:
-        // return instance_format::folder::read_folder(path).map_err(|e| e.to_string());
-        return Err("project folders are not supported yet (pass a .gm81/.gmk file)".into());
+        return instance_format::folder::read_folder(path).map_err(|e| e.to_string());
     }
     instance_format::read_project_file(path)
         .map(|(p, _)| p)

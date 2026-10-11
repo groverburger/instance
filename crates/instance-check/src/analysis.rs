@@ -228,7 +228,7 @@ struct Walker<'a> {
     f: Facts,
 }
 
-/// Lite-edition-only function families (AGENT_GUIDE §8), by prefix.
+/// Lite-edition-only function families (specs/lite-edition.md), by prefix.
 const LITE_PREFIXES: &[(&str, &str)] = &[
     ("ds_", "data structure"),
     ("surface_", "surface"),

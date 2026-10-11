@@ -1,4 +1,4 @@
-//! Human-friendly event names (AGENT_GUIDE §3.6, file-formats.md §5.8).
+//! Human-friendly event names (specs/file-formats.md §5.8).
 
 use instance_format::{event_type as ev, Project};
 

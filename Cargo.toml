@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/instance-format", "crates/instance-gmx", "crates/gml", "crates/instance-runner", "crates/instance-ide", "crates/instance-net", "crates/instance-dllcall", "crates/instance-dllhost32", "crates/instance-testdll", "crates/instance-brand", "crates/instance-blackbox", "crates/instance-ui", "crates/instance-check", "crates/instance-music"]
+members = ["crates/instance-format", "crates/instance-gmx", "crates/gml", "crates/instance-runner", "crates/instance-ide", "crates/instance-net", "crates/instance-dllcall", "crates/instance-dllhost32", "crates/instance-testdll", "crates/instance-brand", "crates/instance-blackbox", "crates/instance-ui", "crates/instance-check"]
 
 [workspace.package]
 edition = "2021"

@@ -17,7 +17,7 @@
 //! Joystick items: `STEP:joy1:button:N:down|up`, `STEP:joy1:axis:x|y|z|r|u|v:VALUE`,
 //! `STEP:joy1:pov:ANGLE` (−1 centred), `STEP:joy1:connect|disconnect` (also `joy2`).
 //!
-//! Test-harness options (headless only; docs/AGENT_GUIDE.md §10):
+//! Test-harness options (headless only):
 //! * `--exec STEP:CODE` (repeatable), `--exec-file STEP:FILE.gml`: GML run at the
 //!   start of step STEP, before its events (STEP 0: after the first room's
 //!   Create / Game Start / Room Start, before the first step), compiled and run
@@ -284,7 +284,7 @@ fn parse_args() -> Result<Parsed, String> {
                 let k: u64 = next()?.parse().map_err(|_| "bad --screenshot-every")?;
                 o.every = Some((k.max(1), PathBuf::from(next()?)));
             }
-            "--input" => o.input = parse_input(&next()?)?,
+            "--input" => o.input.extend(parse_input(&next()?)?),
             "--renderer" => {
                 o.renderer = Some(match next()?.as_str() {
                     "gl" | "opengl" => Renderer::Gl,
@@ -436,7 +436,7 @@ const HELP: &str = "usage: instance-runner FILE.gmk|FILE.gm81|PROJECT_FOLDER [op
   --screenshot-every K DIR    headless: save every K-th frame as DIR/frameNNNNN.png
   --screenshot-at LIST DIR    headless: save the frames after the listed steps (60,200,450)
   --input SCRIPT              scripted input: STEP:down|up|press:KEY, STEP:move|click:X:Y,
-                              STEP:char:C, STEP:joy1:... (comma-separated)
+                              STEP:char:C, STEP:joy1:... (comma-separated; repeatable)
   --random-input SEED[@START] add a deterministic random key/mouse script from step START (3)
   --random-keys LIST          keys of the random script (names as in --input: left,right,1,r)
   --random-no-mouse           random script without mouse events
