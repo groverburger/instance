@@ -127,6 +127,10 @@ Linux builds need the ALSA, udev, X11/Wayland and GL development packages (see t
 
 ## Web (WebAssembly)
 
+**Try it online:** https://groverburger.github.io/instance/ opens the IDE in the browser
+(`play.html` there is the player). The site is rebuilt from `master` by
+`.github/workflows/pages.yml` on every push.
+
 ```
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.129     # = the wasm-bindgen version in Cargo.lock
