@@ -57,7 +57,7 @@ Detect by content, not extension:
 | `sound_loop(index)` | As `sound_play` but the voice loops forever. |
 | `sound_stop(index)` | Stop every voice of the sound. |
 | `sound_stop_all()` | Stop every voice of every sound (including MIDI and multimedia). |
-| `sound_isplaying(index)` | True while any voice of the sound is audible. GM may lag in both directions (true slightly after stop due to echo tails, false right after play) `[406_01]`; **recommended:** true from the `sound_play` call until the voice (including effect tails) finishes or is stopped. |
+| `sound_isplaying(index)` | True while any voice of the sound is audible. Lags about 100–116 ms in both directions (black-box bb_sound, SND-8): false for about 6 steps (at 60 steps/s) after `sound_play`/`sound_loop`, true for about 6 steps after `sound_stop` or the natural end; the same for background music. **Instance:** reports the state of 105 ms earlier (runner option `--sound-status-delay MS`, `INSTANCE_SOUND_STATUS_DELAY`; 0 = current state). Consequence: `if (!sound_isplaying(s)) sound_loop(s)` each step starts about 6 overlapping loops. |
 
 * A normal/3D sound played while already playing starts an extra overlapping voice.
 * **Recommended** voice limit: 128 simultaneous PCM voices; when exceeded, the

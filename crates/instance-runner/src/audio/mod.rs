@@ -25,6 +25,10 @@
 //!   mixed in game time into a WAV file instead of a device, MIDI always through
 //!   the SoundFont path; the audio clock ([`voice::Globals::now`]) is then the
 //!   rendered time, so `sound_isplaying` and fades follow it.
+//! * `sound_isplaying` reports the state of about 105 ms earlier, like GM 8.1
+//!   (black-box bb_sound, SND-8): false for a moment after a sound starts, true for a
+//!   moment after it stops or ends. `--sound-status-delay MS` /
+//!   `INSTANCE_SOUND_STATUS_DELAY=MS` change it; 0 reports the current state.
 //! * `INSTANCE_AUDIO_DEBUG=1` logs backend choices and MIDI message counts.
 
 pub mod dsp;
@@ -44,6 +48,27 @@ use voice::{Globals, Pcm, Sound3d, SoundCtl, VoiceState};
 
 /// Maximum simultaneous PCM voices (§2).
 pub const MAX_VOICES: usize = 128;
+
+/// How far `sound_isplaying` lags behind the playback state in GM 8.1 (SND-8:
+/// bb_sound saw about 6 steps at 60 steps/s in both directions, i.e. about 100..116 ms).
+pub const DEFAULT_STATUS_DELAY_MS: u64 = 105;
+
+static STATUS_DELAY_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(u64::MAX);
+
+/// Sets the `sound_isplaying` delay for engines created afterwards (`--sound-status-delay`).
+pub fn set_status_delay_ms(ms: u64) {
+    STATUS_DELAY_MS.store(ms, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn status_delay() -> Duration {
+    let ms = match STATUS_DELAY_MS.load(std::sync::atomic::Ordering::Relaxed) {
+        u64::MAX => instance_brand::appdirs::env_var("SOUND_STATUS_DELAY")
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(DEFAULT_STATUS_DELAY_MS),
+        ms => ms,
+    };
+    Duration::from_millis(ms)
+}
 
 static DEBUG_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -146,6 +171,9 @@ struct VoiceHandle {
     serial: u64,
     /// Simulated playback (no device / no synth): logical end time, None = forever.
     simulated: Option<Option<Instant>>,
+    /// When it started, and when it ends by itself (None: looped).
+    started: Instant,
+    ends: Option<Instant>,
 }
 
 impl VoiceHandle {
@@ -174,6 +202,10 @@ pub struct Audio {
     midi: MidiBackend,
     /// Offline mixer (`--audio-out`); replaces the device.
     offline: Option<offline::Offline>,
+    /// `sound_isplaying` lag (SND-8); zero reports the current state.
+    status_delay: Duration,
+    /// Voices that stopped or ended less than `status_delay` ago: (sound, start, end).
+    recent: Vec<(i32, Instant, Instant)>,
 }
 
 impl Audio {
@@ -191,6 +223,8 @@ impl Audio {
             durations: HashMap::new(),
             midi: MidiBackend::Untried,
             offline: None,
+            status_delay: status_delay(),
+            recent: Vec::new(),
         }
     }
 
@@ -514,10 +548,16 @@ impl Audio {
     // ------------------------------------------------------------------ playback
 
     fn stop_where(&mut self, pred: impl Fn(&VoiceHandle) -> bool) {
-        for list in self.voices.values_mut() {
+        let now = self.globals.now();
+        let recent = &mut self.recent;
+        let keep_recent = !self.status_delay.is_zero();
+        for (idx, list) in self.voices.iter_mut() {
             list.retain(|v| {
                 if pred(v) {
                     v.state.request_stop();
+                    if keep_recent {
+                        recent.push((*idx, v.started, v.ends.map_or(now, |e| e.min(now))));
+                    }
                     false
                 } else {
                     true
@@ -543,8 +583,8 @@ impl Audio {
         let ctl = self.ctl(idx, res);
         let state = Arc::new(VoiceState::default());
         self.serial += 1;
-        let mut h = VoiceHandle { state: state.clone(), kind, midi: is_midi, looped, serial: self.serial, simulated: None };
         let now = self.globals.now();
+        let mut h = VoiceHandle { state: state.clone(), kind, midi: is_midi, looped, serial: self.serial, simulated: None, started: now, ends: None };
         let logical = |secs: f64| if looped { None } else { Some(now + Duration::from_secs_f64(secs.max(0.0))) };
         if is_midi {
             let Some(seq) = self.sequence(idx, &data) else { return };
@@ -603,6 +643,12 @@ impl Audio {
             let secs = self.duration(idx, &data);
             h.simulated = Some(logical(secs));
         }
+        h.ends = match h.simulated {
+            Some(end) => end,
+            None if looped => None,
+            None if is_midi => self.seqs.get(&idx).and_then(|(_, q)| logical(q.duration() / self.globals.tempo())),
+            None => logical(self.duration(idx, &data)),
+        };
         self.voices.entry(idx).or_default().push(h);
         self.limit_voices();
     }
@@ -628,16 +674,35 @@ impl Audio {
 
     fn cleanup(&mut self) {
         let now = self.globals.now();
-        for v in self.voices.values_mut() {
-            v.retain(|p| p.alive(now));
+        let recent = &mut self.recent;
+        let keep_recent = !self.status_delay.is_zero();
+        for (idx, v) in self.voices.iter_mut() {
+            v.retain(|p| {
+                let alive = p.alive(now);
+                if !alive && keep_recent {
+                    recent.push((*idx, p.started, p.ends.map_or(now, |e| e.min(now))));
+                }
+                alive
+            });
         }
         self.voices.retain(|_, v| !v.is_empty());
+        let delay = self.status_delay;
+        self.recent.retain(|r| r.2 + delay > now);
+    }
+
+    /// Sets the `sound_isplaying` lag (zero: the current state).
+    pub fn set_status_delay(&mut self, d: Duration) {
+        self.status_delay = d;
     }
 
     pub fn stop(&mut self, idx: i32) {
+        let now = self.globals.now();
         if let Some(v) = self.voices.remove(&idx) {
             for p in v {
                 p.state.request_stop();
+                if !self.status_delay.is_zero() {
+                    self.recent.push((idx, p.started, p.ends.map_or(now, |e| e.min(now))));
+                }
             }
         }
     }
@@ -652,9 +717,16 @@ impl Audio {
         }
     }
 
+    /// `sound_isplaying`: the state `status_delay` ago (SND-8).
     pub fn is_playing(&mut self, idx: i32) -> bool {
         let now = self.globals.now();
-        self.voices.get(&idx).map(|v| v.iter().any(|p| p.alive(now))).unwrap_or(false)
+        if self.status_delay.is_zero() {
+            return self.voices.get(&idx).map(|v| v.iter().any(|p| p.alive(now))).unwrap_or(false);
+        }
+        self.cleanup();
+        let Some(t) = now.checked_sub(self.status_delay) else { return false };
+        let live = self.voices.get(&idx).is_some_and(|v| v.iter().any(|p| p.started <= t && p.ends.is_none_or(|e| t < e)));
+        live || self.recent.iter().any(|r| r.0 == idx && r.1 <= t && t < r.2)
     }
 }
 
@@ -670,6 +742,35 @@ impl Drop for Audio {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A headless engine whose `sound_isplaying` reports the current state.
+    fn instant() -> Audio {
+        let mut a = Audio::new(true);
+        a.set_status_delay(Duration::ZERO);
+        a
+    }
+
+    #[test]
+    fn status_lags_like_gm() {
+        // SND-8: false just after the start, true just after a stop or the end
+        let mut a = Audio::new(true);
+        a.set_status_delay(Duration::from_millis(80));
+        let s = res(0, wav(0.2));
+        a.play(0, &s, false, &[]);
+        assert!(!a.is_playing(0), "not yet reported");
+        std::thread::sleep(Duration::from_millis(120));
+        assert!(a.is_playing(0), "reported after the delay");
+        std::thread::sleep(Duration::from_millis(120));
+        assert!(a.is_playing(0), "ended at 0.2 s, still reported");
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(!a.is_playing(0), "the end reported");
+        a.play(0, &s, true, &[]);
+        std::thread::sleep(Duration::from_millis(120));
+        a.stop(0);
+        assert!(a.is_playing(0), "stopped, still reported");
+        std::thread::sleep(Duration::from_millis(120));
+        assert!(!a.is_playing(0), "the stop reported");
+    }
 
     fn res(kind: i32, data: Vec<u8>) -> SoundRes {
         SoundRes {
@@ -708,7 +809,7 @@ mod tests {
 
     #[test]
     fn logical_state_without_device() {
-        let mut a = Audio::new(true);
+        let mut a = instant();
         let s = res(0, wav(0.1));
         a.play(0, &s, false, &[]);
         a.play(0, &s, false, &[]);
@@ -725,7 +826,7 @@ mod tests {
 
     #[test]
     fn background_and_midi_exclusivity() {
-        let mut a = Audio::new(true);
+        let mut a = instant();
         let m1 = res(1, midi::tests::build_smf(0, 96, &[vec![(0, vec![0x90, 60, 100]), (960, vec![0x80, 60, 0])]]));
         let m2 = res(0, midi::tests::build_smf(0, 96, &[vec![(0, vec![0x90, 62, 100]), (960, vec![0x80, 62, 0])]]));
         let w = res(1, wav(1.0));
@@ -744,7 +845,7 @@ mod tests {
 
     #[test]
     fn voice_limit() {
-        let mut a = Audio::new(true);
+        let mut a = instant();
         let s = res(0, wav(5.0));
         for _ in 0..(MAX_VOICES + 5) {
             a.play(0, &s, false, &[]);
@@ -754,7 +855,7 @@ mod tests {
 
     #[test]
     fn three_d_only_for_kind_2() {
-        let mut a = Audio::new(true);
+        let mut a = instant();
         let s0 = res(0, wav(0.1));
         let s2 = res(2, wav(0.1));
         a.set_3d(0, &s0, |s| s.pos = [5.0, 0.0, 0.0]);
@@ -775,7 +876,7 @@ mod tests {
 
     #[test]
     fn offline_mix_follows_game_time() {
-        let mut a = Audio::new(true);
+        let mut a = instant();
         a.start_offline(None).unwrap();
         let s = res(0, dc_wav(0.5, 16384));
         a.play(0, &s, false, &[]);
@@ -802,7 +903,7 @@ mod tests {
 
     #[test]
     fn offline_fade_uses_the_offline_clock() {
-        let mut a = Audio::new(true);
+        let mut a = instant();
         a.start_offline(None).unwrap();
         let s = res(0, dc_wav(2.0, 16384));
         a.play(0, &s, true, &[]);
@@ -821,7 +922,7 @@ mod tests {
 
     #[test]
     fn segment_never_plays() {
-        let mut a = Audio::new(true);
+        let mut a = instant();
         let mut d = b"RIFF\0\0\0\0DMSG".to_vec();
         d.extend([0; 16]);
         a.play(0, &res(0, d), true, &[]);

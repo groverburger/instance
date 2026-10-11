@@ -133,6 +133,8 @@ fn wav_file(secs: f64) -> std::path::PathBuf {
 
 #[test]
 fn sound_builtins_headless() {
+    // the current state, not GM's delayed report (that is tested in audio::tests)
+    instance_runner::audio::set_status_delay_ms(0);
     let wav = wav_file(0.2);
     let path = wav.to_string_lossy().replace('\\', "/");
     let src = format!(

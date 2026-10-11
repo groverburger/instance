@@ -531,6 +531,8 @@ Resolve by black-box tests with GM 8.1 (screenshots of small test games).
 - SND-8: When does sound_isplaying turn true after sound_play/sound_loop (the manual warns
   it can lag), and false after sound_stop or the end of a sound? Polling
   "if (!sound_isplaying(s)) sound_loop(s)" each step stacks loops if it lags. bb_sound.
+  RESOLVED 2026-10-11 (sound.md §2): about 100..116 ms lag both ways (6 steps at 60/s),
+  background music too; the polling pattern fired sound_loop 6 times.
 
 ## [EXT] Extensions and DLLs (specs/extensions.md, 2026-10-07)
 

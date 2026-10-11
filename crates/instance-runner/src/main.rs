@@ -55,6 +55,8 @@
 //! * `--audio-out FILE.wav`: the game's audio mixed offline (44.1 kHz 16-bit stereo,
 //!   `1 / room_speed` s per step, deterministic) with MIDI through the SoundFont
 //!   (`INSTANCE_SOUNDFONT`); a loudness summary is printed at the end.
+//! * `--sound-status-delay MS`: how late `sound_isplaying` reports (default 105 ms
+//!   like GM 8.1; 0 = the current state). Also `INSTANCE_SOUND_STATUS_DELAY`.
 //! * `--log FILE`: everything written to stderr is also written to FILE.
 //! * `--seed N`: `randomize()` (also the one at game start) seeds from N instead
 //!   of the clock, so `random*` functions repeat from run to run.
@@ -368,6 +370,9 @@ fn parse_args() -> Result<Parsed, String> {
                 harness_opt = Some("--audio-out");
             }
             "--log" => o.log = Some(PathBuf::from(next()?)),
+            "--sound-status-delay" => instance_runner::audio::set_status_delay_ms(
+                next()?.parse().map_err(|_| "bad --sound-status-delay")?,
+            ),
             "--seed" => {
                 o.seed = Some(next()?.parse::<i64>().map_err(|_| "bad --seed")? as u32);
                 harness_opt = Some("--seed");
@@ -451,6 +456,7 @@ const HELP: &str = "usage: instance-runner FILE.gmk|FILE.gm81|PROJECT_FOLDER [op
   --no-read-fallback          with --save-dir: do not copy files from the game folder
   --no-draw                   headless: render only screenshotted frames (Draw events still run)
   --audio-out FILE.wav        headless: record the game audio offline (44.1 kHz stereo, game time)
+  --sound-status-delay MS     how late sound_isplaying reports (default 105 like GM 8.1; 0 = now)
   --log FILE                  also write everything printed on stderr to FILE
   --seed N                    headless: randomize() seeds from N (reproducible random numbers)
   --max-seconds S             headless: give up after S seconds (exit 4)
