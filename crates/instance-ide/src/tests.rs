@@ -1023,3 +1023,33 @@ fn screenshot_dialogs() {
         .save(out.join("dialog_action.png"))
         .unwrap();
 }
+
+/// Renders the IDE with the project in `$INSTANCE_README_PROJECT` (its room named
+/// `$INSTANCE_README_ROOM` open) to `$GM_IDE_SCREENSHOT/ide.png`: the README screenshot. Run with
+/// `--ignored`; needs a wgpu adapter.
+#[test]
+#[ignore]
+fn screenshot_readme() {
+    let (Some(out), Some(proj)) = (std::env::var_os("GM_IDE_SCREENSHOT"), std::env::var_os("INSTANCE_README_PROJECT")) else {
+        return;
+    };
+    let out = PathBuf::from(out);
+    std::fs::create_dir_all(&out).unwrap();
+    let path = PathBuf::from(proj);
+    let p = ops::load_project(&path).unwrap();
+    let want = std::env::var("INSTANCE_README_ROOM").unwrap_or_default();
+    let room = p.rooms.iter().position(|r| r.as_ref().is_some_and(|r| r.name == want)).unwrap_or(0);
+    let mut h = egui_kittest::Harness::builder()
+        .with_size(eframe::egui::Vec2::new(1280.0, 760.0))
+        .with_theme(eframe::egui::Theme::Light)
+        .wgpu()
+        .build_eframe(|cc| crate::app::IdeApp::new(cc, None));
+    h.state_mut().test_set_project(p);
+    h.state_mut().test_set_path(path);
+    h.run_steps(2);
+    h.state_mut().open_form(ResKey::Res(ResourceKind::Room, room));
+    h.run_steps(8);
+    h.hover_at(eframe::egui::pos2(1270.0, 750.0));
+    h.run_steps(4);
+    h.render().unwrap().save(out.join("ide.png")).unwrap();
+}
