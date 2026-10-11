@@ -1,5 +1,5 @@
 //! `gmk-check PROJECT [--strict] [--pedantic] [--lite] [--json] [--quiet]` — static
-//! checker for a GameMaker 8.1 project (.gm81 / .gmk): finds GML compile errors
+//! checker for a GameMaker 8.1 project (.gm81 / .gmk file or project folder): finds GML compile errors
 //! (GM's messages, with line and column), script calls with a wrong argument count
 //! (when the "argument errors" setting is on), broken resource references, duplicate
 //! instance ids, clashing names, variables read but never assigned, no-short-circuit
@@ -20,7 +20,7 @@ use instance_check::{check_project, load_project, report, Options};
 use std::path::Path;
 
 const USAGE: &str =
-    "usage: gmk-check PROJECT.gm81|PROJECT.gmk [--strict] [--pedantic] [--lite] [--json] [--quiet]";
+    "usage: gmk-check PROJECT.gm81|PROJECT.gmk|FOLDER [--strict] [--pedantic] [--lite] [--json] [--quiet]";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();

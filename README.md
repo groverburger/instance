@@ -12,7 +12,12 @@ by YoYo Games. See CLEANROOM.md for how this was built.
 - `crates/instance-ide` – the editor
 - `crates/instance-net` – multiplayer (`mplay_*`) over Instance's own TCP/UDP protocol
 - `crates/instance-dllcall`, `crates/instance-dllhost32` – DLL bridge (x64 in-process, x86 via a 32-bit helper)
+- `crates/instance-check` – `gmk-check`, a static checker for projects (GML errors, script argument counts, broken references, ...)
 - `specs/` – behavioural specifications the implementation is built from
+- `docs/project-folder.md` – project folders: a project as plain files (`.gml`, PNG, TOML), lossless both ways
+
+Making games with Instance (example games, music and sound tools, the game-making guide)
+lives in a separate repository, `instance-gamekit`.
 
 ## Usage
 
@@ -27,12 +32,15 @@ target/release/instance-runner game.gm81 --renderer software   # force the CPU r
 target/release/instance-runner game.gm81 --compare-renderers DIR --frames 300 --screenshot-every 50 DIR
                                               # render with both renderers and diff the frames
 target/release/gmk-info game.gm81 [--tree]    # print a resource summary
+target/release/gmk-unpack game.gm81 game/     # project file -> project folder (and gmk-pack back)
+target/release/instance-runner game/          # run (or instance-ide: edit) a project folder directly
+target/release/gmk-check game/ [--pedantic]   # static checks of a project file or folder
 target/release/gmx2gm81 Game.gmx -o game.gm81  # convert a Studio project (folder, .project.gmx or .gmz)
 cargo test --workspace                        # sample tests read $GM81_SAMPLES
 target/release/instance-runner game.gm81 --headless --frames 600 --random-input 1 --max-seconds 60
 target/release/instance-runner game.gm81 --headless --frames 600 --seed 1 --save-dir s --input 30:press:enter \
     --exec "120:global.cash = 1e5" --watch 60:global.cash --screenshot-at 200 shots --no-draw --audio-out a.wav
-                                              # test harness: see docs/AGENT_GUIDE.md §10 and --help
+                                              # test harness: see --help
 INSTANCE_PROFILE=1 target/release/instance-runner game.gm81 --headless   # per-phase/event/function timings
 cargo test --release -p instance-runner --test corpus -- --ignored --nocapture   # runs every game in $GM81_CORPUS
 ```

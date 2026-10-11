@@ -8,7 +8,7 @@
 //!
 //! The project has one sprite, one object (Create / Step / Draw code actions, moved
 //! with the arrow keys), one room with one placed instance, a resource tree and a
-//! room order. Referenced from `docs/AGENT_GUIDE.md`.
+//! room order.
 
 use instance_format::*;
 
@@ -61,7 +61,7 @@ fn main() -> Result<()> {
         ..Project::default()
     };
     p.settings.icon = make_ico();
-    p.settings.author = "AGENT_GUIDE example".into();
+    p.settings.author = "instance-format example".into();
     // Throw an error when a script is called with the wrong number of arguments
     // (settings flag bit 1, which the GM 8.1 IDE stored in most user projects).
     p.settings.argument_errors = true;

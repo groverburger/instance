@@ -1,5 +1,4 @@
-//! Structural checks: resource references, instance ids, names (AGENT_GUIDE §2,
-//! §3.3, §4.1 checklist, gotchas 9 and 10).
+//! Structural checks: resource references, instance ids, names (specs/file-formats.md).
 
 use crate::pieces::action_lists;
 use crate::{Diagnostic, Options, Severity};
