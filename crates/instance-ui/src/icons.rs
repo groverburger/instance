@@ -41,6 +41,10 @@ pub enum Glyph {
     Log,
     /// Green check mark (OK).
     Check,
+    /// Blue arrow pointing left (back).
+    Back,
+    /// Blue arrow pointing right (forward).
+    Forward,
 }
 
 const OUTLINE: Color32 = Color32::from_rgb(70, 70, 80);
@@ -185,6 +189,29 @@ pub fn paint(p: &Painter, rect: Rect, glyph: Glyph, enabled: bool) {
                 Stroke::NONE,
             ));
             p.add(g.line(&[(9.5, 3.0), (13.0, 6.5)], g.stroke(0.8, outline)));
+        }
+        Glyph::Back | Glyph::Forward => {
+            // head and shaft filled separately (both convex), outlined as one
+            let flip = |x: f32| if glyph == Glyph::Back { x } else { 16.0 - x };
+            let fill = c(Color32::from_rgb(60, 130, 215));
+            let head = [(1.5, 8.0), (8.0, 2.0), (8.0, 14.0)].map(|(x, y)| (flip(x), y));
+            let shaft = [(7.5, 5.5), (14.5, 5.5), (14.5, 10.5), (7.5, 10.5)].map(|(x, y)| (flip(x), y));
+            p.add(g.poly(&head, fill, Stroke::NONE));
+            p.add(g.poly(&shaft, fill, Stroke::NONE));
+            let outline_pts = [
+                (1.5, 8.0),
+                (8.0, 2.0),
+                (8.0, 5.5),
+                (14.5, 5.5),
+                (14.5, 10.5),
+                (8.0, 10.5),
+                (8.0, 14.0),
+            ]
+            .map(|(x, y)| g.p(flip(x), y));
+            p.add(Shape::closed_line(
+                outline_pts.to_vec(),
+                g.stroke(0.8, c(Color32::from_rgb(25, 70, 140))),
+            ));
         }
         Glyph::Check => {
             p.add(g.line(

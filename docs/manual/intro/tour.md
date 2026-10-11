@@ -2,7 +2,7 @@
 
 When you start Instance you see the main window. It has five parts:
 
-![The main window](../../images/ide.png)
+![The main window](../images/ide.png)
 
 1. **The menu bar** along the top: File, Edit, Resources, Scripts, Run, Window and
    Help.

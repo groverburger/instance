@@ -9,6 +9,7 @@ mod dialogs;
 mod editors;
 mod events;
 mod exe;
+mod help;
 mod icons;
 mod imageio;
 mod mdi;

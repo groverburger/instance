@@ -13,7 +13,7 @@ sound", "add 10 to the score"). When you want more control, every action has a
 counterpart in **GML**, the scripting language built into Instance, and you can mix
 the two freely.
 
-![The Instance IDE with a room open](../../images/ide.png)
+![The Instance IDE with a room open](../images/ide.png)
 
 ## What a game is made of
 

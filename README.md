@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://groverburger.github.io/instance/"><b>Try it in your browser</b></a> ·
   <a href="https://github.com/groverburger/instance/releases">Download</a> ·
-  <a href="docs/reference.md">Reference</a>
+  <a href="docs/manual/README.md">Manual</a>
 </p>
 
 <p align="center">
@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/ide.png" alt="The Instance IDE with a room open in the room editor" width="49%">
+  <img src="docs/manual/images/ide.png" alt="The Instance IDE with a room open in the room editor" width="49%">
   <img src="docs/images/deepcore.png" alt="Deepcore, a game made with Instance" width="49%">
 </p>
 
@@ -67,7 +67,9 @@ target/release/instance-runner game.gm81 --debug
 ```
 
 On Linux you'll need the ALSA, udev, X11/Wayland and GL development packages first.
-The [reference](docs/reference.md) covers the rest: command-line tools, the headless
+The [manual](docs/manual/README.md) explains how to make games, from a first tutorial
+to the full function reference; it is also built into the IDE (Help > Contents, or
+F1). The [reference](docs/reference.md) covers the rest: command-line tools, the headless
 test harness, the web build, DLLs and platform notes.
 
 ## Clean-room implementation

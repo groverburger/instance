@@ -88,7 +88,16 @@ front.
 
 ## The Help menu
 
-**About Instance…** shows the About box.
+| Command | What it does |
+|---|---|
+| Contents (F1) | Opens this manual in the Help window |
+| Function Index | Opens the A–Z list of every built-in function, variable and constant |
+| About Instance… | Shows the About box |
+
+The Help window has a contents tree and a search box on the left. Search finds
+built-in names first, then page titles, then text. In the code editor, press **F1**
+with the cursor on a function name (or right-click it and choose **Help on …**) to
+jump straight to its entry in the reference.
 
 ## The toolbar
 
@@ -102,7 +111,7 @@ name.
 | Running | Run, Run in debug mode, Output log |
 | Resources | Create a sprite, sound, background, path, script, font, time line, object or room |
 | Game | Game information, Global game settings, Extension packages |
-| Help | About |
+| Help | Open the manual |
 
 The Output log button shows a small red badge when the last game run reported errors
 you haven't looked at yet.

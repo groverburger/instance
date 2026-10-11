@@ -11,6 +11,7 @@ On macOS, use Cmd where this page says Ctrl.
 | Ctrl+S | Save the project |
 | F5 | Run the game |
 | F6 | Run the game in debug mode |
+| F1 | Open the manual |
 
 ## Forms
 
@@ -51,6 +52,7 @@ These work while the action list has the focus (click in it first).
 | Ctrl+A | Select all |
 | Ctrl+C, Ctrl+X, Ctrl+V | Copy, cut, paste |
 | Tab | Insert a tab |
+| F1 | Help on the function or variable at the cursor |
 
 ## Room editor
 
