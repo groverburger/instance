@@ -67,6 +67,8 @@ pub struct Cx<'a> {
     pub prefs: &'a Prefs,
     /// Project-wide id allocators for room instances and tiles (spec §15.4).
     pub alloc: &'a mut IdAlloc,
+    /// Path of the project file, if it has one (extension package search path).
+    pub project_path: Option<&'a std::path::Path>,
     /// OK or Cancel pressed in the form this frame (see [`ok_cancel`]).
     pub action: Option<FormAction>,
 }

@@ -43,3 +43,27 @@ pub fn config_dir() -> Option<PathBuf> {
 }
 
 pub use instance_ui::fonts::font_dirs;
+
+/// Opens `path` with the program the system associates with it (e.g. a `.chm` help
+/// file in the Windows help viewer). Not available on the web.
+pub fn open_with_os(path: &std::path::Path) -> Result<(), String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        Err(format!("{} cannot be opened in the browser.", path.display()))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let program = if cfg!(windows) {
+            "explorer"
+        } else if cfg!(target_os = "macos") {
+            "open"
+        } else {
+            "xdg-open"
+        };
+        std::process::Command::new(program)
+            .arg(path)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| format!("{}: {e}", path.display()))
+    }
+}

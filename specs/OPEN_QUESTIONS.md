@@ -547,6 +547,11 @@ Resolve by black-box tests with GM 8.1 (screenshots of small test games).
 - EXT-5: Are extension constant values evaluated as GML expressions or literal?
 - EXT-6: external_call with wrong argument types: error or conversion? external_define
   return id numbering and error message wording.
+- EXT-7: Meaning of the package-level `hidden` flag of a `.ged` (0 in all shipped
+  packages). Instance's Extension Packages form (ide.md §18.4) assumes it hides the
+  package from the Available list (a helper package only pulled in through another
+  package's `uses`). Also: does GM 8.1 add a package's `uses` dependencies to the
+  project automatically when the package is selected? Instance does not.
 
 ## [BLACKBOX] Black-box test projects (2026-10-07)
 
