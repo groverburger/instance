@@ -1053,3 +1053,169 @@ fn screenshot_readme() {
     h.run_steps(4);
     h.render().unwrap().save(out.join("ide.png")).unwrap();
 }
+
+/// The "Catch the Gem" game of the user manual's tutorial
+/// (docs/manual/intro/first-game.md), built in code with drawn sprites.
+fn manual_tutorial_project() -> instance_format::Project {
+    use instance_format::{builtin_action, event_type as et, Event, Instance, RgbaImage};
+    let mut p = ops::new_project();
+    let image = |f: &dyn Fn(f32, f32) -> Option<[u8; 4]>| {
+        let mut img = RgbaImage::new(32, 32);
+        for y in 0..32u32 {
+            for x in 0..32u32 {
+                if let Some(c) = f(x as f32, y as f32) {
+                    let i = ((y * 32 + x) * 4) as usize;
+                    img.data[i..i + 4].copy_from_slice(&c);
+                }
+            }
+        }
+        img
+    };
+    let (wall_spr, _) = ops::create_resource(&mut p, ResourceKind::Sprite, &ops::Placement::End);
+    let (gem_spr, _) = ops::create_resource(&mut p, ResourceKind::Sprite, &ops::Placement::End);
+    ops::rename_resource(&mut p, ResourceKind::Sprite, wall_spr, "spr_wall");
+    ops::rename_resource(&mut p, ResourceKind::Sprite, gem_spr, "spr_gem");
+    if let Some(Some(s)) = p.sprites.get_mut(wall_spr) {
+        s.frames = vec![image(&|x, y| {
+            let edge = x < 1.0 || y < 1.0 || x > 30.0 || y > 30.0;
+            Some(if edge { [90, 70, 50, 255] } else { [150, 115, 80, 255] })
+        })];
+        crate::editors::sprite::update_bbox(s);
+    }
+    if let Some(Some(s)) = p.sprites.get_mut(gem_spr) {
+        s.frames = vec![image(&|x, y| {
+            let (dx, dy) = (x - 15.5, y - 15.5);
+            let d = (dx * dx + dy * dy).sqrt();
+            (d < 15.0).then(|| {
+                if d < 7.0 && dx < 0.0 && dy < 0.0 {
+                    [150, 255, 230, 255]
+                } else {
+                    [20, 190, 160, 255]
+                }
+            })
+        })];
+        s.origin_x = 16;
+        s.origin_y = 16;
+        crate::editors::sprite::update_bbox(s);
+    }
+    let (wall, _) = ops::create_resource(&mut p, ResourceKind::Object, &ops::Placement::End);
+    let (gem, _) = ops::create_resource(&mut p, ResourceKind::Object, &ops::Placement::End);
+    ops::rename_resource(&mut p, ResourceKind::Object, wall, "obj_wall");
+    ops::rename_resource(&mut p, ResourceKind::Object, gem, "obj_gem");
+    let act = |id: i32, args: &[&str], relative: bool| {
+        let mut a = builtin_action(1, id).unwrap().instantiate(1);
+        for (i, v) in args.iter().enumerate() {
+            a.args[i] = v.to_string();
+        }
+        a.relative = relative;
+        a
+    };
+    if let Some(Some(o)) = p.objects.get_mut(wall) {
+        o.sprite = wall_spr as i32;
+        o.solid = true;
+    }
+    if let Some(Some(o)) = p.objects.get_mut(gem) {
+        o.sprite = gem_spr as i32;
+        let ev = |event_type, number, actions| Event {
+            event_type,
+            number,
+            actions,
+        };
+        o.events = vec![
+            ev(et::CREATE, 0, vec![act(102, &["random(360)", "4"], false)]),
+            ev(et::COLLISION, wall as i32, vec![act(115, &["0", "0"], false)]),
+            ev(
+                et::MOUSE,
+                4,
+                vec![
+                    act(701, &["10"], true),
+                    act(111, &["0", "0"], false),
+                    act(102, &["random(360)", "speed + 0.5"], false),
+                    act(702, &["100", "0"], false),
+                    act(422, &[], false),
+                    act(321, &["You caught them all!"], false),
+                    act(332, &[], false),
+                    act(424, &[], false),
+                ],
+            ),
+        ];
+    }
+    let (room, _) = ops::create_resource(&mut p, ResourceKind::Room, &ops::Placement::End);
+    ops::rename_resource(&mut p, ResourceKind::Room, room, "rm_main");
+    let mut id = 100_000;
+    if let Some(Some(r)) = p.rooms.get_mut(room) {
+        r.caption = "Catch the Gem".into();
+        r.snap_x = 32;
+        r.snap_y = 32;
+        let mut add = |x: i32, y: i32, o: usize| {
+            id += 1;
+            r.instances.push(Instance {
+                x,
+                y,
+                object: o as i32,
+                id,
+                creation_code: String::new(),
+                locked: false,
+            });
+        };
+        for i in 0..20 {
+            add(i * 32, 0, wall);
+            add(i * 32, 448, wall);
+        }
+        for j in 1..14 {
+            add(0, j * 32, wall);
+            add(608, j * 32, wall);
+        }
+        add(320, 240, gem);
+    }
+    p.last_instance_id = id;
+    p
+}
+
+/// Renders the IDE screenshots of the user manual (`docs/manual/images/ide/`) to
+/// `$GM_IDE_SCREENSHOT`. Run with `--ignored`; needs a wgpu adapter.
+#[test]
+#[ignore]
+fn screenshot_manual() {
+    use egui_kittest::kittest::Queryable;
+    let Some(out) = std::env::var_os("GM_IDE_SCREENSHOT") else {
+        return;
+    };
+    let out = PathBuf::from(out);
+    std::fs::create_dir_all(&out).unwrap();
+    let p = manual_tutorial_project();
+    let find = |v: Vec<Option<String>>, name: &str| {
+        v.iter()
+            .position(|n| n.as_deref() == Some(name))
+            .unwrap()
+    };
+    let gem = find(p.objects.iter().map(|o| o.as_ref().map(|o| o.name.clone())).collect(), "obj_gem");
+    let room = find(p.rooms.iter().map(|r| r.as_ref().map(|r| r.name.clone())).collect(), "rm_main");
+    let mut h = egui_kittest::Harness::builder()
+        .with_size(eframe::egui::Vec2::new(1280.0, 720.0))
+        .with_theme(eframe::egui::Theme::Light)
+        .wgpu()
+        .build_eframe(|cc| crate::app::IdeApp::new(cc, None));
+    h.state_mut().test_set_project(p);
+    h.state_mut().test_set_path(PathBuf::from("catch.gm81"));
+    h.run_steps(2);
+    h.state_mut().open_form(ResKey::Res(ResourceKind::Object, gem));
+    h.run_steps(4);
+    h.get_by_label("Left Pressed").click();
+    h.run_steps(4);
+    h.hover_at(eframe::egui::pos2(1270.0, 710.0));
+    h.run_steps(2);
+    h.render().unwrap().save(out.join("object-form.png")).unwrap();
+    h.get_by_label("Add Event").click();
+    h.run_steps(4);
+    h.render().unwrap().save(out.join("event-selector.png")).unwrap();
+    h.get_by_label("Cancel").click();
+    h.run_steps(2);
+    h.state_mut().test_close_forms();
+    h.run_steps(2);
+    h.state_mut().open_form(ResKey::Res(ResourceKind::Room, room));
+    h.run_steps(8);
+    h.hover_at(eframe::egui::pos2(1270.0, 710.0));
+    h.run_steps(4);
+    h.render().unwrap().save(out.join("room-editor.png")).unwrap();
+}
