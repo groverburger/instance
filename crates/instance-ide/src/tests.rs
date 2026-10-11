@@ -7,6 +7,7 @@ use instance_format::{canonical_bytes, read_project, FormatVersion, ResourceKind
 
 use crate::editors::{open_editor, ResKey};
 use crate::project_ops::{self as ops, LIST_KINDS};
+use egui_kittest::kittest::NodeT as _;
 
 const SAMPLES: [&str; 5] = [
     "tutorial1.gmk",
@@ -798,7 +799,7 @@ fn ui_form_cancel_and_keys() {
     h.state_mut().open_form(ResKey::Res(ResourceKind::Script, 0));
     h.run_steps(3);
     {
-        use egui_kittest::kittest::{by, NodeT};
+        use egui_kittest::kittest::by;
         let name = h
             .query_all(by().role(eframe::egui::accesskit::Role::TextInput))
             .next()
@@ -831,7 +832,7 @@ fn ui_form_cancel_and_keys() {
 fn button_rects(
     h: &egui_kittest::Harness<'_, crate::app::IdeApp>,
 ) -> Vec<(String, eframe::egui::Rect)> {
-    use egui_kittest::kittest::{by, NodeT, Queryable};
+    use egui_kittest::kittest::{by, Queryable};
     h.query_all(by().role(eframe::egui::accesskit::Role::Button))
         .map(|n| (n.accesskit_node().label().unwrap_or_default(), n.rect()))
         .collect()
@@ -843,7 +844,7 @@ fn button_rects(
 #[test]
 fn theme_hover_keeps_widget_sizes() {
     use eframe::egui;
-    use egui_kittest::kittest::{by, NodeT, Queryable};
+    use egui_kittest::kittest::{by, Queryable};
     let mut flag = false;
     let mut b = false;
     let mut h = egui_kittest::Harness::builder()
@@ -997,7 +998,9 @@ fn screenshot_dialogs() {
     ops::create_resource(&mut p, ResourceKind::Object, &ops::Placement::End);
     h.state_mut().test_set_project(p);
     h.run_steps(2);
-    h.get_by_label("About Instance").click();
+    h.get_by_label("Help").click();
+    h.run_steps(2);
+    h.get_by_label("About Instance…").click();
     h.run_steps(3);
     h.render()
         .unwrap()
@@ -1052,4 +1055,237 @@ fn screenshot_readme() {
     h.hover_at(eframe::egui::pos2(1270.0, 750.0));
     h.run_steps(4);
     h.render().unwrap().save(out.join("ide.png")).unwrap();
+}
+
+/// Clicks at `pos` with `button` (press and release).
+fn click_at(
+    h: &mut egui_kittest::Harness<'static, crate::app::IdeApp>,
+    pos: eframe::egui::Pos2,
+    button: eframe::egui::PointerButton,
+) {
+    h.hover_at(pos);
+    h.run_steps(1);
+    for pressed in [true, false] {
+        h.event(eframe::egui::Event::PointerButton {
+            pos,
+            button,
+            pressed,
+            modifiers: Default::default(),
+        });
+        h.run_steps(1);
+    }
+    h.run_steps(2);
+}
+
+type Ide = egui_kittest::Harness<'static, crate::app::IdeApp>;
+
+/// The page and anchor the help shows.
+fn help_at(h: &Ide) -> Option<(String, Option<String>)> {
+    h.state()
+        .test_help()
+        .current()
+        .cloned()
+        .map(|l| (l.page, l.anchor))
+}
+
+/// Help > Contents opens the help at the contents page; a link in a page navigates
+/// inside the viewer, Back and Forward walk the history; F1 opens the help too.
+#[test]
+fn ui_help_contents_and_links() {
+    use egui_kittest::kittest::Queryable;
+    let mut h = harness();
+    h.get_by_label("Help").click();
+    h.run_steps(2);
+    h.get_by_label("Contents (F1)").click();
+    h.run_steps(3);
+    assert!(h.state().test_help().open);
+    assert_eq!(help_at(&h), Some(("README.md".into(), None)));
+    // a link of the contents page (inside the viewer)
+    h.get_by_label("Welcome to Instance").click();
+    h.run_steps(3);
+    assert_eq!(help_at(&h), Some(("intro/welcome.md".into(), None)));
+    if crate::help::file("intro/welcome.md").is_none() {
+        assert!(h
+            .query_by_label("This page has not been written yet.")
+            .is_some());
+    }
+    h.get_by_label("Back").click();
+    h.run_steps(3);
+    assert_eq!(help_at(&h), Some(("README.md".into(), None)));
+    h.get_by_label("Forward").click();
+    h.run_steps(3);
+    assert_eq!(help_at(&h), Some(("intro/welcome.md".into(), None)));
+    // the contents tree: open the reference section and a page of it
+    h.get_by_label("Function reference").click();
+    h.run_steps(3);
+    h.get_by_label("Data structures").click();
+    h.run_steps(3);
+    assert_eq!(
+        help_at(&h),
+        Some(("reference/data-structures.md".into(), None))
+    );
+    // a link to an anchor on the page (the list of sections comes before the heading)
+    h.get_all_by_label("Stacks").next().unwrap().click();
+    h.run_steps(4);
+    assert_eq!(
+        help_at(&h),
+        Some((
+            "reference/data-structures.md".into(),
+            Some("stacks".into())
+        ))
+    );
+    // closing it and pressing F1 opens it again
+    h.get_all_by_label("Close").last().unwrap().click();
+    h.run_steps(2);
+    assert!(!h.state().test_help().open);
+    h.key_press(eframe::egui::Key::F1);
+    h.run_steps(3);
+    assert!(h.state().test_help().open);
+}
+
+/// The search box finds a function and jumps to its entry (scrolled into view).
+#[test]
+fn ui_help_search() {
+    use egui_kittest::kittest::Queryable;
+    let mut h = harness();
+    h.key_press(eframe::egui::Key::F1);
+    h.run_steps(3);
+    h.get_by_label("Search the help").click();
+    h.run_steps(2);
+    h.get_by_label("Search the help").type_text("draw_rectangle");
+    h.run_steps(3);
+    h.get_by_label("draw_rectangle").click();
+    h.run_steps(6);
+    assert_eq!(
+        help_at(&h),
+        Some((
+            "reference/game-graphics.md".into(),
+            Some("draw_rectangle".into())
+        ))
+    );
+    // the heading is scrolled into the window
+    let win = h.ctx.content_rect();
+    let rects: Vec<_> = h
+        .get_all_by_label("draw_rectangle")
+        .map(|n| n.rect())
+        .collect();
+    assert!(rects.len() >= 2, "result row and heading: {rects:?}");
+    assert!(
+        rects
+            .iter()
+            .all(|r| r.top() >= win.top() && r.bottom() <= win.bottom()),
+        "{rects:?}"
+    );
+    // Enter takes the first result
+    h.get_by_label("Search the help").click();
+    h.run_steps(1);
+    for _ in 0.."draw_rectangle".len() {
+        h.key_press(eframe::egui::Key::Backspace);
+    }
+    h.get_by_label("Search the help").type_text("ds_map_add");
+    h.run_steps(2);
+    h.key_press(eframe::egui::Key::Enter);
+    h.run_steps(4);
+    assert_eq!(
+        help_at(&h),
+        Some((
+            "reference/data-structures.md".into(),
+            Some("ds_map_add".into())
+        ))
+    );
+}
+
+/// F1 and "Help on …" in the code editor open the reference entry of the name at the
+/// cursor.
+#[test]
+fn ui_help_context_in_code_editor() {
+    use egui_kittest::kittest::{by, Queryable};
+    let mut h = harness();
+    let mut p = ops::new_project();
+    let (s, _) = ops::create_resource(&mut p, ResourceKind::Script, &ops::Placement::End);
+    p.scripts[s].as_mut().unwrap().code = "draw_text".into();
+    h.state_mut().test_set_project(p);
+    h.run_steps(2);
+    h.state_mut().open_form(ResKey::Res(ResourceKind::Script, s));
+    h.run_steps(3);
+    let editor = h
+        .query_all(by().role(eframe::egui::accesskit::Role::MultilineTextInput))
+        .next()
+        .expect("code editor")
+        .rect();
+    // right of the text on its first line: the cursor goes after "draw_text"
+    let at = editor.min + eframe::egui::vec2(editor.width() - 20.0, 8.0);
+    click_at(&mut h, at, eframe::egui::PointerButton::Primary);
+    assert!(h.ctx.egui_wants_keyboard_input(), "the code editor has focus");
+    h.key_press(eframe::egui::Key::F1);
+    h.run_steps(4);
+    assert_eq!(
+        help_at(&h),
+        Some((
+            "reference/game-graphics.md".into(),
+            Some("draw_text".into())
+        ))
+    );
+    // the context menu of the editor
+    h.get_all_by_label("Close").last().unwrap().click();
+    h.run_steps(2);
+    assert!(!h.state().test_help().open);
+    click_at(&mut h, at, eframe::egui::PointerButton::Secondary);
+    h.get_by_label("Help on draw_text").click();
+    h.run_steps(4);
+    assert!(h.state().test_help().open);
+    assert_eq!(
+        help_at(&h).and_then(|l| l.1).as_deref(),
+        Some("draw_text")
+    );
+}
+
+/// Renders the help window to PNGs in `$GM_IDE_SCREENSHOT` (manual check of the
+/// layout; run with `--ignored`; needs a wgpu adapter).
+#[test]
+#[ignore]
+fn screenshot_help() {
+    use egui_kittest::kittest::Queryable;
+    let Some(out) = std::env::var_os("GM_IDE_SCREENSHOT") else {
+        return;
+    };
+    let out = PathBuf::from(out);
+    std::fs::create_dir_all(&out).unwrap();
+    let mut h = egui_kittest::Harness::builder()
+        .with_size(eframe::egui::Vec2::new(1280.0, 800.0))
+        .with_theme(eframe::egui::Theme::Light)
+        .wgpu()
+        .build_eframe(|cc| crate::app::IdeApp::new(cc, None));
+    h.state_mut().test_set_project(ops::new_project());
+    h.run_steps(2);
+    h.key_press(eframe::egui::Key::F1);
+    h.run_steps(4);
+    h.render()
+        .unwrap()
+        .save(out.join("help_contents.png"))
+        .unwrap();
+    // (the tree row comes before the heading of the page)
+    h.get_all_by_label("Function reference").next().unwrap().click();
+    h.run_steps(2);
+    h.get_by_label("Search the help").click();
+    h.get_by_label("Search the help").type_text("draw_rect");
+    h.run_steps(3);
+    h.get_by_label("draw_rectangle").click();
+    h.run_steps(6);
+    h.render()
+        .unwrap()
+        .save(out.join("help_reference.png"))
+        .unwrap();
+    h.get_by_label("Search the help").click();
+    for _ in 0.."draw_rect".len() {
+        h.key_press(eframe::egui::Key::Backspace);
+    }
+    h.get_by_label("Search the help").type_text("vk_left");
+    h.run_steps(3);
+    h.get_by_label("vk_left").click();
+    h.run_steps(6);
+    h.render()
+        .unwrap()
+        .save(out.join("help_table.png"))
+        .unwrap();
 }

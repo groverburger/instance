@@ -75,6 +75,8 @@ pub struct IdeApp {
     /// Workspace rectangle of the last frame (where forms live).
     workspace: egui::Rect,
     show_about: bool,
+    /// The help window.
+    help: crate::help::HelpView,
     /// Web: when the project was last autosaved (seconds), and a pending offer to
     /// restore the previous session's autosave (name, bytes).
     #[allow(dead_code)]
@@ -114,6 +116,7 @@ impl IdeApp {
             active: None,
             workspace: egui::Rect::from_min_size(egui::pos2(250.0, 60.0), Vec2::new(1000.0, 700.0)),
             show_about: false,
+            help: Default::default(),
             autosave_at: crate::platform::unix_secs(),
             restore_offer: None,
         };
@@ -652,6 +655,11 @@ Restore it?"
     }
 
     #[cfg(test)]
+    pub(crate) fn test_help(&self) -> &crate::help::HelpView {
+        &self.help
+    }
+
+    #[cfg(test)]
     pub(crate) fn test_close_forms(&mut self) {
         self.forms.clear();
     }
@@ -851,6 +859,17 @@ Restore it?"
             });
             ui.menu_button("Window", |ui| self.window_menu(ui));
             ui.menu_button("Help", |ui| {
+                if ui.button("Contents (F1)").clicked() {
+                    self.help.open_contents();
+                    ui.close();
+                }
+                if ui.button("Function Index").clicked() {
+                    self.help.open_contents();
+                    self.help
+                        .navigate(crate::help::Loc::page(crate::help::NAME_INDEX));
+                    ui.close();
+                }
+                ui.separator();
                 if ui.button("About Instance…").clicked() {
                     self.show_about = true;
                     ui.close();
@@ -1176,8 +1195,8 @@ Restore it?"
                 self.open_form(ResKey::Extensions);
             }
             icons::tool_separator(ui);
-            if tb(ui, Icon::Help, "About Instance", true).clicked() {
-                self.show_about = true;
+            if tb(ui, Icon::Help, "Show the help (F1)", true).clicked() {
+                self.help.open_contents();
             }
         });
     }
@@ -1725,6 +1744,16 @@ impl eframe::App for IdeApp {
             })
             .inner;
         self.forms_ui(&ctx, area);
+        // F1 not taken by a form (the code editor asks for help on a word)
+        if self.messages.is_empty()
+            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F1))
+        {
+            self.help.open_contents();
+        }
+        if let Some(w) = crate::help::take_request(&ctx) {
+            self.help.open_topic(&w);
+        }
+        crate::help::window(&ctx, &mut self.help);
         let log = crate::output_log::window(&ctx, &self.log, &mut self.log_view);
         if let Some(bytes) = log.save {
             if let Err(e) = dialogs::save_bytes("output.log", None, dialogs::LOG, &bytes) {

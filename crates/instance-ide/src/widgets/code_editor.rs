@@ -267,7 +267,7 @@ fn tok_color(t: Tok, dark: bool) -> Color32 {
     }
 }
 
-fn layout_job(
+pub(crate) fn layout_job(
     src: &str,
     names: &ProjectNames,
     colour: bool,
@@ -341,6 +341,29 @@ pub fn find_in(
     pos.map(|&i| i..i + n.len())
 }
 
+/// The identifier at (or just before) byte offset `at`.
+pub fn word_at(src: &str, at: usize) -> Option<&str> {
+    let b = src.as_bytes();
+    let at = at.min(b.len());
+    let id = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let mut s = at;
+    while s > 0 && id(b[s - 1]) {
+        s -= 1;
+    }
+    let mut e = at;
+    while e < b.len() && id(b[e]) {
+        e += 1;
+    }
+    let w = &src[s..e];
+    (!w.is_empty() && !w.as_bytes()[0].is_ascii_digit()).then_some(w)
+}
+
+/// Whether `w` is a built-in function, variable or constant.
+pub fn is_builtin(w: &str) -> bool {
+    let b = builtins();
+    b.functions.contains_key(w) || b.variables.contains(w) || b.constants.contains(w)
+}
+
 /// Signature hint for the call enclosing byte offset `at`, e.g. `draw_text(x, y, string)`.
 pub fn call_hint(src: &str, at: usize, names: &ProjectNames) -> Option<String> {
     let b = &src.as_bytes()[..at.min(src.len())];
@@ -404,6 +427,13 @@ pub fn code_editor(
 
     if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::F)) {
         st.find_open = true;
+    }
+    // F1: help on the word at the cursor (the IDE opens the contents without one)
+    if ui.memory(|m| m.has_focus(edit_id))
+        && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F1))
+    {
+        let w = word_at(code, st.cursor.unwrap_or(0)).unwrap_or("");
+        crate::help::request_topic(ui.ctx(), w);
     }
     let mut jump: Option<std::ops::Range<usize>> = None;
     ui.horizontal(|ui| {
@@ -506,6 +536,17 @@ pub fn code_editor(
                     .show(ui);
                 if out.response.response.changed() {
                     changed = true;
+                }
+                let word = word_at(code, st.cursor.unwrap_or(0))
+                    .filter(|w| is_builtin(w))
+                    .map(str::to_string);
+                if let Some(w) = word {
+                    out.response.response.context_menu(|ui| {
+                        if ui.button(format!("Help on {w}")).clicked() {
+                            crate::help::request_topic(ui.ctx(), &w);
+                            ui.close();
+                        }
+                    });
                 }
                 out_cursor = out.cursor_range;
             });
