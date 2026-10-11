@@ -12,6 +12,7 @@ pub mod random;
 pub mod restart;
 pub mod rooms;
 pub mod smoke;
+pub mod sound;
 
 use crate::framework::Spec;
 
@@ -38,6 +39,7 @@ pub fn all() -> Vec<Spec> {
         followup::build_lang2(),
         followup::build_restart2(),
         followup::build_lang3(),
+        sound::build(),
     ];
     v.extend(lang::diagnostics());
     v

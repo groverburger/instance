@@ -183,6 +183,23 @@ impl Gen {
         (self.p.fonts.len() - 1) as i32
     }
 
+    /// A sound resource holding `wav` (a complete .wav file).
+    pub fn sound(&mut self, name: &str, kind: i32, wav: Vec<u8>) -> i32 {
+        self.p.sounds.push(Some(Sound {
+            name: name.into(),
+            last_changed: STAMP,
+            kind,
+            file_type: ".wav".into(),
+            file_name: format!("{name}.wav"),
+            data: Some(wav),
+            effects: 0,
+            volume: 1.0,
+            pan: 0.0,
+            preload: true,
+        }));
+        (self.p.sounds.len() - 1) as i32
+    }
+
     pub fn script(&mut self, name: &str, code: &str) -> i32 {
         self.p.scripts.push(Some(Script {
             name: name.into(),

@@ -528,6 +528,9 @@ Resolve by black-box tests with GM 8.1 (screenshots of small test games).
   calls for an unselected effect have any effect?
 - SND-6: Does sound_play on a non-existent sound raise an error in GM 8.1?
 - SND-7: Does an MP3 given kind 0..2 play at all in GM 8.1?
+- SND-8: When does sound_isplaying turn true after sound_play/sound_loop (the manual warns
+  it can lag), and false after sound_stop or the end of a sound? Polling
+  "if (!sound_isplaying(s)) sound_loop(s)" each step stacks loops if it lags. bb_sound.
 
 ## [EXT] Extensions and DLLs (specs/extensions.md, 2026-10-07)
 

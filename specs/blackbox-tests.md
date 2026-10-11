@@ -309,6 +309,21 @@ Headless frames for instance-runner: 39
 | `.msg` | GML-18 | error message text (informational) |
 | `lang3.done` | - | end marker |
 
+## bb_sound — Sound: sound_isplaying right after sound_play/sound_loop/sound_stop
+
+Lite: Lite-safe. Plays quiet test tones for about 5 seconds; leave the sound on.  
+Headless frames for instance-runner: 330
+
+| key prefix | answers | what is logged |
+|---|---|---|
+| `snd.A.` | SND-8 | isplaying per step after sound_loop (normal sound), and after sound_stop |
+| `snd.B.` | SND-8 | isplaying per step after sound_play of a 250 ms sound (until it ends) |
+| `snd.C.` | SND-8 | how many times "if (!sound_isplaying) sound_loop" fires in 60 steps |
+| `snd.D.` | SND-8 | sound_loop twice, then one sound_stop |
+| `snd.E.` | SND-8 | sound_stop + sound_loop in the same step |
+| `snd.F.` | SND-8 | background-music kind: isplaying after sound_loop / sound_stop |
+| `snd.A.first_true_ms` | SND-8 | milliseconds until isplaying first read true (timing) (informational) |
+
 ## bb_constexpr — Diagnostic: expression-valued constants only
 
 Lite: Lite-safe  
