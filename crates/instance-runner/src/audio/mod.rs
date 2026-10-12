@@ -752,23 +752,25 @@ mod tests {
 
     #[test]
     fn status_lags_like_gm() {
-        // SND-8: false just after the start, true just after a stop or the end
+        // SND-8: false just after the start, true just after a stop or the end.
+        // The virtual (offline) clock keeps the timeline exact, whatever the wall clock.
         let mut a = Audio::new(true);
         a.set_status_delay(Duration::from_millis(80));
+        a.start_offline(None).unwrap();
         let s = res(0, wav(0.2));
         a.play(0, &s, false, &[]);
         assert!(!a.is_playing(0), "not yet reported");
-        std::thread::sleep(Duration::from_millis(120));
+        a.offline_advance(0.12, None);
         assert!(a.is_playing(0), "reported after the delay");
-        std::thread::sleep(Duration::from_millis(120));
+        a.offline_advance(0.12, None);
         assert!(a.is_playing(0), "ended at 0.2 s, still reported");
-        std::thread::sleep(Duration::from_millis(100));
+        a.offline_advance(0.1, None);
         assert!(!a.is_playing(0), "the end reported");
         a.play(0, &s, true, &[]);
-        std::thread::sleep(Duration::from_millis(120));
+        a.offline_advance(0.12, None);
         a.stop(0);
         assert!(a.is_playing(0), "stopped, still reported");
-        std::thread::sleep(Duration::from_millis(120));
+        a.offline_advance(0.12, None);
         assert!(!a.is_playing(0), "the stop reported");
     }
 
