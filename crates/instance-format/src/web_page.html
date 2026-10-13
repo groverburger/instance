@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<link rel="icon" href="data:,">
+<!-- A game exported by Instance (a GameMaker 8.1 compatible engine): the web runner,
+     the game and its data, all in this one file. -->
+<style>
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; background: #000; color: #ddd;
+    font: 15px system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  #game { display: block; outline: none; image-rendering: pixelated; background: #000; }
+  #overlay { position: fixed; inset: 0; display: flex; flex-direction: column; gap: 12px;
+    align-items: center; justify-content: center; background: #000; text-align: center; padding: 16px; }
+  #overlay h1 { margin: 0; font-size: 22px; font-weight: 600; color: #eee; }
+  #overlay button { font: inherit; font-size: 18px; padding: 12px 28px; border: 0; border-radius: 6px;
+    background: #3a7bd5; color: #fff; cursor: pointer; }
+  #overlay button:hover { background: #2f68b8; }
+  .error { color: #f88; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<canvas id="game" width="640" height="480" hidden></canvas>
+<div id="overlay">
+  <h1>{{TITLE}}</h1>
+  <div id="status">Loading&hellip;</div>
+  <button id="start" hidden>Click to play</button>
+  <noscript>This game needs JavaScript.</noscript>
+</div>
+<script type="module">
+// ---- the Instance web runner (wasm-bindgen glue) ----
+{{GLUE}}
+// ---- start-up ----
+{
+  // gzip-compressed, base64-encoded payloads
+  const RUNNER = "{{WASM}}";
+  const GAME = "{{GAME}}";
+  const SOUNDFONT = {{SOUNDFONT}};
+
+  const $ = (id) => document.getElementById(id);
+  const showStatus = (t, err) => { $("status").textContent = t; $("status").className = err ? "error" : ""; };
+
+  async function unpack(b64) {
+    const s = atob(b64);
+    const raw = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) raw[i] = s.charCodeAt(i);
+    const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  (async () => {
+    try {
+      await __wbg_init({ module_or_path: await unpack(RUNNER) });
+      if (SOUNDFONT) set_soundfont(await unpack(SOUNDFONT));
+      const game = await unpack(GAME);
+      showStatus("");
+      const btn = $("start");
+      btn.hidden = false;
+      btn.focus();
+      // audio may only start after a user gesture: the game starts from this click
+      btn.onclick = () => {
+        $("overlay").hidden = true;
+        const canvas = $("game");
+        canvas.hidden = false;
+        try {
+          start_game("game", game, undefined);
+          canvas.focus();
+        } catch (e) {
+          console.error(e);
+          $("overlay").hidden = false;
+          btn.hidden = true;
+          showStatus("The game could not start: " + e, true);
+        }
+      };
+      // ?autostart skips the button (the game may then have no sound until a click)
+      if (new URLSearchParams(location.search).has("autostart")) btn.onclick();
+    } catch (e) {
+      console.error(e);
+      showStatus("The game could not load: " + (e.message ?? e), true);
+    }
+  })();
+
+  window.instanceGameEnded = () => {
+    $("game").hidden = true;
+    $("overlay").hidden = false;
+    $("start").hidden = true;
+    showStatus("The game has ended.");
+  };
+}
+</script>
+</body>
+</html>

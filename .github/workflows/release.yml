@@ -33,20 +33,29 @@ jobs:
           ref: ${{ env.TAG }}
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: i686-pc-windows-msvc
+          targets: i686-pc-windows-msvc, wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-bindgen-cli (version from Cargo.lock)
+        run: |
+          v=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')
+          cargo install wasm-bindgen-cli --version "$v" --locked
       - name: Build
         run: |
           cargo build --release -p instance-ide -p instance-runner -p instance-format -p instance-gmx
           cargo build --release -p instance-dllhost32 --target i686-pc-windows-msvc
+      - name: Web runner (for File > Export Web Page and gmk-web)
+        run: |
+          cargo rustc -p instance-runner --lib --target wasm32-unknown-unknown --release --crate-type cdylib
+          wasm-bindgen --target web --no-typescript --out-dir web-runner target/wasm32-unknown-unknown/release/instance_runner.wasm
       - name: SoundFont (MIDI)
         run: bash scripts/fetch-soundfont.sh
       - name: Package
         run: |
           pkg="Instance-$TAG-windows-x64"
-          mkdir -p "$pkg/soundfonts"
+          mkdir -p "$pkg/soundfonts" "$pkg/web/pkg"
           cp target/release/instance-ide.exe target/release/instance-runner.exe \
-             target/release/gmx2gm81.exe target/release/gmk-info.exe "$pkg/"
+             target/release/gmx2gm81.exe target/release/gmk-info.exe target/release/gmk-web.exe "$pkg/"
+          cp web-runner/instance_runner.js web-runner/instance_runner_bg.wasm "$pkg/web/pkg/"
           cp target/i686-pc-windows-msvc/release/instance-dllhost32.exe "$pkg/"
           cp web/soundfonts/default.sf2 web/soundfonts/LICENSE-GeneralUser-GS.txt "$pkg/soundfonts/"
           cp README.md CLEANROOM.md "$pkg/"
@@ -73,12 +82,21 @@ jobs:
           ref: ${{ env.TAG }}
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.target }}, wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      - name: Install wasm-bindgen-cli (version from Cargo.lock)
+        run: |
+          v=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')
+          cargo install wasm-bindgen-cli --version "$v" --locked
       - name: Build .app bundles
         run: bash scripts/macos-bundle.sh --target ${{ matrix.target }} dist/macos
+      - name: Web runner inside the IDE bundle (for File > Export Web Page)
+        run: |
+          cargo rustc -p instance-runner --lib --target wasm32-unknown-unknown --release --crate-type cdylib
+          wasm-bindgen --target web --no-typescript --out-dir "dist/macos/Instance.app/Contents/MacOS/web/pkg" \
+            target/wasm32-unknown-unknown/release/instance_runner.wasm
       - name: SoundFont (MIDI) inside the bundles
         run: |
           bash scripts/fetch-soundfont.sh

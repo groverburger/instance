@@ -125,6 +125,44 @@ pub fn startup(ctx: &eframe::egui::Context) {
     });
 }
 
+/// File > Export Web Page in the browser: fetches the web runner served beside the
+/// IDE (and the SoundFont of `config.js` when the game plays MIDI), builds the page
+/// and offers it as a download named `name`.
+pub fn export_page(name: String, title: String, game: Vec<u8>, midi: bool) {
+    let ctx = crate::dialogs::context();
+    wasm_bindgen_futures::spawn_local(async move {
+        let fetch = |url: String| async move {
+            wasm_bindgen_futures::JsFuture::from(js::fetch_bytes(&url))
+                .await
+                .map(|b| bytes_of(&b))
+                .map_err(|e| format!("Cannot load {url}: {}", e.as_string().unwrap_or_else(|| format!("{e:?}"))))
+        };
+        let result = async {
+            let glue = fetch(format!("pkg/{}", instance_format::web::RUNNER_GLUE)).await?;
+            let wasm = fetch(format!("pkg/{}", instance_format::web::RUNNER_WASM)).await?;
+            let runner = instance_format::web::WebRunner {
+                glue: String::from_utf8(glue).map_err(|e| e.to_string())?,
+                wasm,
+            };
+            let sf_url = web_sys::window()
+                .and_then(|w| js_sys::Reflect::get(&w, &"INSTANCE_SOUNDFONT".into()).ok())
+                .and_then(|v| v.as_string());
+            let soundfont = match sf_url {
+                Some(u) if midi => Some(fetch(u).await?),
+                _ => None,
+            };
+            Ok::<_, String>(instance_format::web::page(&title, &runner, &game, soundfont.as_deref()))
+        };
+        match result.await {
+            Ok(html) => js::download(&name, html.as_bytes()),
+            Err(e) => push(Incoming::Error(e)),
+        }
+        if let Some(c) = ctx {
+            c.request_repaint();
+        }
+    });
+}
+
 /// Starts the IDE on the canvas with id `canvas_id` (WebGL2 through glow).
 #[wasm_bindgen]
 pub async fn start_ide(canvas_id: String) -> Result<(), JsValue> {

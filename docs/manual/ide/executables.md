@@ -54,4 +54,6 @@ icon in the file manager.
 Executables made with other tools can't be opened in Instance, and Instance's
 executables can't be opened as projects. Always keep your `.gm81` project file.
 
+To share a game that plays in a web browser instead, [export a web page](web-pages.md).
+
 See also: [Running and debugging games](running-and-debugging.md) · [Project files](project-files.md) · [Global game settings](game-settings.md)

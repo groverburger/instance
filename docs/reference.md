@@ -156,7 +156,7 @@ over HTTP, not opened as files. The GitHub Pages site is built by
 - **IDE**: File > Open uses the browser's file picker, or drop a file. Save downloads
   the `.gm81`. The project is autosaved to IndexedDB and offered again on the next
   visit. `?project=URL` opens a project from the server. Run (F5) plays the game in an
-  overlay. Create Executable isn't available.
+  overlay. Create Executable isn't available; File > Export Web Page is (below).
 - **Player**: `play.html?game=URL` loads a game, or drop a file onto the page. A page
   can also embed a game with `<script id="instance-game" data-src=URL>` or
   `window.INSTANCE_GAME_BASE64`. The game starts after a click, because browsers only
@@ -203,6 +203,18 @@ Roboto.
 
 The older `GM81_*` names (and `GM_PROFILE`) still work as fallbacks.
 
+## Web pages
+
+File > Export Web Page (and `gmk-web GAME OUT.html`) writes a game as one
+self-contained `.html` file (`crates/instance-format/src/web.rs`, template
+`web_page.html`): the web runner's JS glue inline, and the runner's wasm, the `.gm81`
+and, for games with MIDI sounds, a SoundFont, each gzipped and base64-encoded. The page
+runs from `file://` too. The native IDE and `gmk-web` look for the web runner in
+`web/pkg`, `pkg` or `dist/web/pkg` next to the executable or up to three folders above
+it (a checkout's `dist/web/pkg` after `scripts/build-web.sh`), or in
+`$INSTANCE_WEB_RUNNER`. The browser IDE fetches `pkg/` from its own server, and the
+SoundFont named by `config.js`.
+
 ## Executables
 
 Create Executable appends the game to a copy of the runner, followed by a footer
@@ -213,8 +225,9 @@ still run. Executables built by other tools can't be loaded.
 
 Publishing a GitHub release runs `.github/workflows/release.yml`, which attaches:
 
-- `Instance-<tag>-windows-x64.zip`: the IDE, the runner, `gmx2gm81`, `gmk-info`, the
-  32-bit DLL helper and the MIDI SoundFont
+- `Instance-<tag>-windows-x64.zip`: the IDE, the runner, `gmx2gm81`, `gmk-info`,
+  `gmk-web`, the 32-bit DLL helper, the web runner (`web/pkg`, for Export Web Page) and
+  the MIDI SoundFont
 - `Instance-<tag>-macos-arm64.zip` and `-macos-x64.zip`, plus the matching
   `Instance-Runner-…` zips: ad-hoc signed `.app` bundles
 - `Instance-<tag>-web.zip`: the static browser build

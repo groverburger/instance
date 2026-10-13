@@ -37,7 +37,8 @@ reproduces them faithfully, checked with black-box tests.
   surfaces, 3D (`d3d_*`), MIDI and sound effects, joysticks, extension packages and
   DLLs.
 - **Hardware-accelerated** OpenGL rendering, with a software renderer as a fallback.
-- **Create Executable** builds a standalone game.
+- **Create Executable** builds a standalone game, and **Export Web Page** saves it as
+  one `.html` file that plays in any browser.
 - **Multiplayer** (`mplay_*`) over TCP/IP.
 - **Runs in the browser**: the whole IDE and player, compiled to WebAssembly.
 - **Project folders**: a project can be kept as plain text and PNG files, ready for

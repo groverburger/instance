@@ -34,7 +34,7 @@ From left to right:
 |---|---|
 | New, Open, Save | Start a new game, open one, save the current one |
 | Create executable | Build a stand-alone program from the game |
-| Publish | Not available |
+| Export web page | Save the game as one `.html` file that plays in a browser |
 | Run, Run in debug mode | Play the game (F5), or play it with the debugger (F6) |
 | Output log | Show the messages of the last game run |
 | Create sprite … room | Nine buttons that each add a new resource of one kind |

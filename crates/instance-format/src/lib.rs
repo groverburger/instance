@@ -25,6 +25,7 @@ pub mod image;
 mod io;
 pub mod model;
 pub mod text;
+pub mod web;
 
 pub use actionlib::{
     builtin_action, builtin_action_summary, builtin_libraries, read_library, read_library_file,

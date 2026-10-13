@@ -702,6 +702,10 @@ Restore it?"
                     self.create_executable();
                     ui.close();
                 }
+                if ui.button("Export Web Page…").clicked() {
+                    self.export_web_page();
+                    ui.close();
+                }
                 ui.separator();
                 if ui.button("Preferences…").clicked() {
                     self.show_prefs = true;
@@ -1093,6 +1097,83 @@ Restore it?"
         }
     }
 
+    /// File > Export Web Page: the game and the web runner in one self-contained
+    /// `.html` file (instance_format::web).
+    fn export_web_page(&mut self) {
+        if self.project.rooms.iter().flatten().next().is_none() {
+            self.messages.push("A game needs at least one room.".into());
+            return;
+        }
+        self.commit_all_forms();
+        let stem = self
+            .path
+            .as_ref()
+            .and_then(|p| p.file_stem())
+            .map_or_else(|| "game".to_string(), |s| s.to_string_lossy().into_owned());
+        let game = match ops::project_bytes(&self.project) {
+            Ok(b) => b,
+            Err(e) => {
+                self.messages.push(e);
+                return;
+            }
+        };
+        let midi = instance_format::web::uses_midi(&self.project);
+        if !self.project.extension_packages.is_empty() {
+            self.messages
+                .push("Extension packages are not included in web pages.".into());
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            crate::web::export_page(format!("{stem}.html"), stem, game, midi);
+            self.status = "Exporting the web page…".into();
+            return;
+        }
+        #[allow(unreachable_code)]
+        {
+            use instance_format::web;
+            let Some(dir) = web::find_runner(None) else {
+                self.messages.push(
+                    "The web runner (instance_runner.js and instance_runner_bg.wasm) was not \
+                     found in web/pkg next to the IDE. Build it with scripts/build-web.sh \
+                     (or .ps1), or set INSTANCE_WEB_RUNNER to its folder."
+                        .into(),
+                );
+                return;
+            };
+            let runner = match web::WebRunner::read(&dir) {
+                Ok(r) => r,
+                Err(e) => {
+                    self.messages.push(format!("Cannot read the web runner: {e}"));
+                    return;
+                }
+            };
+            let mut soundfont = None;
+            if midi {
+                match web::find_soundfont(Some(&dir)).map(|p| std::fs::read(&p).map_err(|e| format!("{}: {e}", p.display()))) {
+                    Some(Ok(b)) => soundfont = Some(b),
+                    Some(Err(e)) => self.messages.push(format!("Cannot read the SoundFont: {e}")),
+                    None => self.messages.push(
+                        "No SoundFont was found (set INSTANCE_SOUNDFONT to a .sf2 file): \
+                         the game's MIDI music will be silent in the web page."
+                            .into(),
+                    ),
+                }
+            }
+            let Some(out) = dialogs::save_path(
+                &format!("{stem}.html"),
+                self.path.as_ref().and_then(|p| p.parent()),
+                &[("Web page", &["html"])],
+            ) else {
+                return;
+            };
+            let html = web::page(&stem, &runner, &game, soundfont.as_deref());
+            match std::fs::write(&out, html) {
+                Ok(()) => self.status = format!("Exported {}", out.display()),
+                Err(e) => self.messages.push(format!("{}: {e}", out.display())),
+            }
+        }
+    }
+
     /// Placement for Resources > Create: into the selected group of that kind, else end.
     fn placement_for(&self, kind: ResourceKind) -> Placement {
         if let Some(p) = &self.tree.selected {
@@ -1129,12 +1210,16 @@ Restore it?"
             {
                 self.create_executable();
             }
-            tb(
+            if tb(
                 ui,
                 Icon::Publish,
-                "Publish your game (not available)",
-                false,
-            );
+                "Export the game as a web page (one .html file)",
+                true,
+            )
+            .clicked()
+            {
+                self.export_web_page();
+            }
             icons::tool_separator(ui);
             let running = self.runner.is_some();
             if tb(ui, Icon::Run, "Run the game (F5)", !running).clicked() {

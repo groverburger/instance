@@ -32,6 +32,7 @@ IDE: open it with **Help > Contents** or press **F1**.
 - [Extension packages](ide/extensions.md)
 - [Running and debugging games](ide/running-and-debugging.md)
 - [Creating executables](ide/executables.md)
+- [Exporting a web page](ide/web-pages.md)
 - [Project files and project folders](ide/project-files.md)
 - [Instance in the browser](ide/web.md)
 - [Keyboard shortcuts](ide/shortcuts.md)

@@ -51,7 +51,8 @@ Games running in the browser have some limits:
 
 ## Not available in the browser
 
-- **Create Executable**: use the desktop version.
+- **Create Executable**: use the desktop version, or [export a web page](web-pages.md),
+  which works here too.
 - **Installing extension packages**.
 - **Preferences** that refer to programs on disk, such as the runner path, have no
   effect.

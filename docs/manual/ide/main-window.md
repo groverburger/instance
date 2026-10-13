@@ -14,6 +14,7 @@ For a quick introduction, see [A tour of the IDE](../intro/tour.md).
 | Save | Saves the project to its file. A project without a file, or one that was opened from a `.gmk` file, asks for a name first. Shortcut Ctrl+S. |
 | Save As… | Saves the project under a new name. Projects are always saved in the `.gm81` format. |
 | Create Executable… | Builds a stand-alone program from the game. See [Creating executables](executables.md). |
+| Export Web Page… | Saves the game as one `.html` file that plays in a web browser. See [Exporting a web page](web-pages.md). |
 | Preferences… | Opens the preferences (see below). |
 | Exit | Closes Instance. |
 
@@ -107,7 +108,7 @@ name.
 | Group | Buttons |
 |---|---|
 | Project | New, Open, Save |
-| Distribution | Create executable; Publish (not available) |
+| Distribution | Create executable; Export web page |
 | Running | Run, Run in debug mode, Output log |
 | Resources | Create a sprite, sound, background, path, script, font, time line, object or room |
 | Game | Game information, Global game settings, Extension packages |

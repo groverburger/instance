@@ -18,6 +18,8 @@
 <body>
   <canvas id="ide_canvas"></canvas>
   <div id="loading">Loading Instance&hellip;</div>
+  <!-- written by the build script: window.INSTANCE_SOUNDFONT, used when exporting web pages -->
+  <script src="config.js"></script>
   <script src="ide.js"></script>
   <script type="module">
     import init, { start_ide } from "./pkg/instance_ide.js";

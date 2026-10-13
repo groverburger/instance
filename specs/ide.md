@@ -134,7 +134,7 @@ look at the caption to see the mode). Exact format is cosmetic.
 | Save | Save to current path; if none, behaves as Save As. Enabled only when modified. Toolbar button. Creates backups per preferences (section 19). |
 | Save As… | Choose new path, then save. Saves in `.gm81` format. |
 | Create Executable… | See section 20.2. Toolbar button. |
-| Publish your Game | Opened a web upload page. **Out of scope**; omit or stub. |
+| Publish your Game | Opened a web upload page. **Out of scope.** Instance has **Export Web Page…** in its place (section 20.5); the Publish toolbar button runs it. |
 | Import Resources… | Section 21.2. |
 | Export Resources… | Section 21.1. |
 | Advanced Mode | Toggle (check mark). |
@@ -990,6 +990,14 @@ runner (or an in-process debug runner) — to be defined in the runner spec.
 ### 20.4 Error/consistency checks available before running
 Scripts > Check Resource Names, Check All Scripts (section 3.5). Live code checking
 in each code editor (section 11).
+
+### 20.5 Export Web Page (Instance addition)
+File > Export Web Page (also the Publish toolbar button): require ≥1 room; ask for
+an `.html` path (in the browser IDE: download). The page is self-contained: the web
+runner's wasm-bindgen glue inline, and the runner's wasm, the game as `.gm81` and, when
+the game has MIDI sounds, a SoundFont, each gzip-compressed and base64-encoded
+(`instance_format::web`). The game starts on a click (browser audio policy). Extension
+packages are not included. The `gmk-web` tool makes the same page from the command line.
 
 ---------------------------------------------------------------------------------
 
