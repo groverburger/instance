@@ -453,8 +453,9 @@ Sound / UI / files
 
 - D3D-IMPL-1: Culling of 2D-emitted geometry. d3d.md §3.2 says culling applies to
   2D-drawn triangles in 3D mode, but under `d3d_set_projection_ortho` (y down) every
-  sprite/rectangle is clockwise on screen, so a HUD drawn with culling on would vanish.
-  The runner culls only d3d primitives, shapes and models. Needs black-box check.
+  sprite/rectangle is clockwise on screen. Since the front-face rule was corrected to
+  clockwise (D3D-3) such a HUD would survive, but mirrored sprites would not.
+  The runner still culls only d3d primitives, shapes and models. Needs black-box check.
 - D3D-IMPL-2: Equal-depth draw order vs. per-pass projection reset. Pokemon3d.gm81
   (all instances depth 0; the camera object created after most scenery) only looks
   right if the camera's Draw (which calls d3d_set_projection_ext) runs before the
@@ -476,6 +477,9 @@ Resolve by black-box tests with GM 8.1 (screenshots of small test games).
   +x toward -y, like GM's direction). Verify x/y/axis by drawing a marked primitive.
 - D3D-3: Which screen winding is culled by d3d_set_culling(true) under each projection,
   and the winding/normal sign of d3d_draw_wall and d3d_draw_floor (which side is visible).
+  Partly answered (2026-10-13): GM 8.1 keeps triangles that are clockwise on screen
+  (y down); Instance had it backwards and Emberwood's geometry had been built to match.
+  Instance now keeps clockwise faces. Still to confirm per projection and for wall/floor.
 - D3D-4: Do d3d_draw_* shapes with hrepeat/vrepeat > 1 repeat without
   texture_set_repeat(true)? Is non-repeat clamp or "not drawn"?
 - D3D-5: Texture orientation on shape side faces (spec: v=0 at z2) and the exact

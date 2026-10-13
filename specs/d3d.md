@@ -144,9 +144,11 @@ performed (runtime.md §3.4) `[415_00]`.
 ### 3.2 Back-face culling `[415_03]`
 * `d3d_set_culling(cull)`: when true, triangles seen from their back are not drawn.
 * The **front** of a triangle is the side from which its vertices appear in
-  **counter-clockwise** order `[415_03]`. Default: both sides drawn.
+  **clockwise** order on screen (y down). Default: both sides drawn. (An earlier
+  revision of this spec said counter-clockwise; games written against real GM 8.1,
+  such as the gamekit's Emberwood, showed that to be backwards — see D3D-3.)
 * Implementation: compute the signed area of the projected triangle in screen
-  coordinates and drop it when it appears clockwise to the viewer. **UNSPECIFIED**
+  coordinates and drop it when it appears counter-clockwise to the viewer. **UNSPECIFIED**
   whether GM's projections mirror the image (D3D-1/D3D-3); built-in shapes (§4) must
   be generated so that their outward faces are front faces under the same rule
   `[415_04]`.

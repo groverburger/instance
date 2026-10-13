@@ -794,11 +794,11 @@ impl GlBackend {
             }
             match st.cull {
                 Cull::None => gl.disable(glow::CULL_FACE),
-                Cull::KeepCcw => {
+                Cull::KeepCw => {
                     // pixel space has y down and maps to NDC without a flip, so a
-                    // counter-clockwise-on-screen triangle is clockwise in NDC
+                    // clockwise-on-screen triangle is counter-clockwise in NDC
                     gl.enable(glow::CULL_FACE);
-                    gl.front_face(glow::CW);
+                    gl.front_face(glow::CCW);
                     gl.cull_face(glow::BACK);
                 }
             }

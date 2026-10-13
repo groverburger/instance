@@ -211,7 +211,7 @@ fn tri_3d(target: &mut Canvas, depth: &mut [f32], st: &RState, tex: Option<&Text
         return;
     }
     // y is down: a positive area is clockwise on screen
-    if st.cull == Cull::KeepCcw && area > 0.0 {
+    if st.cull == Cull::KeepCw && area < 0.0 {
         return;
     }
     if area < 0.0 {

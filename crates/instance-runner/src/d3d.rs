@@ -419,9 +419,9 @@ impl D3d {
         if self.on {
             st.depth_test = self.hidden && !self.no_depth;
             st.depth_write = self.hidden && self.zwrite && !self.no_depth;
-            // 2D-emitted geometry is never culled (deviation from d3d.md §3.2:
-            // under the 2D-oriented ortho projection every sprite/rectangle is
-            // clockwise and HUD overlays would vanish); see `cull_state`.
+            // 2D-emitted geometry is never culled (deviation from d3d.md §3.2,
+            // D3D-IMPL-1: a sprite or rectangle mirrored by a negative scale or
+            // a y-up projection would vanish); see `cull_state`.
             if let Some(row) = fog_row {
                 let c = rgba(self.fog_col, 1.0);
                 st.fog = Some([c[0], c[1], c[2]]);
@@ -437,7 +437,7 @@ impl D3d {
     /// Culling for 3D primitives, shapes and models.
     pub fn cull_state(&self) -> Cull {
         if self.on && self.culling {
-            Cull::KeepCcw
+            Cull::KeepCw
         } else {
             Cull::None
         }
@@ -577,11 +577,11 @@ pub fn emit(be: &mut dyn Backend, st: &RState, tex: Option<&Tex>, kind: i32, v: 
 }
 
 /// A triangle of a shape whose front faces direction `n` (§3.2: front faces
-/// appear counter-clockwise; in the left-handed view space that means the
-/// geometric normal (b−a)×(c−a) points away from the viewer).
+/// appear clockwise; in the left-handed view space that means the geometric
+/// normal (b−a)×(c−a) points toward the viewer).
 fn tri(out: &mut Vec<MV>, a: MV, b: MV, c: MV, front: [f64; 3]) {
     let g = cross(sub(b.p, a.p), sub(c.p, a.p));
-    if dot(g, front) > 0.0 {
+    if dot(g, front) < 0.0 {
         out.extend([a, c, b]);
     } else {
         out.extend([a, b, c]);
@@ -778,8 +778,8 @@ mod tests {
         assert_eq!(t.len(), 36);
         for tr in t.chunks(3) {
             let g = cross(sub(tr[1].p, tr[0].p), sub(tr[2].p, tr[0].p));
-            // geometric normal points inward (front = counter-clockwise from outside)
-            assert!(dot(g, tr[0].n) < 0.0);
+            // geometric normal points outward (front = clockwise from outside)
+            assert!(dot(g, tr[0].n) > 0.0);
         }
     }
 

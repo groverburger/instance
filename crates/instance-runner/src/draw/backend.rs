@@ -92,9 +92,9 @@ pub enum Prim {
 pub enum Cull {
     #[default]
     None,
-    /// Draw only triangles that appear counter-clockwise on screen (the
-    /// front faces of specs/d3d.md §3.2); clockwise ones are culled.
-    KeepCcw,
+    /// Draw only triangles that appear clockwise on screen (the front faces
+    /// of specs/d3d.md §3.2); counter-clockwise ones are culled.
+    KeepCw,
 }
 
 /// Fixed-function state of one draw.
