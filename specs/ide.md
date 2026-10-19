@@ -133,6 +133,7 @@ look at the caption to see the mode). Exact format is cosmetic.
 | Recent Files ▸ | Up to 8 recently opened projects (if the preference is on). |
 | Save | Save to current path; if none, behaves as Save As. Enabled only when modified. Toolbar button. Creates backups per preferences (section 19). |
 | Save As… | Choose new path, then save. Saves in `.gm81` format. |
+| Open Folder… / Save As Folder… | **Instance addition** (not in browser builds): open a project folder (`docs/project-folder.md`; must contain `project.toml`), or save the project as one. Save As Folder writes into the chosen folder when it is empty or already a project folder, else into a new subfolder named after the project. Save on a project opened from a folder writes back into it, keeping the folder's recorded `format_version` and any files outside the resource directories. Dropping a project folder on the main window opens it. |
 | Create Executable… | See section 20.2. Toolbar button. |
 | Publish your Game | Opened a web upload page. **Out of scope.** Instance has **Export Web Page…** in its place (section 20.5); the Publish toolbar button runs it. |
 | Import Resources… | Section 21.2. |

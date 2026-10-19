@@ -11,7 +11,7 @@ you've copied the whole game.
 |---|---|---|
 | `.gm81` | Yes | Yes. This is the format Instance saves in. |
 | `.gmk` | Yes | No. Saving a project opened from a `.gmk` file asks for a new `.gm81` name, and the original file is left untouched. |
-| project folder | Yes, from the command line | Yes, back into the same folder |
+| project folder | Yes: **File > Open Folder…** | Yes: back into the same folder, or **File > Save As Folder…** |
 
 Instance opens `.gmk` and `.gm81` projects made with older 2D game tools of the same
 family, and keeps every part of them, including data it doesn't edit, when it saves
@@ -45,12 +45,25 @@ Converting between a project file and a folder loses nothing, in either directio
 
 ### Working with folders
 
-The IDE opens a folder when you give it on the command line, and then saves back into
-the same folder:
+Open a project folder with **File > Open Folder…**, by dropping the folder onto the
+main window, or by giving it on the command line:
 
 ```sh
 instance-ide mygame/
 ```
+
+**File > Save** then writes back into the same folder. Only the files that belong to
+the project are rewritten: other files in the folder, such as a `.git` folder or your
+own notes and source art, are left alone.
+
+To turn the project you have open into a folder, use **File > Save As Folder…** and
+pick an empty folder (you can make a new one in the dialog). If you pick a folder that
+already holds other files, Instance makes a new folder named after the project inside
+it. From then on, Save writes to the folder. **File > Save As…** goes the other way and
+saves a `.gm81` file again.
+
+Project folders aren't available in the [browser version](web.md), which has no access
+to folders on your computer.
 
 The runner can also play a folder directly:
 
@@ -58,7 +71,7 @@ The runner can also play a folder directly:
 instance-runner mygame/
 ```
 
-To convert, use the command-line tools:
+To convert without the IDE, use the command-line tools:
 
 ```sh
 gmk-unpack mygame.gm81 mygame/     # project file to folder

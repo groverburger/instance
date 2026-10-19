@@ -60,6 +60,40 @@ fn open_save_is_lossless() {
     }
 }
 
+/// Project folders: saving into one keeps the format it records and the files the
+/// IDE doesn't own, and loads back equal; Save As Folder never writes into an
+/// unrelated non-empty folder.
+#[test]
+fn project_folder_save_and_target() {
+    let mut p = ops::new_project();
+    ops::create_resource(&mut p, ResourceKind::Script, &ops::Placement::End);
+    ops::create_resource(&mut p, ResourceKind::Room, &ops::Placement::End);
+    let dir = tmp("folder_project");
+    let _ = std::fs::remove_dir_all(&dir);
+    instance_format::folder::write_folder_versioned(&p, &dir, FormatVersion::V800).unwrap();
+    std::fs::write(dir.join("notes.txt"), "mine").unwrap();
+    assert!(ops::is_project_folder(&dir));
+    let q = ops::load_project(&dir).unwrap();
+    ops::save_project(&q, &dir).unwrap();
+    let (r, version) = instance_format::folder::read_project_any_versioned(&dir).unwrap();
+    assert!(r == q, "project changed by saving into its folder");
+    assert_eq!(version, FormatVersion::V800, "the recorded format was changed");
+    assert_eq!(std::fs::read_to_string(dir.join("notes.txt")).unwrap(), "mine");
+
+    // a project folder or an empty folder is used as is; anything else gets a subfolder
+    assert_eq!(ops::folder_save_target(&dir, "game").unwrap(), dir);
+    let empty = tmp("folder_empty");
+    std::fs::create_dir_all(&empty).unwrap();
+    assert_eq!(ops::folder_save_target(&empty, "game").unwrap(), empty);
+    let busy = tmp("folder_busy");
+    std::fs::create_dir_all(&busy).unwrap();
+    std::fs::write(busy.join("other.txt"), "x").unwrap();
+    assert_eq!(ops::folder_save_target(&busy, "game").unwrap(), busy.join("game"));
+    std::fs::create_dir_all(busy.join("game")).unwrap();
+    std::fs::write(busy.join("game").join("other.txt"), "x").unwrap();
+    assert!(ops::folder_save_target(&busy, "game").is_err());
+}
+
 /// Opening every form on a sample and pressing OK without edits changes nothing.
 #[test]
 fn forms_open_clean() {

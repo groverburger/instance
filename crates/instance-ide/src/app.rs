@@ -272,14 +272,21 @@ Restore it?"
         dialogs::request_open(open_key(), dialogs::PROJECTS, false);
     }
 
+    /// The project's name: its file name without extension, or its folder's name.
+    fn project_stem(&self) -> String {
+        let name = self.path.as_ref().and_then(|p| {
+            if p.is_dir() {
+                p.file_name()
+            } else {
+                p.file_stem()
+            }
+        });
+        name.map_or_else(|| "game".to_string(), |s| s.to_string_lossy().into_owned())
+    }
+
     /// File name to save the project as (`<stem>.gm81`).
     fn save_name(&self) -> String {
-        let stem = self
-            .path
-            .as_ref()
-            .and_then(|p| p.file_stem())
-            .map_or_else(|| "game".to_string(), |s| s.to_string_lossy().into_owned());
-        format!("{stem}.gm81")
+        format!("{}.gm81", self.project_stem())
     }
 
     /// Web: Save / Save As download the .gm81.
@@ -307,9 +314,11 @@ Restore it?"
             return self.save_download();
         }
         let path = match (&self.path, save_as) {
+            // a .gm81 file, or the project folder it was opened from
             (Some(p), false)
-                if p.extension()
-                    .is_some_and(|e| e.eq_ignore_ascii_case("gm81")) =>
+                if p.is_dir()
+                    || p.extension()
+                        .is_some_and(|e| e.eq_ignore_ascii_case("gm81")) =>
             {
                 p.clone()
             }
@@ -326,6 +335,50 @@ Restore it?"
                 }
             }
         };
+        self.save_to(path)
+    }
+
+    /// File > Save As Folder: writes the project as a project folder
+    /// (docs/project-folder.md); later saves go to that folder.
+    fn save_as_folder(&mut self) -> bool {
+        let start = self.path.as_ref().and_then(|p| p.parent());
+        let Some(chosen) = dialogs::pick_folder("Save as a project folder", start) else {
+            return false;
+        };
+        let target = match ops::folder_save_target(&chosen, &self.project_stem()) {
+            Ok(t) => t,
+            Err(e) => {
+                self.messages.push(format!("Cannot save: {e}"));
+                return false;
+            }
+        };
+        if let Err(e) = std::fs::create_dir_all(&target) {
+            self.messages
+                .push(format!("Cannot save: {}: {e}", target.display()));
+            return false;
+        }
+        self.save_to(target)
+    }
+
+    /// File > Open Folder: opens a project folder.
+    fn open_folder_dialog(&mut self) {
+        let start = self.path.as_ref().and_then(|p| p.parent());
+        let Some(dir) = dialogs::pick_folder("Open a project folder", start) else {
+            return;
+        };
+        if ops::is_project_folder(&dir) {
+            self.request(Pending::Open(Some(dir)));
+        } else {
+            self.messages.push(format!(
+                "{} is not a project folder (it has no project.toml).",
+                dir.display()
+            ));
+        }
+    }
+
+    /// Saves to `path` (a `.gm81` file or a project folder) and makes it the
+    /// project's path. Returns true on success.
+    fn save_to(&mut self, path: PathBuf) -> bool {
         match ops::save_project(&self.project, &path) {
             Ok(()) => {
                 self.modified = false;
@@ -677,6 +730,10 @@ Restore it?"
                     self.request(Pending::Open(None));
                     ui.close();
                 }
+                if dialogs::HAS_FILESYSTEM && ui.button("Open Folder…").clicked() {
+                    self.open_folder_dialog();
+                    ui.close();
+                }
                 if dialogs::HAS_FILESYSTEM {
                     ui.menu_button("Recent Files", |ui| {
                         if self.prefs.recent_files.is_empty() {
@@ -696,6 +753,10 @@ Restore it?"
                 }
                 if ui.button("Save As…").clicked() {
                     self.save(true);
+                    ui.close();
+                }
+                if dialogs::HAS_FILESYSTEM && ui.button("Save As Folder…").clicked() {
+                    self.save_as_folder();
                     ui.close();
                 }
                 if ui.button("Create Executable…").clicked() {
@@ -1068,11 +1129,7 @@ Restore it?"
             return;
         };
         self.commit_all_forms();
-        let stem = self
-            .path
-            .as_ref()
-            .and_then(|p| p.file_stem())
-            .map_or_else(|| "game".to_string(), |s| s.to_string_lossy().into_owned());
+        let stem = self.project_stem();
         let name = if cfg!(windows) {
             format!("{stem}.exe")
         } else {
@@ -1105,11 +1162,7 @@ Restore it?"
             return;
         }
         self.commit_all_forms();
-        let stem = self
-            .path
-            .as_ref()
-            .and_then(|p| p.file_stem())
-            .map_or_else(|| "game".to_string(), |s| s.to_string_lossy().into_owned());
+        let stem = self.project_stem();
         let game = match ops::project_bytes(&self.project) {
             Ok(b) => b,
             Err(e) => {
@@ -1666,6 +1719,17 @@ Restore it?"
     /// A dropped file: projects open, images become sprites. `bytes` are given
     /// when there is no file system (web).
     pub(crate) fn handle_dropped(&mut self, p: PathBuf, bytes: Option<Vec<u8>>) {
+        if bytes.is_none() && p.is_dir() {
+            if ops::is_project_folder(&p) {
+                self.request(Pending::Open(Some(p)));
+            } else {
+                self.messages.push(format!(
+                    "{} is not a project folder (it has no project.toml).",
+                    p.display()
+                ));
+            }
+            return;
+        }
         {
             let ext = p
                 .extension()

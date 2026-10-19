@@ -4,7 +4,7 @@
 //! Everything here is pure data manipulation on [`instance_format::Project`] so it can be
 //! unit-tested without a window.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use instance_format::{FormatVersion, NodeStatus, Project, ResourceKind, TreeNode};
 
@@ -560,15 +560,59 @@ pub fn project_bytes(p: &Project) -> Result<Vec<u8>, String> {
 }
 
 /// Save a project as `.gm81`, writing to a temporary file first. A project opened
-/// from a project folder is saved back into that folder.
+/// from a project folder is saved back into that folder, keeping the format version
+/// the folder records (`gmk-pack` packs to it by default).
 pub fn save_project(p: &Project, path: &Path) -> Result<(), String> {
     if path.is_dir() {
-        return instance_format::write_folder(p, path).map_err(|e| format!("{}: {e}", path.display()));
+        let version = folder_format_version(path);
+        return instance_format::folder::write_folder_versioned(p, path, version)
+            .map_err(|e| format!("{}: {e}", path.display()));
     }
     let bytes = project_bytes(p)?;
     let tmp = path.with_extension("gm81~");
     std::fs::write(&tmp, &bytes).map_err(|e| format!("{}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// Whether `dir` is a project folder (has a `project.toml`).
+pub fn is_project_folder(dir: &Path) -> bool {
+    dir.join("project.toml").is_file()
+}
+
+/// The `format_version` a project folder records (8.1 when absent or unreadable).
+fn folder_format_version(dir: &Path) -> FormatVersion {
+    let text = std::fs::read_to_string(dir.join("project.toml")).unwrap_or_default();
+    let recorded = text.lines().find_map(|l| {
+        let (k, v) = l.split_once('=')?;
+        (k.trim() == "format_version").then(|| v.trim().to_string())
+    });
+    if recorded.as_deref() == Some("800") {
+        FormatVersion::V800
+    } else {
+        FormatVersion::V810
+    }
+}
+
+/// Where File > Save As Folder writes when the user picks `chosen`: the folder
+/// itself when it is empty or already a project folder, else a new subfolder named
+/// `name` inside it (so picking e.g. "Documents" never mixes the project's files
+/// into an unrelated folder).
+pub fn folder_save_target(chosen: &Path, name: &str) -> Result<PathBuf, String> {
+    let usable = |d: &Path| {
+        is_project_folder(d)
+            || std::fs::read_dir(d).map_or(!d.exists(), |mut it| it.next().is_none())
+    };
+    if usable(chosen) {
+        return Ok(chosen.to_path_buf());
+    }
+    let sub = chosen.join(name);
+    if usable(&sub) {
+        return Ok(sub);
+    }
+    Err(format!(
+        "{} is not empty and is not a project folder; choose an empty folder.",
+        sub.display()
+    ))
 }
 
 /// A new empty project as created by File > New.

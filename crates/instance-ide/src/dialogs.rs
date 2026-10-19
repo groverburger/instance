@@ -109,6 +109,11 @@ pub fn pick_path() -> Option<PathBuf> {
     imp::pick_path()
 }
 
+/// Asks for a folder, starting in `dir` (native only; `None` on the web).
+pub fn pick_folder(title: &str, dir: Option<&Path>) -> Option<PathBuf> {
+    imp::pick_folder(title, dir)
+}
+
 /// Asks for a path to save to (native only; `None` on the web, where callers
 /// use [`save_bytes`] instead).
 pub fn save_path(default_name: &str, dir: Option<&Path>, filters: Filters) -> Option<PathBuf> {
@@ -183,6 +188,14 @@ mod imp {
     pub fn pick_path() -> Option<PathBuf> {
         rfd::FileDialog::new().pick_file()
     }
+
+    pub fn pick_folder(title: &str, dir: Option<&Path>) -> Option<PathBuf> {
+        let mut d = rfd::FileDialog::new().set_title(title);
+        if let Some(dir) = dir {
+            d = d.set_directory(dir);
+        }
+        d.pick_folder()
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -245,6 +258,10 @@ mod imp {
     }
 
     pub fn pick_path() -> Option<PathBuf> {
+        None
+    }
+
+    pub fn pick_folder(_: &str, _: Option<&Path>) -> Option<PathBuf> {
         None
     }
 

@@ -10,9 +10,11 @@ For a quick introduction, see [A tour of the IDE](../intro/tour.md).
 |---|---|
 | New | Closes the current project and starts an empty one. Shortcut Ctrl+N. |
 | Open… | Opens a `.gm81` or `.gmk` project file. Shortcut Ctrl+O. |
+| Open Folder… | Opens a [project folder](project-files.md#project-folders). |
 | Recent Files | Lists the last eight projects you opened or saved. |
 | Save | Saves the project to its file. A project without a file, or one that was opened from a `.gmk` file, asks for a name first. Shortcut Ctrl+S. |
-| Save As… | Saves the project under a new name. Projects are always saved in the `.gm81` format. |
+| Save As… | Saves the project under a new name, as a `.gm81` file. |
+| Save As Folder… | Saves the project as a [project folder](project-files.md#project-folders); later saves go to that folder. |
 | Create Executable… | Builds a stand-alone program from the game. See [Creating executables](executables.md). |
 | Export Web Page… | Saves the game as one `.html` file that plays in a web browser. See [Exporting a web page](web-pages.md). |
 | Preferences… | Opens the preferences (see below). |
