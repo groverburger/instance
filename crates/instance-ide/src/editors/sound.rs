@@ -16,6 +16,13 @@ impl SoundEditor {
     }
 }
 
+impl Drop for SoundEditor {
+    /// Closing the form stops its preview.
+    fn drop(&mut self) {
+        crate::sound_preview::stop(self.idx);
+    }
+}
+
 /// Load a sound file into `s` (MIDI defaults to background music, spec §8).
 #[allow(dead_code)]
 pub fn load_sound_file(s: &mut Sound, path: &std::path::Path) -> Result<(), String> {
@@ -58,6 +65,7 @@ impl Editor for SoundEditor {
         match crate::dialogs::take_opened(load_key) {
             Some(Ok(files)) => {
                 if let Some(f) = files.into_iter().next() {
+                    crate::sound_preview::stop(self.idx);
                     set_sound_data(s, std::path::Path::new(&f.name), f.bytes);
                 }
             }
@@ -66,6 +74,20 @@ impl Editor for SoundEditor {
         }
         name_field(ui, &mut s.name);
         ui.horizontal(|ui| {
+            use instance_ui::icons::Glyph;
+            let playing = crate::sound_preview::is_playing(self.idx);
+            let has_data = s.data.as_ref().is_some_and(|d| !d.is_empty());
+            if crate::icons::glyph_button(ui, Glyph::Play, "Play the sound", has_data).clicked() {
+                crate::sound_preview::play(self.idx, s);
+            }
+            if crate::icons::glyph_button(ui, Glyph::Stop, "Stop the sound", playing).clicked() {
+                crate::sound_preview::stop(self.idx);
+            }
+            if playing {
+                // keep checking, so the buttons update when the sound ends
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+            }
+            ui.add_space(6.0);
             if ui.button("Load Sound…").clicked() {
                 crate::dialogs::request_open(
                     load_key,

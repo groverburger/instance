@@ -1070,6 +1070,17 @@ fn screenshot_dialogs() {
         .unwrap()
         .save(out.join("window_code.png"))
         .unwrap();
+    h.state_mut().test_close_forms();
+    let mut p = ops::new_project();
+    ops::create_resource(&mut p, ResourceKind::Sound, &ops::Placement::End);
+    h.state_mut().test_set_project(p);
+    h.run_steps(2);
+    h.state_mut().open_form(ResKey::Res(ResourceKind::Sound, 0));
+    h.run_steps(4);
+    h.render()
+        .unwrap()
+        .save(out.join("form_sound.png"))
+        .unwrap();
 }
 
 /// Renders the IDE with the project in `$INSTANCE_README_PROJECT` (its room named

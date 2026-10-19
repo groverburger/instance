@@ -9,6 +9,7 @@ A **sound** resource holds one sound effect or piece of music. Create one with
 | Field | What it does |
 |---|---|
 | Name | The name you use in actions and code. |
+| Play, Stop | Play the sound, or stop it (see [Listening to a sound](#listening-to-a-sound)). |
 | Load Sound… | Loads a sound file into the resource. |
 | Save Sound… | Saves the stored sound data back to a file. |
 | File | The name, type and size of the loaded file. |
@@ -20,6 +21,19 @@ A **sound** resource holds one sound effect or piece of music. Create one with
 | OK, Cancel | Apply or discard your changes and close the form. |
 
 The sound file is stored inside the project, so you don't need to ship it separately.
+
+A new sound starts at full volume, with Preload on.
+
+## Listening to a sound
+
+Press the green **Play** button to hear the sound, and the red **Stop** button to stop
+it. The sound plays the way the game would play it: with the kind, effects, volume and
+pan currently set in the form, even before you press OK, so you can try settings out.
+MIDI music plays through the same synthesiser as in the game.
+
+One sound plays at a time: playing another sound stops the previous one, and closing
+the form stops its sound. In the [browser version](web.md) the SoundFont for MIDI music
+is downloaded the first time you play a MIDI sound, so it may take a moment to start.
 
 ## Supported files
 

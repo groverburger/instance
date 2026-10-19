@@ -125,6 +125,51 @@ pub fn startup(ctx: &eframe::egui::Context) {
     });
 }
 
+thread_local! {
+    /// The SoundFont for MIDI previews: 0 not requested, 1 loading, 2 done (or failed).
+    static SOUNDFONT: RefCell<u8> = const { RefCell::new(0) };
+}
+
+/// Whether the SoundFont for MIDI previews has been loaded (or could not be).
+pub fn soundfont_ready() -> bool {
+    SOUNDFONT.with(|s| *s.borrow() == 2)
+}
+
+/// Starts loading the SoundFont named by `config.js` for MIDI previews (once).
+pub fn load_soundfont() {
+    let requested = SOUNDFONT.with(|s| {
+        let mut s = s.borrow_mut();
+        let was = *s;
+        *s = was.max(1);
+        was
+    });
+    if requested > 0 {
+        return;
+    }
+    let ctx = crate::dialogs::context();
+    wasm_bindgen_futures::spawn_local(async move {
+        let url = web_sys::window()
+            .and_then(|w| js_sys::Reflect::get(&w, &"INSTANCE_SOUNDFONT".into()).ok())
+            .and_then(|v| v.as_string());
+        match url {
+            Some(u) => match wasm_bindgen_futures::JsFuture::from(js::fetch_bytes(&u)).await {
+                Ok(b) => instance_audio::set_soundfont_bytes(bytes_of(&b)),
+                Err(e) => push(Incoming::Error(format!(
+                    "Cannot load the SoundFont {u}: {}; MIDI sounds are silent",
+                    e.as_string().unwrap_or_else(|| format!("{e:?}"))
+                ))),
+            },
+            None => push(Incoming::Error(
+                "No SoundFont is set up for this site; MIDI sounds are silent.".into(),
+            )),
+        }
+        SOUNDFONT.with(|s| *s.borrow_mut() = 2);
+        if let Some(c) = ctx {
+            c.request_repaint();
+        }
+    });
+}
+
 /// File > Export Web Page in the browser: fetches the web runner served beside the
 /// IDE (and the SoundFont of `config.js` when the game plays MIDI), builds the page
 /// and offers it as a download named `name`.

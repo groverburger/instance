@@ -19,6 +19,7 @@ mod output_log;
 mod project_ops;
 mod rtf;
 mod run;
+mod sound_preview;
 mod theme;
 mod tree;
 #[cfg(target_arch = "wasm32")]

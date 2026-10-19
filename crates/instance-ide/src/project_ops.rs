@@ -155,7 +155,6 @@ macro_rules! impl_named {
 }
 impl_named!(
     instance_format::Sprite,
-    instance_format::Sound,
     instance_format::Background,
     instance_format::Path,
     instance_format::Script,
@@ -164,6 +163,27 @@ impl_named!(
     instance_format::Object,
     instance_format::Room
 );
+
+/// A new sound plays at full volume and is preloaded (specs/ide.md §8).
+impl Named for instance_format::Sound {
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, n: String) {
+        self.name = n;
+    }
+    fn set_last_changed(&mut self, t: f64) {
+        self.last_changed = t;
+    }
+    fn new_named(n: String) -> Self {
+        Self {
+            name: n,
+            volume: 1.0,
+            preload: true,
+            ..Default::default()
+        }
+    }
+}
 
 /// Number of slots of a list kind.
 pub fn slot_count(p: &Project, kind: ResourceKind) -> usize {

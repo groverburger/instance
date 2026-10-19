@@ -404,7 +404,7 @@ Menus:
 |---|---|
 | Name | `name` |
 | Load Sound | `data`, `file_name`, `extension` (wave `.wav`, MIDI `.mid`, `.mp3`, others for multimedia player) |
-| Play / Stop buttons | preview only |
+| Play / Stop buttons | preview only. Instance plays the preview with the game's sound engine (`instance-audio`) using the form's current kind, effects, volume and pan; one preview at a time; closing the form stops it. A new sound has volume 1 and preload on. |
 | Save Sound | write `data` back to a file |
 | Filename label | original file name (read-only) |
 | Kind: Normal sound / Background music / 3D sound / Use multimedia player | `kind` (0..3) |
