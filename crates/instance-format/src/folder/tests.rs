@@ -561,6 +561,52 @@ fn output_is_deterministic_and_prunes_stale_files() {
 }
 
 #[test]
+fn resources_missing_from_the_tree_are_found() {
+    let mut p = Project::default();
+    p.objects.push(Some(Object {
+        name: "obj_a".into(),
+        ..Object::default()
+    }));
+    p.rooms.push(Some(Room {
+        name: "rm_a".into(),
+        ..Room::default()
+    }));
+    p.room_order = vec![0];
+    p.resource_tree[7]
+        .children
+        .push(TreeNode::leaf(ResourceKind::Object, 0, "obj_a"));
+    p.resource_tree[8]
+        .children
+        .push(TreeNode::leaf(ResourceKind::Room, 0, "rm_a"));
+    assert!(p.missing_from_tree().is_empty());
+    let dir = scratch("tree-missing");
+    write_folder(&p, &dir).unwrap();
+    // The room keeps its `index` but its line is removed from the tree: it is still in
+    // the game, and missing from the tree (gmk-pack refuses this).
+    let tree = std::fs::read_to_string(dir.join("resource_tree.txt")).unwrap();
+    assert!(tree.contains("  rm_a\n"), "{tree}");
+    std::fs::write(dir.join("resource_tree.txt"), tree.replace("  rm_a\n", "")).unwrap();
+    let q = read_folder(&dir).unwrap();
+    assert_eq!(q.rooms[0].as_ref().unwrap().name, "rm_a");
+    assert_eq!(
+        q.missing_from_tree(),
+        vec![(ResourceKind::Room, 0, "rm_a".to_string())]
+    );
+    // A resource without `index` gets a leaf of its own.
+    std::fs::create_dir_all(dir.join("objects/obj_new")).unwrap();
+    std::fs::write(dir.join("objects/obj_new/step.gml"), "x += 1;\n").unwrap();
+    let q = read_folder(&dir).unwrap();
+    assert_eq!(q.missing_from_tree().len(), 1);
+    // A leaf of another kind does not count.
+    let mut q = q;
+    q.resource_tree[8]
+        .children
+        .push(TreeNode::leaf(ResourceKind::Object, 0, "rm_a"));
+    assert_eq!(q.missing_from_tree().len(), 1);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn hand_edits() {
     let mut p = Project::default();
     p.sprites.push(Some(Sprite {

@@ -1084,4 +1084,53 @@ impl Project {
             ("rooms", slot_count(&self.rooms)),
         ]
     }
+
+    /// Names of the slots of the resource list of `kind` (`None` for deleted slots), or
+    /// `None` when `kind` has no resource list (game information, settings, ...).
+    pub fn slot_names(&self, kind: ResourceKind) -> Option<Vec<Option<&str>>> {
+        use ResourceKind as K;
+        fn names<T>(v: &[Option<T>], name: impl Fn(&T) -> &str) -> Vec<Option<&str>> {
+            v.iter().map(|x| x.as_ref().map(&name)).collect()
+        }
+        Some(match kind {
+            K::Sprite => names(&self.sprites, |x| &x.name),
+            K::Sound => names(&self.sounds, |x| &x.name),
+            K::Background => names(&self.backgrounds, |x| &x.name),
+            K::Path => names(&self.paths, |x| &x.name),
+            K::Script => names(&self.scripts, |x| &x.name),
+            K::Font => names(&self.fonts, |x| &x.name),
+            K::Timeline => names(&self.timelines, |x| &x.name),
+            K::Object => names(&self.objects, |x| &x.name),
+            K::Room => names(&self.rooms, |x| &x.name),
+            _ => return None,
+        })
+    }
+
+    /// Resources that have no leaf under their kind's root in the resource tree, as
+    /// (kind, slot, name). The IDE shows only what is in the tree, so these would be in
+    /// the game but invisible in the IDE.
+    pub fn missing_from_tree(&self) -> Vec<(ResourceKind, i32, String)> {
+        let mut out = Vec::new();
+        for root in TreeNode::standard_roots() {
+            let Some(names) = self.slot_names(root.kind) else {
+                continue;
+            };
+            let mut listed = vec![false; names.len()];
+            for r in self.resource_tree.iter().filter(|r| r.kind == root.kind) {
+                r.walk(&mut |n, _| {
+                    if n.status == NodeStatus::Leaf && n.kind == root.kind {
+                        if let Some(l) = listed.get_mut(n.index as usize) {
+                            *l = true;
+                        }
+                    }
+                });
+            }
+            for (i, name) in names.iter().enumerate() {
+                if let (Some(name), false) = (name, listed[i]) {
+                    out.push((root.kind, i as i32, name.to_string()));
+                }
+            }
+        }
+        out
+    }
 }

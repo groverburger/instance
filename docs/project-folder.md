@@ -206,6 +206,11 @@ comments.
   optional — missing keys take the IDE's defaults, and a resource without `index`
   gets the next free slot. The same holds for `.toml` files of the other kinds: keys
   that are left out take default values.
+* **The resource tree:** a resource without `index` gets a leaf in the tree
+  automatically; one with an `index` must be listed in `resource_tree.txt` (its name,
+  indented under its root or a group). The IDE shows only what the tree lists, so
+  `gmk-pack` refuses a folder with an unlisted resource and names each one
+  (`--allow-unlisted` packs it anyway).
 * **Delete a resource:** delete its files; its slot becomes a deleted slot. Remove its
   line from `resource_tree.txt` as well.
 * **Rename:** change `name` in the metadata and every reference to the old name
