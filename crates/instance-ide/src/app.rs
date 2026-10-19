@@ -713,6 +713,14 @@ Restore it?"
     }
 
     #[cfg(test)]
+    pub(crate) fn test_form_keys(&self, key: ResKey) -> bool {
+        self.forms
+            .iter()
+            .find(|f| f.editor.key() == key)
+            .is_some_and(|f| f.editor.form_keys())
+    }
+
+    #[cfg(test)]
     pub(crate) fn test_close_forms(&mut self) {
         self.forms.clear();
     }

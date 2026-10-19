@@ -55,6 +55,14 @@ arguments.
 The same editor is used everywhere you write code: scripts, the **Execute Code**
 action, room creation code, instance creation code and trigger conditions.
 
+The **Execute Code** action and the room and instance creation code open in a
+**code window** of their own. Drag its title bar to move it, drag an edge or corner to
+resize it, or click the box in its title bar to fill the work area. It remembers its
+place and size for the next time. While it is open, the object, time line or room form
+it belongs to waits (it is greyed out); press **OK** to apply the code or **Cancel** to
+discard it. The rest of the IDE stays usable, so you can look at other resources
+while you write.
+
 - **Colour coding** shows keywords, comments, strings, numbers, built-in functions,
   built-in variables, constants, your resource names and your scripts in different
   colours. Turn it on or off with **Use color coding** in

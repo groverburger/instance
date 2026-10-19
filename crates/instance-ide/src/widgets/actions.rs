@@ -7,7 +7,7 @@ use instance_format::{
     ActionDef, Project, ResourceKind, APPLIES_TO_OTHER, APPLIES_TO_SELF,
 };
 
-use super::code_editor::{code_editor, CodeEditorState};
+use super::code_editor::{code_window, CodeEditorState};
 use super::{color_box, none_label, resource_picker};
 use crate::editors::Cx;
 use crate::project_ops::res_name;
@@ -922,10 +922,53 @@ fn drag_ghost(ctx: &egui::Context) {
     crate::icons::actions::paint_action(&p, r, l.library_id, d.action_id, d.kind, d.is_question);
 }
 
-/// Show the argument dialog if open. Returns true when an action was changed.
+/// The "Applies to" row of an action's dialog (Self / Other / an object).
+fn applies_to_row(ui: &mut Ui, a: &mut Action, project: &instance_format::Project) {
+    if a.has_applies_to {
+        ui.horizontal(|ui| {
+            ui.label("Applies to:");
+            let mut mode = match a.applies_to {
+                APPLIES_TO_SELF => 0,
+                APPLIES_TO_OTHER => 1,
+                _ => 2,
+            };
+            let old = mode;
+            ui.radio_value(&mut mode, 0, "Self");
+            ui.radio_value(&mut mode, 1, "Other");
+            ui.radio_value(&mut mode, 2, "Object");
+            if mode != old {
+                a.applies_to = match mode {
+                    0 => APPLIES_TO_SELF,
+                    1 => APPLIES_TO_OTHER,
+                    _ => tree_first_object(project).unwrap_or(0),
+                };
+            }
+            if mode == 2 {
+                let mut v = a.applies_to;
+                if resource_picker(
+                    ui,
+                    "applies_obj",
+                    project,
+                    ResourceKind::Object,
+                    &mut v,
+                    "<no object>",
+                    -1,
+                ) && v >= 0
+                {
+                    a.applies_to = v;
+                }
+            }
+        });
+    }
+}
+
+/// Show the argument dialog if open (code actions get a code window, see
+/// [`code_window`]; `owner` is the layer of the form). Returns true when an action
+/// was changed.
 pub fn arg_dialog(
     ctx: &egui::Context,
     id: egui::Id,
+    owner: egui::LayerId,
     actions: &mut Vec<Action>,
     st: &mut ActionEditState,
     cx: &mut Cx,
@@ -936,66 +979,29 @@ pub fn arg_dialog(
     let mut result: Option<bool> = None;
     let def = def_of(&dlg.work);
     let title = def.map_or_else(|| "Action".to_string(), |d| d.palette_title.clone());
-    let is_code = dlg.work.kind == ak::CODE;
-    let d = crate::mdi::dialog(ctx, id, &title, |ui| {
-        if is_code {
-            ui.set_min_size(Vec2::new(640.0, 420.0));
-        }
+    if dlg.work.kind == ak::CODE {
         let a = &mut dlg.work;
-        if a.has_applies_to {
-            ui.horizontal(|ui| {
-                ui.label("Applies to:");
-                let mut mode = match a.applies_to {
-                    APPLIES_TO_SELF => 0,
-                    APPLIES_TO_OTHER => 1,
-                    _ => 2,
-                };
-                let old = mode;
-                ui.radio_value(&mut mode, 0, "Self");
-                ui.radio_value(&mut mode, 1, "Other");
-                ui.radio_value(&mut mode, 2, "Object");
-                if mode != old {
-                    a.applies_to = match mode {
-                        0 => APPLIES_TO_SELF,
-                        1 => APPLIES_TO_OTHER,
-                        _ => tree_first_object(cx.project).unwrap_or(0),
-                    };
-                }
-                if mode == 2 {
-                    let mut v = a.applies_to;
-                    if resource_picker(
-                        ui,
-                        "applies_obj",
-                        cx.project,
-                        ResourceKind::Object,
-                        &mut v,
-                        "<no object>",
-                        -1,
-                    ) && v >= 0
-                    {
-                        a.applies_to = v;
-                    }
-                }
-            });
+        if a.args.is_empty() {
+            a.args.push(String::new());
         }
-        if is_code {
-            if a.args.is_empty() {
-                a.args.push(String::new());
-            }
-            let mut code = std::mem::take(&mut a.args[0]);
-            ui.allocate_ui(Vec2::new(620.0, 360.0), |ui| {
-                code_editor(
-                    ui,
-                    "code_action",
-                    &mut code,
-                    &mut dlg.code_state,
-                    cx.names,
-                    cx.prefs,
-                    18,
-                );
-            });
-            a.args[0] = code;
-        } else {
+        let mut code = std::mem::take(&mut a.args[0]);
+        let project = cx.project;
+        result = code_window(
+            ctx,
+            id,
+            owner,
+            &title,
+            |ui| applies_to_row(ui, a, project),
+            &mut code,
+            &mut dlg.code_state,
+            cx.names,
+            cx.prefs,
+        );
+        a.args[0] = code;
+    } else {
+        let d = crate::mdi::dialog(ctx, id, &title, |ui| {
+            let a = &mut dlg.work;
+            applies_to_row(ui, a, cx.project);
             let interface = def.map_or(0, |d| d.interface);
             egui::Grid::new(id.with("args"))
                 .num_columns(2)
@@ -1018,25 +1024,25 @@ pub fn arg_dialog(
                         ui.end_row();
                     }
                 });
-        }
-        if a.may_be_relative {
-            ui.checkbox(&mut a.relative, "Relative");
-        }
-        if a.is_question {
-            ui.checkbox(&mut a.negate, "NOT");
-        }
-        ui.separator();
-        ui.horizontal(|ui| {
-            if ui.button("OK").clicked() {
-                result = Some(true);
+            if a.may_be_relative {
+                ui.checkbox(&mut a.relative, "Relative");
             }
-            if ui.button("Cancel").clicked() {
-                result = Some(false);
+            if a.is_question {
+                ui.checkbox(&mut a.negate, "NOT");
             }
+            ui.separator();
+            ui.horizontal(|ui| {
+                if ui.button("OK").clicked() {
+                    result = Some(true);
+                }
+                if ui.button("Cancel").clicked() {
+                    result = Some(false);
+                }
+            });
         });
-    });
-    if d.close && result.is_none() {
-        result = Some(false);
+        if d.close && result.is_none() {
+            result = Some(false);
+        }
     }
     match result {
         Some(true) => {

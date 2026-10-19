@@ -329,3 +329,39 @@ fn screenshot_object_form() {
         .save(out.join("timeline_form.png"))
         .unwrap();
 }
+
+/// A code action opens a code window (not a modal dialog): the object form waits
+/// (its Enter / Escape keys are off) until OK adds the action.
+#[test]
+fn ui_code_action_opens_code_window() {
+    use egui_kittest::kittest::NodeT as _;
+    let mut h = harness_with(sample_object_project(), egui::vec2(1500.0, 900.0));
+    h.state_mut()
+        .open_form(ResKey::Res(ResourceKind::Object, 0));
+    h.run_steps(4);
+    h.get_by_label("Draw").click();
+    h.run_steps(2);
+    h.get_by_label("control").click();
+    h.run_steps(2);
+    let code = builtin_action(1, 603).unwrap();
+    h.get_by_label(&code.palette_title).click();
+    h.run_steps(4);
+    assert!(
+        !h.state().test_form_keys(ResKey::Res(ResourceKind::Object, 0)),
+        "the object form must not take Enter / Escape while the code window is open"
+    );
+    // the code window's OK (the object form's own OK is disabled behind it)
+    let ok = h
+        .get_all_by_label("OK")
+        .find(|n| !n.accesskit_node().is_disabled())
+        .expect("an enabled OK button");
+    ok.click();
+    h.run_steps(4);
+    assert!(h.state().test_form_keys(ResKey::Res(ResourceKind::Object, 0)));
+    let text = crate::widgets::actions::action_label(
+        &code.instantiate(1),
+        &h.state().test_state().0.clone(),
+    )
+    .0;
+    h.get_by_label(&text);
+}

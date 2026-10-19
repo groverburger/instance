@@ -409,6 +409,63 @@ pub fn call_hint(src: &str, at: usize, names: &ProjectNames) -> Option<String> {
     None
 }
 
+/// A code window: a movable, resizable child window (like the forms) holding the
+/// code editor below optional controls (`top`), and OK / Cancel. It stays above the
+/// form that opened it (`owner`, that form's layer) and opens in front. Returns
+/// `Some(true)` for OK, `Some(false)` for Cancel or the close box.
+#[allow(clippy::too_many_arguments)]
+pub fn code_window(
+    ctx: &egui::Context,
+    id: egui::Id,
+    owner: egui::LayerId,
+    title: &str,
+    top: impl FnOnce(&mut Ui),
+    code: &mut String,
+    st: &mut CodeEditorState,
+    names: &ProjectNames,
+    prefs: &crate::prefs::Prefs,
+) -> Option<bool> {
+    // in front when it appears, and whenever its form is brought to the front
+    let frame = ctx.cumulative_frame_nr();
+    let seen_key = id.with("code_window_frame");
+    let last: Option<u64> = ctx.data(|d| d.get_temp(seen_key));
+    ctx.data_mut(|d| d.insert_temp(seen_key, frame));
+    if last.is_none_or(|f| f + 1 < frame)
+        || ctx.memory(|m| m.areas().top_layer_id(egui::Order::Middle)) == Some(owner)
+    {
+        crate::mdi::bring_to_front(ctx, id);
+    }
+    let mut result = None;
+    let out = crate::mdi::floating(
+        ctx,
+        id,
+        title,
+        crate::icons::Icon::Script,
+        egui::vec2(760.0, 560.0),
+        |ui| {
+            top(ui);
+            let buttons_h = ui.spacing().interact_size.y + 2.0 * ui.spacing().item_spacing.y + 6.0;
+            let size = egui::vec2(ui.available_width(), (ui.available_height() - buttons_h).max(60.0));
+            ui.allocate_ui(size, |ui| {
+                code_editor(ui, id.with("code"), code, st, names, prefs, 4);
+            });
+            ui.separator();
+            ui.horizontal(|ui| {
+                if ui.button("OK").clicked() {
+                    result = Some(true);
+                }
+                if ui.button("Cancel").clicked() {
+                    result = Some(false);
+                }
+            });
+        },
+    );
+    if out.close && result.is_none() {
+        result = Some(false);
+    }
+    result
+}
+
 /// The code editor widget. `rows` is the minimum visible height in lines.
 pub fn code_editor(
     ui: &mut Ui,
@@ -526,12 +583,15 @@ pub fn code_editor(
                         .selectable(false),
                     );
                 }
+                // fill the visible area, so a click anywhere below the text focuses it
+                let fill = ui.available_height().clamp(0.0, 1e4);
                 let out = egui::TextEdit::multiline(code)
                     .id(edit_id)
                     .code_editor()
                     .lock_focus(true)
                     .desired_rows(rows)
                     .desired_width(f32::INFINITY)
+                    .min_size(egui::vec2(0.0, fill))
                     .layouter(&mut layouter)
                     .show(ui);
                 if out.response.response.changed() {

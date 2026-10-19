@@ -185,6 +185,9 @@ impl Editor for TimelineEditor {
     fn own_buttons(&self) -> bool {
         true
     }
+    fn form_keys(&self) -> bool {
+        self.actions.dialog.is_none()
+    }
     fn ui(&mut self, ui: &mut Ui, cx: &mut Cx) {
         let ctx = cx.ctx.clone();
         let base_id = ui.id().with(("timeline", self.idx));
@@ -199,10 +202,15 @@ impl Editor for TimelineEditor {
             arg_dialog(
                 &ctx,
                 base_id.with("args"),
+                ui.layer_id(),
                 &mut m.actions,
                 &mut self.actions,
                 cx,
             );
+        }
+        // the form waits while an action's dialog or code window is open
+        if self.actions.dialog.is_some() {
+            ui.disable();
         }
         let cur = self
             .moment

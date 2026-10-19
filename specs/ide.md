@@ -471,6 +471,12 @@ y and visible area.
 The same editor is used for: script resources, the "Execute Code" action, room
 creation code, instance creation code, trigger conditions ("Use code editor").
 
+In Instance, the Execute Code action and room / instance creation code open in a
+**code window**: a non-modal child window with the form chrome (move, resize,
+maximise, close = Cancel) that keeps its placement, stays above its owner form, and
+holds the editor plus OK / Cancel. The owner form is disabled and ignores Enter /
+Escape while it is open; the rest of the IDE stays usable.
+
 Toolbar: OK · Load from text file · Save to text file · Print | Undo · Redo | Cut ·
 Copy · Paste | Find/Replace toggle | error-checking toggle · code-completion toggle |
 Name field (script only). For code actions, an **Applies to** selector (Self /

@@ -16,7 +16,7 @@ use icons::RoomIcon;
 use minimap::Show;
 
 use super::{commit_slot, slot_dirty, Cx, Editor, Request, ResKey};
-use crate::widgets::code_editor::{code_editor, CodeEditorState};
+use crate::widgets::code_editor::{code_window, CodeEditorState};
 use crate::widgets::{
     bgr_to_color, color_box, image_preview, resource_picker, show_prompt, Prompt, PromptResult,
 };
@@ -1670,7 +1670,6 @@ impl Editor for RoomEditor {
         let base = ui.id().with(("room", self.idx));
         // creation code modal
         if let Some((target, mut code, mut st)) = self.code.take() {
-            let mut done: Option<bool> = None;
             let title = match target {
                 CodeTarget::Room => "Room Creation Code".to_string(),
                 CodeTarget::Instance(i) => format!(
@@ -1678,31 +1677,17 @@ impl Editor for RoomEditor {
                     self.work.instances.get(i).map_or(0, |x| x.id)
                 ),
             };
-            let d = crate::mdi::dialog(&ctx, base.with("code"), &title, |ui| {
-                ui.set_min_size(Vec2::new(640.0, 400.0));
-                ui.allocate_ui(Vec2::new(640.0, 360.0), |ui| {
-                    code_editor(
-                        ui,
-                        ("room_code", self.idx),
-                        &mut code,
-                        &mut st,
-                        cx.names,
-                        cx.prefs,
-                        18,
-                    );
-                });
-                ui.horizontal(|ui| {
-                    if ui.button("OK").clicked() {
-                        done = Some(true);
-                    }
-                    if ui.button("Cancel").clicked() {
-                        done = Some(false);
-                    }
-                });
-            });
-            if d.close {
-                done = Some(false);
-            }
+            let done = code_window(
+                &ctx,
+                base.with("code"),
+                ui.layer_id(),
+                &title,
+                |_| {},
+                &mut code,
+                &mut st,
+                cx.names,
+                cx.prefs,
+            );
             match done {
                 Some(true) => match target {
                     CodeTarget::Room => self.work.creation_code = code,
@@ -1715,6 +1700,10 @@ impl Editor for RoomEditor {
                 Some(false) => {}
                 None => self.code = Some((target, code, st)),
             }
+        }
+        // the form waits while a creation code window is open
+        if self.code.is_some() {
+            ui.disable();
         }
         if let Some((op, mut pr)) = self.prompt.take() {
             match show_prompt(&ctx, base.with("prompt"), &mut pr) {

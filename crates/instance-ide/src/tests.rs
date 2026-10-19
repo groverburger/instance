@@ -1059,6 +1059,17 @@ fn screenshot_dialogs() {
         .unwrap()
         .save(out.join("dialog_action.png"))
         .unwrap();
+    h.get_by_label("Cancel").click();
+    h.run_steps(3);
+    h.get_by_label("control").click();
+    h.run_steps(2);
+    h.get_by_label(&instance_format::builtin_action(1, 603).unwrap().palette_title)
+        .click();
+    h.run_steps(4);
+    h.render()
+        .unwrap()
+        .save(out.join("window_code.png"))
+        .unwrap();
 }
 
 /// Renders the IDE with the project in `$INSTANCE_README_PROJECT` (its room named

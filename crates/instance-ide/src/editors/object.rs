@@ -657,7 +657,10 @@ impl Editor for ObjectEditor {
         true
     }
     fn form_keys(&self) -> bool {
-        !self.info_open && self.selector.is_none() && !self.confirm_delete
+        !self.info_open
+            && self.selector.is_none()
+            && !self.confirm_delete
+            && self.actions.dialog.is_none()
     }
     fn ui(&mut self, ui: &mut Ui, cx: &mut Cx) {
         let ctx = cx.ctx.clone();
@@ -705,10 +708,15 @@ impl Editor for ObjectEditor {
             arg_dialog(
                 &ctx,
                 base_id.with("args"),
+                ui.layer_id(),
                 &mut e.actions,
                 &mut self.actions,
                 cx,
             );
+        }
+        // the form waits while an action's dialog or code window is open
+        if self.actions.dialog.is_some() {
+            ui.disable();
         }
         if self.confirm_delete {
             let d = crate::mdi::dialog(&ctx, base_id.with("confirm"), "Confirm", |ui| {
