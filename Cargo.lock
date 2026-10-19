@@ -1992,6 +1992,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "instance-audio"
+version = "0.1.0"
+dependencies = [
+ "instance-brand",
+ "midly",
+ "rodio",
+ "rustysynth",
+ "web-sys",
+ "web-time",
+ "windows",
+]
+
+[[package]]
 name = "instance-blackbox"
 version = "0.1.0"
 dependencies = [
@@ -2098,6 +2111,7 @@ dependencies = [
  "glow",
  "glutin",
  "gml",
+ "instance-audio",
  "instance-brand",
  "instance-dllcall",
  "instance-format",
@@ -2105,7 +2119,6 @@ dependencies = [
  "instance-ui",
  "js-sys",
  "libloading",
- "midly",
  "png",
  "raw-window-handle",
  "rfd",

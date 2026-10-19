@@ -375,7 +375,7 @@ pub fn mci_command(cmd: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::audio::midi::tests::build_smf;
+    use crate::midi::tests::build_smf;
 
     struct Fake(Arc<Mutex<Vec<[u8; 3]>>>);
     impl MidiDevice for Fake {

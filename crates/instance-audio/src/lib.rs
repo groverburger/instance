@@ -37,7 +37,6 @@ pub mod midi_out;
 pub mod offline;
 pub mod voice;
 
-use crate::res::SoundRes;
 use midi::Sequence;
 use midi_out::{Cmd, MidiThread};
 use std::collections::HashMap;
@@ -45,6 +44,28 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use web_time::Instant;
 use voice::{Globals, Pcm, Sound3d, SoundCtl, VoiceState};
+
+/// A sound resource, as the engine plays it.
+#[derive(Clone, Debug)]
+pub struct SoundRes {
+    pub name: String,
+    pub kind: i32,
+    pub file_type: String,
+    pub file_name: String,
+    pub data: Option<std::sync::Arc<[u8]>>,
+    pub effects: i32,
+    pub volume: f64,
+    pub pan: f64,
+    pub preload: bool,
+}
+
+/// A warning for the user (stderr, or the browser console).
+fn warn(msg: &str) {
+    #[cfg(target_arch = "wasm32")]
+    web_sys::console::warn_1(&msg.into());
+    #[cfg(not(target_arch = "wasm32"))]
+    eprintln!("{}", msg);
+}
 
 /// Maximum simultaneous PCM voices (§2).
 pub const MAX_VOICES: usize = 128;
@@ -524,7 +545,7 @@ impl Audio {
                             }
                             Err(e) => eprintln!("audio: cannot load SoundFont {}: {}", p.display(), e),
                         },
-                        None => crate::warn(if cfg!(target_arch = "wasm32") {
+                        None => warn(if cfg!(target_arch = "wasm32") {
                             "audio: no SoundFont was loaded (see 'Web' in README.md); MIDI music is silent"
                         } else {
                             "audio: no MIDI synthesiser (set INSTANCE_SOUNDFONT to a .sf2 file); MIDI music is silent"

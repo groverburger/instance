@@ -6,7 +6,7 @@
 
 pub mod action_lib;
 pub mod actions;
-pub mod audio;
+pub use instance_audio as audio;
 pub mod builtins;
 pub mod collision;
 pub mod d3d;

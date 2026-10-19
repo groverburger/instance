@@ -287,18 +287,7 @@ impl BackgroundRes {
 }
 
 /// A sound resource.
-#[derive(Clone, Debug)]
-pub struct SoundRes {
-    pub name: String,
-    pub kind: i32,
-    pub file_type: String,
-    pub file_name: String,
-    pub data: Option<std::sync::Arc<[u8]>>,
-    pub effects: i32,
-    pub volume: f64,
-    pub pan: f64,
-    pub preload: bool,
-}
+pub use instance_audio::SoundRes;
 
 /// A font resource.
 #[derive(Clone, Debug)]
