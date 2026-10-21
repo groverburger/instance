@@ -16,10 +16,8 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/ide-room-editor.png" alt="The Instance IDE with a level of Brickhop open in the room editor" width="66%">
-  <img src="docs/images/spelunky.png" alt="Spelunky Classic, Derek Yu's 2008 GameMaker game, running in Instance" width="32%">
+  <img src="docs/images/ide-room-editor.png" alt="The Instance IDE with a level of Brickhop open in the room editor, zoomed to 200%">
 </p>
-<p align="center"><sub>Left: a level of Brickhop in the room editor. Right: Spelunky Classic (Derek Yu, 2008), from its original source, running in Instance.</sub></p>
 
 Instance is a classic 2D game creation tool, written from scratch in Rust. You build games
 from sprites, objects, events and rooms, with drag-and-drop actions or the GML
@@ -34,16 +32,18 @@ reproduces them faithfully, checked with black-box tests.
 
 The [web version](https://groverburger.github.io/instance/) is the whole IDE and player,
 compiled to WebAssembly. It opens with three example games: pick one, change it, and
-press Run.
+press Run. Click a screenshot to play that game.
+
+<p align="center">
+  <a href="https://groverburger.github.io/instance/play.html?game=examples/brickhop.gm81"><img src="web/examples/brickhop.png" alt="Brickhop" width="36%"></a>
+  <a href="https://groverburger.github.io/instance/play.html?game=examples/gravity_grade.gm81"><img src="web/examples/gravity_grade.png" alt="Gravity Grade" width="36%"></a>
+  <a href="https://groverburger.github.io/instance/play.html?game=examples/spelunky.gm81"><img src="web/examples/spelunky.png" alt="Spelunky Classic" width="27%"></a>
+</p>
 
 - **Brickhop**, a platformer: open a level in the room editor, move some bricks and play
   your version.
-- **Gravity Grade**, a falling-block game.
+- **Gravity Grade**, a falling-block game written in GML.
 - **Spelunky Classic**, Derek Yu's 2008 game, from the source he released in 2009.
-
-<p align="center">
-  <img src="docs/images/web-welcome.png" alt="The welcome screen of the web version, with the three example games" width="80%">
-</p>
 
 Your work is autosaved in the browser; File > Save downloads it as a `.gm81`.
 

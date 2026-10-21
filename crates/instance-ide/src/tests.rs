@@ -1110,6 +1110,37 @@ fn screenshot_readme() {
     h.run_steps(2);
     h.state_mut().open_form(ResKey::Res(ResourceKind::Room, room));
     h.run_steps(8);
+    // `$INSTANCE_README_OBJECT`: also open this object's editor (in front of the room)
+    if let Ok(name) = std::env::var("INSTANCE_README_OBJECT") {
+        let p = h.state().test_state().0;
+        let obj = p.objects.iter().position(|o| o.as_ref().is_some_and(|o| o.name == name)).expect("no such object");
+        h.state_mut().open_form(ResKey::Res(ResourceKind::Object, obj));
+        h.run_steps(8);
+    }
+    // `$INSTANCE_README_ZOOM_IN`: presses of Zoom in; `$INSTANCE_README_CLICKS`: then
+    // clicks at "x,y;x,y" (e.g. on the minimap, to scroll the room)
+    use egui_kittest::kittest::Queryable;
+    let zoom_in: usize = std::env::var("INSTANCE_README_ZOOM_IN").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+    for _ in 0..zoom_in {
+        h.get_by_label("Zoom in").click();
+        h.run_steps(2);
+    }
+    let clicks = std::env::var("INSTANCE_README_CLICKS").unwrap_or_default();
+    for xy in clicks.split(';').filter(|s| !s.is_empty()) {
+        let (x, y) = xy.split_once(',').expect("INSTANCE_README_CLICKS: x,y;x,y");
+        let pos = eframe::egui::pos2(x.trim().parse().unwrap(), y.trim().parse().unwrap());
+        h.hover_at(pos);
+        h.run_steps(1);
+        for pressed in [true, false] {
+            h.event(eframe::egui::Event::PointerButton {
+                pos,
+                button: eframe::egui::PointerButton::Primary,
+                pressed,
+                modifiers: Default::default(),
+            });
+            h.run_steps(2);
+        }
+    }
     h.hover_at(eframe::egui::pos2(1270.0, height - 10.0));
     h.run_steps(4);
     h.render().unwrap().save(out.join("ide.png")).unwrap();
