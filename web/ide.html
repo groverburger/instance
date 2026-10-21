@@ -4,8 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Instance</title>
+  <meta name="description" content="Instance: a game maker that runs in your browser. Opens GameMaker 8.1 projects (.gm81 / .gmk); a clean-room implementation.">
   <link rel="icon" href="data:,">
   <style>
+    [hidden] { display: none !important; }
     html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #f0f0f0; }
     #ide_canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
     #loading {
@@ -13,23 +15,126 @@
       font: 15px system-ui, -apple-system, "Segoe UI", sans-serif; color: #333; background: #f0f0f0;
     }
     #loading.error { color: #a00; white-space: pre-wrap; padding: 24px; }
+
+    /* welcome screen (web/ide.js: instanceIde.showWelcome) */
+    #welcome { position: fixed; inset: 0; z-index: 900; overflow-y: auto; background: rgba(40, 44, 52, .55);
+      font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: #222; }
+    #welcome .box { position: relative; box-sizing: border-box; max-width: 960px; margin: 16px auto; padding: 20px 28px 14px;
+      background: #f4f4f4; border-radius: 10px; box-shadow: 0 10px 40px rgba(0, 0, 0, .35); }
+    #welcome h1 { margin: 0 0 2px; font-size: 26px; }
+    #welcome .lead { margin: 0 0 14px; color: #444; }
+    #welcome .x { position: absolute; top: 10px; right: 10px; width: 34px; height: 34px; border: 0; border-radius: 6px;
+      background: transparent; font: 18px/1 system-ui, sans-serif; color: #666; cursor: pointer; }
+    #welcome .x:hover { background: #e2e2e2; color: #000; }
+    #welcome .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    #welcome .card { display: flex; flex-direction: column; background: #fff; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
+    #welcome .card.hero { grid-column: 1 / -1; flex-direction: row; border-color: #3a7bd5; box-shadow: 0 0 0 1px #3a7bd5; }
+    #welcome .shot { display: block; background: #222 center / cover no-repeat; aspect-ratio: 16 / 9; }
+    #welcome .card.hero .shot { flex: 0 0 54%; aspect-ratio: auto; min-height: 240px; }
+    #welcome .card:not(.hero) { flex-direction: row; }
+    #welcome .card:not(.hero) .shot { flex: 0 0 38%; aspect-ratio: auto; min-height: 150px; }
+    #welcome .card:not(.hero) .body { padding: 10px 12px 12px; font-size: 14px; }
+    #welcome .body { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px 14px; flex: 1; }
+    #welcome h2 { margin: 0; font-size: 18px; }
+    #welcome .hero h2 { font-size: 22px; }
+    #welcome .tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px; background: #3a7bd5; color: #fff;
+      font-size: 11px; font-weight: 600; vertical-align: 3px; }
+    #welcome p { margin: 0; }
+    #welcome .desc { color: #444; }
+    #welcome .credit { color: #666; font-size: 12px; }
+    #welcome .acts { display: flex; gap: 8px; margin-top: auto; padding-top: 8px; flex-wrap: wrap; }
+    #welcome .btn { display: inline-block; padding: 8px 18px; border-radius: 6px; border: 1px solid #bbb; background: #fafafa;
+      color: #222; text-decoration: none; font: inherit; font-weight: 600; cursor: pointer; }
+    #welcome .btn:hover { border-color: #3a7bd5; color: #2f68b8; }
+    #welcome .btn.primary { background: #3a7bd5; border-color: #3a7bd5; color: #fff; }
+    #welcome .btn.primary:hover { background: #2f68b8; color: #fff; }
+    #welcome .more { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+    #welcome .more .btn { font-weight: 500; }
+    #welcome .foot { margin-top: 14px; color: #777; font-size: 12px; }
+    #welcome a { color: #2f68b8; }
+    @media (max-width: 640px) {
+      #welcome .box { margin: 0; min-height: 100%; border-radius: 0; padding: 18px 16px 14px; }
+      #welcome .cards { grid-template-columns: 1fr; }
+      #welcome .card.hero, #welcome .card:not(.hero) { flex-direction: column; }
+      #welcome .card:not(.hero) .shot { flex: none; aspect-ratio: 16 / 9; min-height: 0; }
+      #welcome .card.hero .shot { flex: none; aspect-ratio: 16 / 9; min-height: 0; }
+      #welcome .more .btn { flex: 1 1 auto; text-align: center; }
+    }
   </style>
 </head>
 <body>
   <canvas id="ide_canvas"></canvas>
   <div id="loading">Loading Instance&hellip;</div>
+  <div id="welcome" hidden role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+    <div class="box">
+      <button class="x" id="welcome-close" title="Close (Esc)" aria-label="Close">&#x2715;</button>
+      <h1 id="welcome-title">Instance</h1>
+      <p class="lead">A game maker that runs in your browser: a clean-room reimplementation of GameMaker 8.1,
+        with its editors, its GML scripting and its runner. Open an example and change it, or just play.</p>
+      <div class="cards">
+        <article class="card hero">
+          <a class="shot" style="background-image: url(examples/brickhop.png)" data-edit href="?project=examples/brickhop.gm81&amp;open=rm_1_1" aria-label="Edit Brickhop"></a>
+          <div class="body">
+            <h2>Brickhop <span class="tag">Start here</span></h2>
+            <p class="desc">A platformer about carrying, stacking and throwing bricks: six levels in two worlds.
+              Arrows walk, Z jumps, X picks up and throws a brick.</p>
+            <p class="desc">Edit opens its first level in the room editor: move a platform, add bricks or enemies,
+              then press <b>Run</b> (F5) to play your version. The other levels are under Rooms in the tree.</p>
+            <div class="acts">
+              <a class="btn primary" data-edit href="?project=examples/brickhop.gm81&amp;open=rm_1_1">Edit</a>
+              <a class="btn" href="play.html?game=examples/brickhop.gm81">Play</a>
+            </div>
+          </div>
+        </article>
+        <article class="card">
+          <a class="shot" style="background-image: url(examples/gravity_grade.png)" data-edit href="?project=examples/gravity_grade.gm81" aria-label="Edit Gravity Grade"></a>
+          <div class="body">
+            <h2>Gravity Grade</h2>
+            <p class="desc">A falling-block game after the arcade "grand master" games: levels 0 to 999, gravity up to 20G, grades.</p>
+            <div class="acts">
+              <a class="btn primary" data-edit href="?project=examples/gravity_grade.gm81">Edit</a>
+              <a class="btn" href="play.html?game=examples/gravity_grade.gm81">Play</a>
+            </div>
+          </div>
+        </article>
+        <article class="card" id="card-spelunky" hidden>
+          <a class="shot" style="background-image: url(examples/spelunky.png)" data-edit href="?project=examples/spelunky.gm81" aria-label="Edit Spelunky Classic"></a>
+          <div class="body">
+            <h2>Spelunky Classic</h2>
+            <p class="desc">Derek Yu's 2008 GameMaker game: a cave-diving platformer with randomly generated levels.
+              Arrows move, Z jumps, X whips or uses, Up goes through doors.</p>
+            <p class="credit">Spelunky Classic &copy; 2008, 2009 Derek Yu and Mossmouth, LLC. A mod of the original source
+              (sound moved from supersound.dll to the built-in sound system), shared under the
+              <a href="examples/spelunky-COPYING.txt" target="_blank" rel="noopener">Spelunky User License v1.1b</a>.</p>
+            <div class="acts">
+              <a class="btn primary" data-edit href="?project=examples/spelunky.gm81">Edit</a>
+              <a class="btn" href="play.html?game=examples/spelunky.gm81">Play</a>
+            </div>
+          </div>
+        </article>
+      </div>
+      <div class="more">
+        <button class="btn" id="welcome-empty">Start an empty project</button>
+        <button class="btn" id="welcome-open">Open a .gm81 / .gmk file&hellip;</button>
+      </div>
+      <p class="foot">Help &gt; Examples brings this screen back. Your work is autosaved in this browser; File &gt; Save downloads it.
+        Instance is not affiliated with or endorsed by YoYo Games.</p>
+    </div>
+  </div>
   <!-- written by the build script: window.INSTANCE_SOUNDFONT, used when exporting web pages -->
   <script src="config.js"></script>
   <script src="ide.js"></script>
   <script type="module">
-    import init, { start_ide } from "./pkg/instance_ide.js";
+    import init, { start_ide, open_project_url, open_project_bytes, new_project } from "./pkg/instance_ide.js";
     try {
       await init();
+      window.instanceIde.setWasm({ open_project_url, open_project_bytes, new_project });
       await start_ide("ide_canvas");
     } catch (e) {
       console.error(e);
       const l = document.getElementById("loading");
       if (l) {
+        l.hidden = false;
         l.classList.add("error");
         l.textContent = "The IDE could not start: " + e +
           "\n\nIt needs a browser with WebAssembly and WebGL2.";

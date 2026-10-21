@@ -27,6 +27,9 @@ for name in instance_runner instance_ide; do
   wasm-bindgen --target web --no-typescript --out-dir "$out/pkg" "$target/wasm32-unknown-unknown/$profile/$name.wasm"
 done
 cp web/*.html web/*.js "$out/"
+# example projects of the welcome screen (packed by scripts/pack-web-examples.sh)
+mkdir -p "$out/examples"
+cp web/examples/* "$out/examples/"
 # optional SoundFont for MIDI: $INSTANCE_SOUNDFONT ($GM81_SOUNDFONT) or web/soundfonts/default.sf2
 # (ignored by version control; scripts/fetch-soundfont.sh downloads GeneralUser GS there)
 sf=${INSTANCE_SOUNDFONT:-${GM81_SOUNDFONT:-}}

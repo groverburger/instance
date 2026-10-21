@@ -357,6 +357,36 @@ pub fn mp3_gapless(d: &[u8]) -> Mp3Gapless {
     Mp3Gapless::NotMp3
 }
 
+/// The length in frames of an Ogg Vorbis stream: the granule position of its last
+/// page (RFC 3533; for Vorbis the number of PCM frames up to the end of that page).
+/// Played back to back (looping), frames decoded past it would be heard as a click.
+/// None if `d` is not Ogg Vorbis or its last page cannot be found.
+pub fn ogg_vorbis_length(d: &[u8]) -> Option<u64> {
+    // first page: the Vorbis identification header
+    if d.len() < 28 || &d[0..4] != b"OggS" {
+        return None;
+    }
+    let segs = d[26] as usize;
+    if d.get(27 + segs..27 + segs + 7)? != b"\x01vorbis" {
+        return None;
+    }
+    // last page: an "OggS" capture whose header and segments end exactly at the end
+    let mut pos = d.len().checked_sub(27)?;
+    loop {
+        if &d[pos..pos + 4] == b"OggS" && d[pos + 4] == 0 {
+            let segs = d[pos + 26] as usize;
+            if let Some(table) = d.get(pos + 27..pos + 27 + segs) {
+                let body: usize = table.iter().map(|&b| b as usize).sum();
+                if pos + 27 + segs + body == d.len() {
+                    let g = i64::from_le_bytes(d[pos + 6..pos + 14].try_into().ok()?);
+                    return u64::try_from(g).ok();
+                }
+            }
+        }
+        pos = pos.checked_sub(1)?;
+    }
+}
+
 /// Leading frames quieter than this (−80 dB) may be MP3 encoder/decoder delay.
 const LEAD_SILENCE: f32 = 1e-4;
 /// Most leading frames trimmed: LAME's encoder delay (576) + the decoder delay
@@ -391,6 +421,7 @@ impl Frames {
     pub fn open(data: Arc<[u8]>) -> Option<Self> {
         use rodio::Source;
         let trim = mp3_gapless(&data) == Mp3Gapless::Untagged;
+        let length = ogg_vorbis_length(&data);
         let dec = rodio::Decoder::builder()
             .with_data(std::io::Cursor::new(data))
             .with_gapless(true)
@@ -413,7 +444,13 @@ impl Frames {
                 Some((a, b))
             }
         }
-        Some(Frames::new(Box::new(Interleaved { dec, ch }), rate, trim))
+        let src = Interleaved { dec, ch };
+        let src: Box<dyn Iterator<Item = (f32, f32)> + Send> = match length {
+            // the decoder may return the whole last block (a few ms past the end)
+            Some(n) => Box::new(src.take(n as usize)),
+            None => Box::new(src),
+        };
+        Some(Frames::new(src, rate, trim))
     }
 
     /// Wraps a frame source; `trim` drops MP3 delay/padding silence.
@@ -1062,6 +1099,32 @@ mod tests {
     fn tone(i: usize) -> (f32, f32) {
         let t = i as f32 * 0.05;
         (0.5 + 0.25 * t.sin(), -0.5 + 0.25 * t.cos())
+    }
+
+    /// Ogg Vorbis: the length is the granule position of the last page (decoders
+    /// may return the last block in full; looping would repeat its extra frames).
+    #[test]
+    fn ogg_vorbis_length_from_last_page() {
+        fn page(granule: i64, body: &[u8]) -> Vec<u8> {
+            let mut p = b"OggS\x00\x00".to_vec();
+            p.extend(granule.to_le_bytes());
+            p.extend([0; 12]); // serial, sequence, CRC
+            p.push(1);
+            p.push(body.len() as u8);
+            p.extend(body);
+            p
+        }
+        let mut d = page(0, b"\x01vorbis\x00\x00\x00\x00\x02");
+        d.extend(page(4096, b"OggS in the audio data......"));
+        d.extend(page(12345, b"last packet OggS\x00"));
+        assert_eq!(ogg_vorbis_length(&d), Some(12345));
+        // cut short: the last page is incomplete, the one before it is not the end
+        assert_eq!(ogg_vorbis_length(&d[..d.len() - 1]), None);
+        // not Vorbis (e.g. Opus), not Ogg
+        let mut opus = page(0, b"OpusHead\x01\x02");
+        opus.extend(page(960, b"x"));
+        assert_eq!(ogg_vorbis_length(&opus), None);
+        assert_eq!(ogg_vorbis_length(b"RIFF\x00\x00\x00\x00WAVE"), None);
     }
 
     /// MP3 without gapless info: the encoder delay (near-silence) at the start

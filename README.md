@@ -16,9 +16,10 @@
 </p>
 
 <p align="center">
-  <img src="docs/manual/images/ide.png" alt="The Instance IDE with a room open in the room editor" width="49%">
-  <img src="docs/images/deepcore.png" alt="Deepcore, a game made with Instance" width="49%">
+  <img src="docs/images/ide-room-editor.png" alt="The Instance IDE with a level of Brickhop open in the room editor" width="66%">
+  <img src="docs/images/spelunky.png" alt="Spelunky Classic, Derek Yu's 2008 GameMaker game, running in Instance" width="32%">
 </p>
+<p align="center"><sub>Left: a level of Brickhop in the room editor. Right: Spelunky Classic (Derek Yu, 2008), from its original source, running in Instance.</sub></p>
 
 Instance is a classic 2D game creation tool, written from scratch in Rust. You build games
 from sprites, objects, events and rooms, with drag-and-drop actions or the GML
@@ -28,6 +29,23 @@ way you remember, on Windows, macOS, Linux and in the browser.
 Older games rely on all kinds of engine quirks: the order events run in, the exact
 random number generator, how `sound_isplaying` lags behind the audio. Instance
 reproduces them faithfully, checked with black-box tests.
+
+## Try it in your browser
+
+The [web version](https://groverburger.github.io/instance/) is the whole IDE and player,
+compiled to WebAssembly. It opens with three example games: pick one, change it, and
+press Run.
+
+- **Brickhop**, a platformer: open a level in the room editor, move some bricks and play
+  your version.
+- **Gravity Grade**, a falling-block game.
+- **Spelunky Classic**, Derek Yu's 2008 game, from the source he released in 2009.
+
+<p align="center">
+  <img src="docs/images/web-welcome.png" alt="The welcome screen of the web version, with the three example games" width="80%">
+</p>
+
+Your work is autosaved in the browser; File > Save downloads it as a `.gm81`.
 
 ## Features
 
@@ -101,3 +119,12 @@ Tools and example games for *making* games with Instance live in the separate
 
 Instance is released under the [MIT License](LICENSE). The bundled fonts keep their
 own licenses (Liberation Sans: SIL Open Font License; Roboto: Apache 2.0).
+
+The example games are in [`web/examples`](web/examples). Brickhop and Gravity Grade come
+from `instance-gamekit` (MIT or Apache 2.0). Spelunky Classic is not covered by
+Instance's license: it is © 2008, 2009 Derek Yu and Mossmouth, LLC, shared under the
+[Spelunky User License v1.1b](web/examples/spelunky-COPYING.txt). The copy here is a mod
+of the original source: its sound goes through GameMaker's built-in sound functions
+instead of `supersound.dll`, so it runs without a DLL and in the browser
+([`scripts/build-spelunky-mod.py`](scripts/build-spelunky-mod.py) makes it). Instance is
+not affiliated with Mossmouth or with YoYo Games.

@@ -11,3 +11,6 @@ game_errors.log
 /*.cfg
 /*.ini
 /*.dat
+
+# the example games of the web build (scripts/pack-web-examples.sh)
+!/web/examples/*.gm81

@@ -33,8 +33,9 @@ struct OpenForm {
 enum Pending {
     New,
     Open(Option<PathBuf>),
-    /// A project file given as bytes (web drag-and-drop, `?project=` URL).
-    OpenBytes(String, Vec<u8>),
+    /// A project file given as bytes (web drag-and-drop, `?project=` URL), and the
+    /// resource whose editor to open afterwards (`?open=`).
+    OpenBytes(String, Vec<u8>, Option<String>),
     Exit,
 }
 
@@ -82,7 +83,19 @@ pub struct IdeApp {
     #[allow(dead_code)]
     pub(crate) autosave_at: f64,
     #[allow(dead_code)]
-    pub(crate) restore_offer: Option<(String, Vec<u8>)>,
+    pub(crate) restore_offer: Option<RestoreOffer>,
+}
+
+/// Web: the previous session's autosave, offered at startup.
+#[allow(dead_code)]
+pub(crate) struct RestoreOffer {
+    /// The autosave's file name and age ("game.gm81, saved 5 minutes ago").
+    label: String,
+    name: String,
+    bytes: Vec<u8>,
+    /// The project of a `?project=` link that came with it (name, bytes, `?open=`):
+    /// the visitor chooses between the two.
+    linked: Option<(String, Vec<u8>, Option<String>)>,
 }
 
 impl IdeApp {
@@ -161,17 +174,53 @@ impl IdeApp {
         }
     }
 
-    /// Opens a project from its bytes (`name` is shown as the file name).
-    pub(crate) fn open_bytes(&mut self, name: &str, bytes: &[u8]) {
+    /// Opens a project from its bytes (`name` is shown as the file name); returns
+    /// whether it could be read.
+    pub(crate) fn open_bytes(&mut self, name: &str, bytes: &[u8]) -> bool {
         match instance_format::read_project(bytes) {
             Ok(proj) => {
                 self.project = proj;
                 self.path = Some(PathBuf::from(name));
                 self.project_replaced();
                 self.status = format!("Opened {name}");
+                true
             }
-            Err(e) => self.messages.push(format!("Cannot open {name}: {e}")),
+            Err(e) => {
+                self.messages.push(format!("Cannot open {name}: {e}"));
+                false
+            }
         }
+    }
+
+    /// [`Self::open_bytes`], then the editor of the resource named `open`.
+    pub(crate) fn open_bytes_then(&mut self, name: &str, bytes: &[u8], open: Option<&str>) {
+        if self.open_bytes(name, bytes) {
+            if let Some(res) = open {
+                if !self.open_resource_named(res) {
+                    self.messages
+                        .push(format!("{name} has no resource named {res}."));
+                }
+            }
+        }
+    }
+
+    /// Opens the editor of the resource named `name`, maximised and selected in the
+    /// resource tree (web: `ide.html?project=URL&open=NAME`). False if there is none.
+    pub(crate) fn open_resource_named(&mut self, name: &str) -> bool {
+        for (kind, _, _) in LIST_KINDS {
+            for i in 0..ops::slot_count(&self.project, kind) {
+                if ops::res_name(&self.project, kind, i) == Some(name) {
+                    let key = ResKey::Res(kind, i);
+                    self.tree.selected = ops::find_leaf(&self.project, kind, i);
+                    self.open_form(key);
+                    if let Some(f) = self.forms.iter_mut().find(|f| f.editor.key() == key) {
+                        f.mdi.maximised = true;
+                    }
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Web: startup (`?project=` / autosave offer), arrivals and the autosave.
@@ -181,9 +230,9 @@ impl IdeApp {
         web::startup(ctx);
         for i in web::take_incoming() {
             match i {
-                Incoming::Open(name, bytes) => self.open_bytes(&name, &bytes),
-                Incoming::Autosave(name, bytes, time) => {
-                    let mins = ((js_sys::Date::now() - time) / 60000.0).max(0.0).round();
+                Incoming::Open(l) => self.request(Pending::OpenBytes(l.name, l.bytes, l.open)),
+                Incoming::Autosave(a, linked) => {
+                    let mins = ((js_sys::Date::now() - a.time) / 60000.0).max(0.0).round();
                     let when = if mins < 1.0 {
                         "just now".to_string()
                     } else if mins < 120.0 {
@@ -191,47 +240,26 @@ impl IdeApp {
                     } else {
                         format!("{} hours ago", (mins / 60.0).round())
                     };
-                    self.restore_offer = Some((format!("{name}, saved {when}"), bytes));
+                    let name = if a.name.is_empty() {
+                        "game.gm81".to_string()
+                    } else {
+                        a.name
+                    };
+                    self.restore_offer = Some(RestoreOffer {
+                        label: format!("{name}, saved {when}"),
+                        name,
+                        bytes: a.bytes,
+                        linked: linked.map(|l| (l.name, l.bytes, l.open)),
+                    });
                 }
                 Incoming::Dropped(name, bytes) => {
                     self.handle_dropped(PathBuf::from(name), Some(bytes))
                 }
+                Incoming::New => self.request(Pending::New),
                 Incoming::Error(e) => self.messages.push(e),
             }
         }
-        if let Some((name, _)) = &self.restore_offer {
-            let label = format!(
-                "A project autosaved in this browser was found ({name}).
-Restore it?"
-            );
-            let d = mdi::dialog(ctx, Id::new("restore-autosave"), "Restore", |ui| {
-                ui.label(label);
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Restore").clicked() {
-                        Some(true)
-                    } else if ui.button("Discard").clicked() {
-                        Some(false)
-                    } else {
-                        None
-                    }
-                })
-                .inner
-            });
-            let choice = if d.close { Some(false) } else { d.inner };
-            if let Some(restore) = choice {
-                if let Some((label, bytes)) = self.restore_offer.take() {
-                    if restore {
-                        let name = label.split(", saved ").next().unwrap_or("game.gm81");
-                        self.open_bytes(name, &bytes);
-                        // the restored project has not been downloaded yet
-                        self.modified = true;
-                    } else {
-                        let _ = web::js::clear_autosave();
-                    }
-                }
-            }
-        }
+        self.restore_dialog(ctx);
         // Autosave every 15 s while there are unsaved changes.
         let now = crate::platform::unix_secs();
         if self.modified && self.restore_offer.is_none() && now - self.autosave_at >= 15.0 {
@@ -246,6 +274,106 @@ Restore it?"
         }
     }
 
+    /// Web: the dialog offering the previous session's autosave. With a
+    /// `?project=` link it asks which of the two to open, and offers to download the
+    /// autosave first: once the linked project is changed, its autosave replaces the
+    /// old one.
+    #[cfg(target_arch = "wasm32")]
+    fn restore_dialog(&mut self, ctx: &Context) {
+        use crate::web;
+        #[derive(Clone, Copy)]
+        enum Choice {
+            Restore,
+            Discard,
+            OpenLinked { download: bool },
+        }
+        let Some(offer) = &self.restore_offer else {
+            return;
+        };
+        let has_link = offer.linked.is_some();
+        let d = match &offer.linked {
+            None => {
+                let label = format!(
+                    "A project autosaved in this browser was found ({}).\nRestore it?",
+                    offer.label
+                );
+                mdi::dialog(ctx, Id::new("restore-autosave"), "Restore", |ui| {
+                    ui.label(label);
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Restore").clicked() {
+                            Some(Choice::Restore)
+                        } else if ui.button("Discard").clicked() {
+                            Some(Choice::Discard)
+                        } else {
+                            None
+                        }
+                    })
+                    .inner
+                })
+            }
+            Some((linked, _, _)) => {
+                let label = format!(
+                    "This browser has an autosaved project: {}.\n\
+                     Opening {linked} replaces that autosave once you change {linked}.",
+                    offer.label
+                );
+                let mine = offer.name.clone();
+                let linked = linked.clone();
+                mdi::dialog(ctx, Id::new("restore-autosave"), "Open Project", |ui| {
+                    ui.label(label);
+                    ui.add_space(6.0);
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button(format!("Open {linked}")).clicked() {
+                            Some(Choice::OpenLinked { download: false })
+                        } else if ui
+                            .button(format!("Download {mine}, then open {linked}"))
+                            .clicked()
+                        {
+                            Some(Choice::OpenLinked { download: true })
+                        } else if ui.button(format!("Keep working on {mine}")).clicked() {
+                            Some(Choice::Restore)
+                        } else {
+                            None
+                        }
+                    })
+                    .inner
+                })
+            }
+        };
+        // closing the dialog: without a link it discards (as before); with one it
+        // keeps the autosave and opens it, so nothing is lost
+        let choice = if d.close {
+            Some(if has_link { Choice::Restore } else { Choice::Discard })
+        } else {
+            d.inner
+        };
+        let Some(choice) = choice else {
+            return;
+        };
+        let Some(offer) = self.restore_offer.take() else {
+            return;
+        };
+        match choice {
+            Choice::Restore => {
+                self.open_bytes(&offer.name, &offer.bytes);
+                // the restored project has not been downloaded yet
+                self.modified = true;
+            }
+            Choice::Discard => {
+                let _ = web::js::clear_autosave();
+            }
+            Choice::OpenLinked { download } => {
+                if download {
+                    web::js::download(&offer.name, &offer.bytes);
+                }
+                if let Some((name, bytes, open)) = offer.linked {
+                    self.open_bytes_then(&name, &bytes, open.as_deref());
+                }
+            }
+        }
+    }
+
     /// Picked result of File > Open.
     fn poll_open_dialog(&mut self) {
         match dialogs::take_opened(open_key()) {
@@ -253,7 +381,9 @@ Restore it?"
                 if let Some(f) = files.into_iter().next() {
                     match &f.path {
                         Some(p) => self.open_path(p),
-                        None => self.open_bytes(&f.name, &f.bytes),
+                        None => {
+                            self.open_bytes(&f.name, &f.bytes);
+                        }
                     }
                 }
             }
@@ -428,7 +558,9 @@ Restore it?"
             Pending::New => self.do_new(),
             Pending::Open(Some(path)) => self.open_path(&path),
             Pending::Open(None) => self.do_open_dialog(),
-            Pending::OpenBytes(name, bytes) => self.open_bytes(&name, &bytes),
+            Pending::OpenBytes(name, bytes, open) => {
+                self.open_bytes_then(&name, &bytes, open.as_deref())
+            }
             Pending::Exit => {
                 self.allow_close = true;
             }
@@ -940,6 +1072,11 @@ Restore it?"
                     self.help.open_contents();
                     self.help
                         .navigate(crate::help::Loc::page(crate::help::NAME_INDEX));
+                    ui.close();
+                }
+                #[cfg(target_arch = "wasm32")]
+                if ui.button("Examples…").clicked() {
+                    crate::web::js::show_welcome();
                     ui.close();
                 }
                 ui.separator();
@@ -1746,7 +1883,9 @@ Restore it?"
                 .to_ascii_lowercase();
             if ext == "gm81" || ext == "gmk" {
                 match bytes {
-                    Some(b) => self.request(Pending::OpenBytes(p.display().to_string(), b)),
+                    Some(b) => {
+                        self.request(Pending::OpenBytes(p.display().to_string(), b, None))
+                    }
                     None => self.request(Pending::Open(Some(p))),
                 }
             } else if ["png", "bmp", "gif", "jpg", "jpeg"].contains(&ext.as_str()) {

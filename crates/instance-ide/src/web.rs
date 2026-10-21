@@ -40,17 +40,40 @@ pub mod js {
         /// Hides the "loading" message of the page.
         #[wasm_bindgen(js_namespace = instanceIde, js_name = loaded)]
         pub fn loaded();
+        /// Shows the welcome screen with the example projects (`web/ide.js`).
+        #[wasm_bindgen(js_namespace = instanceIde, js_name = showWelcome)]
+        pub fn show_welcome();
     }
+}
+
+/// A project file given as bytes, with the resource whose editor opens after it
+/// is loaded (`?open=NAME`).
+pub struct Linked {
+    pub name: String,
+    pub bytes: Vec<u8>,
+    pub open: Option<String>,
+}
+
+/// The previous session's autosave.
+pub struct Autosave {
+    pub name: String,
+    pub bytes: Vec<u8>,
+    /// When it was saved, in ms since the epoch.
+    pub time: f64,
 }
 
 /// Something that arrived asynchronously for the app.
 pub enum Incoming {
-    /// A project to open (name, bytes), e.g. from `?project=URL`.
-    Open(String, Vec<u8>),
-    /// The previous session's autosave (name, bytes, time in ms since the epoch).
-    Autosave(String, Vec<u8>, f64),
+    /// A project to open, e.g. from `?project=URL`.
+    Open(Linked),
+    /// The previous session's autosave, with the `?project=` project when there was
+    /// one: the app asks which to open, so following a link never silently replaces
+    /// work kept only in the browser.
+    Autosave(Autosave, Option<Linked>),
     /// A file dropped onto the page (name, bytes).
     Dropped(String, Vec<u8>),
+    /// File > New (the welcome screen's "Start an empty project").
+    New,
     Error(String),
 }
 
@@ -87,42 +110,119 @@ pub fn read_dropped(f: eframe::egui::DroppedFileHandle) {
     });
 }
 
-/// Kicks off the startup work once: `?project=URL` is fetched and opened,
-/// otherwise a previous autosave is offered.
-pub fn startup(ctx: &eframe::egui::Context) {
-    if STARTED.with(|s| std::mem::replace(&mut *s.borrow_mut(), true)) {
+/// The file name at the end of a URL.
+fn url_file_name(url: &str) -> String {
+    url.split(['?', '#'])
+        .next()
+        .and_then(|u| u.rsplit('/').next())
+        .filter(|n| !n.is_empty())
+        .unwrap_or("project.gm81")
+        .to_string()
+}
+
+/// Fetches the project at `url`.
+async fn fetch_linked(url: &str, open: Option<String>) -> Result<Linked, String> {
+    match wasm_bindgen_futures::JsFuture::from(js::fetch_bytes(url)).await {
+        Ok(b) => Ok(Linked {
+            name: url_file_name(url),
+            bytes: bytes_of(&b),
+            open,
+        }),
+        Err(e) => Err(format!(
+            "Cannot load {url}: {}",
+            e.as_string().unwrap_or_else(|| format!("{e:?}"))
+        )),
+    }
+}
+
+/// The autosave of the previous session, if there is one.
+async fn autosave() -> Option<Autosave> {
+    let v = wasm_bindgen_futures::JsFuture::from(js::load_autosave()).await.ok()?;
+    if v.is_null() || v.is_undefined() {
+        return None;
+    }
+    let get = |k: &str| js_sys::Reflect::get(&v, &k.into()).ok();
+    let bytes = get("bytes").map(|b| bytes_of(&b)).unwrap_or_default();
+    (!bytes.is_empty()).then(|| Autosave {
+        name: get("name").and_then(|n| n.as_string()).unwrap_or_default(),
+        time: get("time").and_then(|t| t.as_f64()).unwrap_or(0.0),
+        bytes,
+    })
+}
+
+/// Marks the startup work as done; returns whether it had been already.
+fn mark_started() -> bool {
+    STARTED.with(|s| std::mem::replace(&mut *s.borrow_mut(), true))
+}
+
+fn repaint() {
+    if let Some(c) = crate::dialogs::context() {
+        c.request_repaint();
+    }
+}
+
+/// Kicks off the startup work once: `?project=URL` is fetched and opened (and
+/// `?open=NAME` opens that resource's editor), and a previous autosave is offered.
+pub fn startup(_ctx: &eframe::egui::Context) {
+    if mark_started() {
         return;
     }
-    let ctx = ctx.clone();
     wasm_bindgen_futures::spawn_local(async move {
-        if let Some(url) = js::query_param("project").filter(|u| !u.is_empty()) {
-            let name = url
-                .rsplit('/')
-                .next()
-                .and_then(|n| n.split(['?', '#']).next())
-                .unwrap_or("project.gm81")
-                .to_string();
-            match wasm_bindgen_futures::JsFuture::from(js::fetch_bytes(&url)).await {
-                Ok(b) => push(Incoming::Open(name, bytes_of(&b))),
-                Err(e) => push(Incoming::Error(format!(
-                    "Cannot load {url}: {}",
-                    e.as_string().unwrap_or_else(|| format!("{e:?}"))
-                ))),
-            }
-        } else if let Ok(v) = wasm_bindgen_futures::JsFuture::from(js::load_autosave()).await {
-            if !v.is_null() && !v.is_undefined() {
-                let get = |k: &str| js_sys::Reflect::get(&v, &k.into()).ok();
-                let name = get("name").and_then(|n| n.as_string()).unwrap_or_default();
-                let time = get("time").and_then(|t| t.as_f64()).unwrap_or(0.0);
-                let bytes = get("bytes").map(|b| bytes_of(&b)).unwrap_or_default();
-                if !bytes.is_empty() {
-                    push(Incoming::Autosave(name, bytes, time));
+        let open = js::query_param("open").filter(|n| !n.is_empty());
+        let linked = match js::query_param("project").filter(|u| !u.is_empty()) {
+            Some(url) => match fetch_linked(&url, open).await {
+                Ok(l) => Some(l),
+                Err(e) => {
+                    push(Incoming::Error(e));
+                    None
                 }
-            }
+            },
+            None => None,
+        };
+        match (autosave().await, linked) {
+            (Some(a), l) => push(Incoming::Autosave(a, l)),
+            (None, Some(l)) => push(Incoming::Open(l)),
+            (None, None) => {}
         }
         js::loaded();
-        ctx.request_repaint();
+        repaint();
     });
+}
+
+/// Opens the project at `url` (relative to the page), then the editor of the
+/// resource named `open` (if given); called by the welcome screen of `web/ide.js`.
+/// Before the IDE's first frame this replaces the startup work (`?project=`, the
+/// autosave offer); later, unsaved changes are asked about first.
+#[wasm_bindgen]
+pub fn open_project_url(url: String, open: Option<String>) {
+    mark_started();
+    wasm_bindgen_futures::spawn_local(async move {
+        match fetch_linked(&url, open.filter(|n| !n.is_empty())).await {
+            Ok(l) => push(Incoming::Open(l)),
+            Err(e) => push(Incoming::Error(e)),
+        }
+        js::loaded();
+        repaint();
+    });
+}
+
+/// Starts an empty project (the welcome screen's "Start an empty project"); unsaved
+/// changes are asked about first.
+#[wasm_bindgen]
+pub fn new_project() {
+    mark_started();
+    push(Incoming::New);
+    js::loaded();
+    repaint();
+}
+
+/// Opens a project file given as bytes (the welcome screen's "Open a file").
+#[wasm_bindgen]
+pub fn open_project_bytes(name: String, bytes: Vec<u8>) {
+    mark_started();
+    push(Incoming::Open(Linked { name, bytes, open: None }));
+    js::loaded();
+    repaint();
 }
 
 thread_local! {

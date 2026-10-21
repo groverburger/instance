@@ -209,5 +209,109 @@
       const l = document.getElementById("loading");
       if (l) l.remove();
     },
+
+    // Called by ide.html once the wasm module is initialised: its exports
+    // open_project_url(url, open), open_project_bytes(name, bytes), new_project().
+    setWasm(exports) {
+      resolveWasm(exports);
+    },
+
+    // Shows the welcome screen (also Help > Examples).
+    showWelcome() {
+      welcome.show();
+    },
   };
+
+  let resolveWasm;
+  const wasm = new Promise((r) => (resolveWasm = r));
+
+  // The welcome screen (#welcome in ide.html): shown on a first visit, i.e. without
+  // ?project= and without an autosave. Its links are real URLs (ide.html?project=...,
+  // play.html?game=...), so they also work in a new tab; a plain click on "Edit"
+  // opens the project in this page without reloading it.
+  const welcome = (function () {
+    const $ = (id) => document.getElementById(id);
+    let wired = false;
+
+    function hide() {
+      const w = $("welcome");
+      if (w) w.hidden = true;
+      const c = document.querySelector("canvas");
+      if (c) c.focus();
+    }
+
+    function loadingText(t) {
+      const l = $("loading");
+      if (l) l.textContent = t;
+    }
+
+    async function edit(a) {
+      const params = new URL(a.href, location.href).searchParams;
+      const url = params.get("project");
+      const open = params.get("open");
+      hide();
+      loadingText("Loading " + url.split("/").pop() + "…");
+      history.replaceState(null, "", a.getAttribute("href"));
+      (await wasm).open_project_url(url, open || undefined);
+    }
+
+    async function openFile() {
+      const files = await window.instanceIde.pickFiles(".gm81,.gmk,.gm6", false);
+      if (!files || !files.length) return;
+      hide();
+      (await wasm).open_project_bytes(files[0].name, files[0].bytes);
+    }
+
+    function wire() {
+      if (wired) return;
+      wired = true;
+      const w = $("welcome");
+      w.addEventListener("click", (e) => {
+        const a = e.target.closest("a[data-edit]");
+        if (a && !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button)) {
+          e.preventDefault();
+          edit(a);
+        } else if (e.target === w) {
+          hide();
+        }
+      });
+      $("welcome-close").onclick = hide;
+      $("welcome-empty").onclick = async () => {
+        hide();
+        history.replaceState(null, "", location.pathname);
+        (await wasm).new_project();
+      };
+      $("welcome-open").onclick = openFile;
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && !w.hidden) hide();
+      });
+      // examples that are supplied separately: shown when their file is on the server
+      const sp = $("card-spelunky");
+      if (sp) {
+        fetch("examples/spelunky.gm81", { method: "HEAD" })
+          .then((r) => { sp.hidden = !r.ok; })
+          .catch(() => {});
+      }
+    }
+
+    function show() {
+      const w = $("welcome");
+      if (!w) return;
+      wire();
+      w.hidden = false;
+      const first = w.querySelector(".hero .btn.primary");
+      if (first) first.focus();
+    }
+
+    return { show, hide };
+  })();
+
+  // First visit: no ?project= and nothing autosaved.
+  async function firstVisit() {
+    if (new URLSearchParams(location.search).get("project")) return false;
+    return !(await window.instanceIde.loadAutosave());
+  }
+  const start = () => firstVisit().then((yes) => yes && welcome.show()).catch(() => {});
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+  else start();
 })();

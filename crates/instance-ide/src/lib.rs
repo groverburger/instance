@@ -27,7 +27,7 @@ mod web;
 mod widgets;
 
 #[cfg(target_arch = "wasm32")]
-pub use web::start_ide;
+pub use web::{new_project, open_project_bytes, open_project_url, start_ide};
 
 /// Title of the main window.
 pub const APP_TITLE: &str = "Instance";

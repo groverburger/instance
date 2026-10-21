@@ -155,8 +155,25 @@ over HTTP, not opened as files. The GitHub Pages site is built by
 
 - **IDE**: File > Open uses the browser's file picker, or drop a file. Save downloads
   the `.gm81`. The project is autosaved to IndexedDB and offered again on the next
-  visit. `?project=URL` opens a project from the server. Run (F5) plays the game in an
-  overlay. Create Executable isn't available; File > Export Web Page is (below).
+  visit. `?project=URL` opens a project from the server, and `&open=NAME` then opens
+  the editor of the resource NAME (maximised). If the browser holds an autosave, a
+  `?project=` link asks first: open the linked project (its autosave replaces the old
+  one once it is changed), download the old one and then open the link, or keep
+  working on the old one. Run (F5) plays the game in an overlay. Create Executable
+  isn't available; File > Export Web Page is (below).
+- **Welcome screen**: on a first visit (no `?project=`, no autosave) the IDE shows
+  the example projects of `web/examples/` (Edit opens one in the IDE, Play in
+  `play.html`), "Start an empty project" and "Open a file". Help > Examples shows it
+  again. It is plain HTML in `web/ide.html` and `web/ide.js`; the Spelunky card
+  appears only when `examples/spelunky.gm81` is on the server.
+- **Examples**: `web/examples/*.gm81` are committed, because the Pages workflow can't
+  read the private `instance-gamekit` repository; the build scripts copy the folder.
+  `scripts/pack-web-examples.sh` repacks Brickhop and Gravity Grade from
+  `$INSTANCE_GAMEKIT` (default `../instance-gamekit`), transcoding their music WAVs to
+  OGG Vorbis (ffmpeg, oggenc or Python with `soundfile`) so that the files are 2 and
+  5 MB instead of 10 and 40 MB. `scripts/build-spelunky-mod.py` makes `spelunky.gm81`
+  (Spelunky Classic, under its own license, `spelunky-COPYING.txt`). The thumbnails
+  (`*.png`) are headless-runner screenshots.
 - **Player**: `play.html?game=URL` loads a game, or drop a file onto the page. A page
   can also embed a game with `<script id="instance-game" data-src=URL>` or
   `window.INSTANCE_GAME_BASE64`. The game starts after a click, because browsers only

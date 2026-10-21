@@ -30,6 +30,9 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "wasm-bindgen failed for $name" }
     }
     Copy-Item -Force web\*.html, web\*.js $Out
+    # example projects of the welcome screen (packed by scripts/pack-web-examples.sh)
+    New-Item -ItemType Directory -Force (Join-Path $Out "examples") | Out-Null
+    Copy-Item -Force web\examples\* (Join-Path $Out "examples")
     # optional SoundFont for MIDI: $env:INSTANCE_SOUNDFONT ($env:GM81_SOUNDFONT) or web\soundfonts\default.sf2
     # (ignored by version control; scripts\fetch-soundfont.ps1 downloads GeneralUser GS there)
     $sf = if ($env:INSTANCE_SOUNDFONT) { $env:INSTANCE_SOUNDFONT } elseif ($env:GM81_SOUNDFONT) { $env:GM81_SOUNDFONT } elseif (Test-Path web\soundfonts\default.sf2) { "web\soundfonts\default.sf2" } else { $null }

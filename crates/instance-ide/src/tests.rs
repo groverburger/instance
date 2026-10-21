@@ -1098,8 +1098,10 @@ fn screenshot_readme() {
     let p = ops::load_project(&path).unwrap();
     let want = std::env::var("INSTANCE_README_ROOM").unwrap_or_default();
     let room = p.rooms.iter().position(|r| r.as_ref().is_some_and(|r| r.name == want)).unwrap_or(0);
+    // `$INSTANCE_README_HEIGHT`: a lower window suits a short room
+    let height: f32 = std::env::var("INSTANCE_README_HEIGHT").ok().and_then(|v| v.parse().ok()).unwrap_or(760.0);
     let mut h = egui_kittest::Harness::builder()
-        .with_size(eframe::egui::Vec2::new(1280.0, 760.0))
+        .with_size(eframe::egui::Vec2::new(1280.0, height))
         .with_theme(eframe::egui::Theme::Light)
         .wgpu()
         .build_eframe(|cc| crate::app::IdeApp::new(cc, None));
@@ -1108,7 +1110,7 @@ fn screenshot_readme() {
     h.run_steps(2);
     h.state_mut().open_form(ResKey::Res(ResourceKind::Room, room));
     h.run_steps(8);
-    h.hover_at(eframe::egui::pos2(1270.0, 750.0));
+    h.hover_at(eframe::egui::pos2(1270.0, height - 10.0));
     h.run_steps(4);
     h.render().unwrap().save(out.join("ide.png")).unwrap();
 }
@@ -1511,4 +1513,24 @@ fn screenshot_help() {
         .unwrap()
         .save(out.join("help_table.png"))
         .unwrap();
+}
+
+/// `ide.html?project=URL&open=NAME`: the named resource's editor opens (maximised)
+/// after the project is loaded; an unknown name is reported.
+#[test]
+fn open_bytes_then_opens_named_resource() {
+    let mut h = harness();
+    let mut p = ops::new_project();
+    ops::create_resource(&mut p, ResourceKind::Object, &ops::Placement::End);
+    let (room, _) = ops::create_resource(&mut p, ResourceKind::Room, &ops::Placement::End);
+    ops::rename_resource(&mut p, ResourceKind::Room, room, "rm_level");
+    let bytes = ops::project_bytes(&p).unwrap();
+    h.state_mut().open_bytes_then("game.gm81", &bytes, Some("rm_level"));
+    h.run_steps(3);
+    let (_, _, forms, msgs) = h.state().test_state();
+    assert_eq!((forms, msgs), (1, 0));
+    h.state_mut().open_bytes_then("game.gm81", &bytes, Some("rm_missing"));
+    h.run_steps(2);
+    let (_, _, forms, msgs) = h.state().test_state();
+    assert_eq!((forms, msgs), (0, 1));
 }

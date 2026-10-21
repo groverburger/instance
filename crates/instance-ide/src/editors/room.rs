@@ -100,10 +100,25 @@ pub fn snap(v: f32, grid: i32) -> i32 {
 
 impl RoomEditor {
     pub fn new(idx: usize, work: Room, p: &Project) -> Self {
-        let obj_to_add = crate::project_ops::tree_order(p, ResourceKind::Object)
+        // the first object in the tree, preferring one with a sprite (a controller
+        // object would be invisible in the room)
+        let objects: Vec<i32> = crate::project_ops::tree_order(p, ResourceKind::Object)
             .into_iter()
-            .find(|x| x.0 >= 0)
-            .map_or(-1, |x| x.0);
+            .map(|x| x.0)
+            .filter(|&i| i >= 0)
+            .collect();
+        let has_sprite = |&i: &i32| {
+            p.objects
+                .get(i as usize)
+                .and_then(|o| o.as_ref())
+                .is_some_and(|o| o.sprite >= 0 && p.sprites.get(o.sprite as usize).is_some_and(|s| s.is_some()))
+        };
+        let obj_to_add = objects
+            .iter()
+            .copied()
+            .find(has_sprite)
+            .or(objects.first().copied())
+            .unwrap_or(-1);
         let layer = work.tiles.first().map_or(1_000_000, |t| t.depth);
         RoomEditor {
             idx,

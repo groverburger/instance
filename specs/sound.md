@@ -46,6 +46,9 @@ Detect by content, not extension:
   at most 0.5 s). Example: Studio-converted Spelunky Classic music (LAME 3.98.2, no
   Info tag) decodes to ~25 ms of delay plus ~370 ms of trailing digital silence,
   which made an audible gap at each loop; trimmed, `mCave` is 96.02 s.
+  Ogg Vorbis: the stream is exactly as long as the granule position of its last
+  page; decoded frames past it (a decoder may return the whole last block, a few
+  ms) are dropped.
 
 ---
 
