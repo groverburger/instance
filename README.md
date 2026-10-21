@@ -120,9 +120,10 @@ Tools and example games for *making* games with Instance live in the separate
 Instance is released under the [MIT License](LICENSE). The bundled fonts keep their
 own licenses (Liberation Sans: SIL Open Font License; Roboto: Apache 2.0).
 
-The example games are in [`web/examples`](web/examples). Brickhop and Gravity Grade come
-from `instance-gamekit` (MIT or Apache 2.0). Spelunky Classic is not covered by
-Instance's license: it is © 2008, 2009 Derek Yu and Mossmouth, LLC, shared under the
+The example games are in [`web/examples`](web/examples). Brickhop and Gravity Grade were
+made with [`instance-gamekit`](https://github.com/groverburger/instance-gamekit).
+Spelunky Classic is not covered by Instance's license: it is © 2008, 2009 Derek Yu and
+Mossmouth, LLC, shared under the
 [Spelunky User License v1.1b](web/examples/spelunky-COPYING.txt). The copy here is a mod
 of the original source: its sound goes through GameMaker's built-in sound functions
 instead of `supersound.dll`, so it runs without a DLL and in the browser
