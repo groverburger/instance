@@ -86,6 +86,27 @@ struct Slot {
     outside: u32,
     /// Frames are presented by OpenGL from the game thread.
     gl: bool,
+    /// Smooth the scaled image ("Interpolate colors between pixels").
+    smooth: bool,
+}
+
+/// The 0RGB image `px` (w × h) sampled at (x, y) in pixel units (pixel centres at whole
+/// numbers), blending the four nearest pixels; the edges are clamped.
+fn bilinear(px: &[u32], w: u32, h: u32, x: f64, y: f64) -> u32 {
+    let (x, y) = (x.clamp(0.0, (w - 1) as f64), y.clamp(0.0, (h - 1) as f64));
+    let (x0, y0) = (x.floor() as u32, y.floor() as u32);
+    let (x1, y1) = ((x0 + 1).min(w - 1), (y0 + 1).min(h - 1));
+    let (fx, fy) = (x - x0 as f64, y - y0 as f64);
+    let at = |xx: u32, yy: u32| px[(yy * w + xx) as usize];
+    let (a, b, c, d) = (at(x0, y0), at(x1, y0), at(x0, y1), at(x1, y1));
+    let mut out = 0;
+    for sh in [16, 8, 0] {
+        let ch = |p: u32| ((p >> sh) & 0xFF) as f64;
+        let top = ch(a) + (ch(b) - ch(a)) * fx;
+        let bottom = ch(c) + (ch(d) - ch(c)) * fx;
+        out |= ((top + (bottom - top) * fy).round() as u32) << sh;
+    }
+    out
 }
 
 fn slot_mapping(s: &Slot) -> Mapping {
@@ -194,7 +215,13 @@ impl App {
             let src_row = ry as usize * s.w as usize;
             for x in 0..ww {
                 let rx = ((x as f64 - m.ox) / m.sx).floor();
-                buf[row + x as usize] = if rx < 0.0 || rx >= rw { outside } else { s.pixels[src_row + rx as usize] };
+                buf[row + x as usize] = if rx < 0.0 || rx >= rw {
+                    outside
+                } else if s.smooth {
+                    bilinear(&s.pixels, s.w, s.h, (x as f64 + 0.5 - m.ox) / m.sx - 0.5, (y as f64 + 0.5 - m.oy) / m.sy - 0.5)
+                } else {
+                    s.pixels[src_row + rx as usize]
+                };
             }
         }
         drop(s);
@@ -528,6 +555,8 @@ impl UiHooks for RfdUi {
 
 /// Installs the presentation hook for the chosen renderer.
 fn install_present(g: &mut Game, slot: &Arc<Mutex<Slot>>, proxy: &EventLoopProxy<UserEvent>, gl: bool) {
+    let smooth = g.gfx.smooth_screen;
+    slot.lock().unwrap().smooth = smooth;
     let slot = slot.clone();
     let proxy = proxy.clone();
     if gl {
@@ -539,7 +568,7 @@ fn install_present(g: &mut Game, slot: &Arc<Mutex<Slot>>, proxy: &EventLoopProxy
             drop(s);
             if let Some(gl) = be.as_gl() {
                 let o = [(out >> 16) as u8, (out >> 8) as u8, out as u8, 255];
-                gl.present(ww, wh, m.ox, m.oy, m.sx, m.sy, o, false);
+                gl.present(ww, wh, m.ox, m.oy, m.sx, m.sy, o, smooth);
             }
             let _ = proxy.send_event(UserEvent::Frame);
         }));

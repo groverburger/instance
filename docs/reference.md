@@ -175,9 +175,11 @@ over HTTP, not opened as files. The GitHub Pages site is built by
   5 MB instead of 12 and 40 MB. `scripts/build-spelunky-mod.py` makes `spelunky.gm81`
   (Spelunky Classic, under its own license, `spelunky-COPYING.txt`); Emberwood and
   Gravity Grade are under the MIT License (`LICENSE-MIT.txt`). The thumbnails
-  (`*.png`, `emberwood.jpg`) are headless-runner screenshots. The desktop IDE has the
-  examples built in (`crates/instance-ide/src/welcome.rs`, about 14 MB) and shows the
-  same welcome dialog on its first start and with File > Examples….
+  (`*.png`, `emberwood.jpg`) are headless-runner screenshots. The desktop IDE shows the
+  same welcome dialog (`crates/instance-ide/src/welcome.rs`) on its first start and with
+  File > Examples…; only the screenshots are built in. Edit and Play download the game
+  from the GitHub Pages site's `examples/`, keeping a copy in the user's data folder
+  (`examples/`) that is used when the site can't be reached.
 - **Player**: `play.html?game=URL` loads a game, or drop a file onto the page. A page
   can also embed a game with `<script id="instance-game" data-src=URL>` or
   `window.INSTANCE_GAME_BASE64`. A start screen shows the game's name and a progress

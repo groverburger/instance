@@ -741,15 +741,15 @@ impl IdeApp {
 
     /// Plays an example game of the welcome dialog (without opening it).
     #[cfg(not(target_arch = "wasm32"))]
-    fn play_example(&mut self, ex: &crate::welcome::Example) {
+    fn play_example(&mut self, file: &str, bytes: &[u8]) {
         if self.runner.is_some() {
             self.messages.push("A game is already running.".into());
             return;
         }
         let rp =
             (!self.prefs.runner_path.trim().is_empty()).then(|| self.prefs.runner_path.clone());
-        match crate::run::prepare_example(ex.file, ex.bytes, rp.as_deref()) {
-            Ok(c) => self.start_runner(c, ex.file, false),
+        match crate::run::prepare_example(file, bytes, rp.as_deref()) {
+            Ok(c) => self.start_runner(c, file, false),
             Err(e) => self.messages.push(e),
         }
     }
@@ -1798,10 +1798,10 @@ impl IdeApp {
         {
             use crate::welcome::Choice;
             match self.welcome.ui(ctx) {
-                Some(Choice::Edit(ex)) => {
-                    self.request(Pending::OpenBytes(ex.file.into(), ex.bytes.to_vec(), None))
+                Some(Choice::Edit(ex, bytes)) => {
+                    self.request(Pending::OpenBytes(ex.file.into(), bytes, None))
                 }
-                Some(Choice::Play(ex)) => self.play_example(ex),
+                Some(Choice::Play(ex, bytes)) => self.play_example(ex.file, &bytes),
                 Some(Choice::New) => self.request(Pending::New),
                 Some(Choice::Open) => self.request(Pending::Open(None)),
                 None => {}

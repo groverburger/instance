@@ -33,6 +33,10 @@ pub struct Gfx {
     pub blend: Blend,
     pub circle_precision: i32,
     pub interpolate: bool,
+    /// The game setting "Interpolate colors between pixels": the scaled game image is
+    /// smoothed on its way to the window, not only textures (which follow
+    /// `interpolate`, changed by `texture_set_interpolation`).
+    pub smooth_screen: bool,
     pub texture_repeat: bool,
     pub fonts: FontSystem,
     /// Hook used to show frames (end of step, transitions, screen_refresh,
@@ -91,6 +95,7 @@ impl Gfx {
             blend: Blend::NORMAL,
             circle_precision: 24,
             interpolate,
+            smooth_screen: interpolate,
             texture_repeat: false,
             fonts: FontSystem::new(),
             present: None,

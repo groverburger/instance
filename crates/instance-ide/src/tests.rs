@@ -685,9 +685,10 @@ fn ui_mdi_drag_partly_outside() {
     assert!((r3.size() - r0.size()).length() < 1.5, "{r0:?} -> {r3:?}");
 }
 
-/// File > Examples… shows the welcome dialog; Edit on a tab opens that example.
+/// File > Examples… shows the welcome dialog with a tab per example. (Edit and Play
+/// download the game, so they are not run here.)
 #[test]
-fn ui_examples_open_from_welcome() {
+fn ui_examples_welcome_dialog() {
     use egui_kittest::kittest::Queryable;
     let mut h = harness();
     h.get_by_label("File").click();
@@ -696,11 +697,8 @@ fn ui_examples_open_from_welcome() {
     h.run_steps(3);
     h.get_by_label("Emberwood").click();
     h.run_steps(2);
-    // (the menu bar has an "Edit" too: the dialog's button comes last)
-    h.get_all_by_label("Edit").last().unwrap().click();
-    h.run_steps(4);
-    let p = h.state().test_state().0;
-    assert!(p.objects.iter().flatten().any(|o| o.name == "obj_game"), "Emberwood is open");
+    assert!(h.query_by_label_contains("an autumn walk").is_some(), "the Emberwood tab shows");
+    assert!(h.query_by_label("Play").is_some() && h.query_by_label("New project").is_some());
 }
 
 /// A small synthetic project with one populated resource of each kind.

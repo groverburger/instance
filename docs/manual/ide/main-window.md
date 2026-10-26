@@ -12,7 +12,7 @@ For a quick introduction, see [A tour of the IDE](../intro/tour.md).
 | Open… | Opens a `.gm81` or `.gmk` project file. Shortcut Ctrl+O. |
 | Open Folder… | Opens a [project folder](project-files.md#project-folders). |
 | Recent Files | Lists the last eight projects you opened or saved. |
-| Examples… | Shows the welcome screen with the example games that come with Instance: open one with **Edit**, or **Play** it. |
+| Examples… | Shows the welcome screen with the example games: open one with **Edit**, or **Play** it. The desktop version downloads the game from the Instance website, and keeps a copy for when you are offline. |
 | Save | Saves the project to its file. A project without a file, or one that was opened from a `.gmk` file, asks for a name first. Shortcut Ctrl+S. |
 | Save As… | Saves the project under a new name, as a `.gm81` file. |
 | Save As Folder… | Saves the project as a [project folder](project-files.md#project-folders); later saves go to that folder. |

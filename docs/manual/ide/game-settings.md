@@ -20,7 +20,7 @@ in other tools, but the Instance runner doesn't act on them (yet). They are mark
 | Scaling: Fixed scale (%) | Draws the game at this percentage of its normal size. 100 means no scaling. |
 | Scaling: Keep aspect ratio | Scales the game as large as fits, keeping its proportions. Bars fill the rest. This is the default. |
 | Scaling: Full scale | Stretches the game to fill the screen or window completely. |
-| Interpolate colors between pixels | Smooths scaled graphics. Leave it off for crisp pixel art. |
+| Interpolate colors between pixels | Smooths scaled graphics: sprites and backgrounds drawn scaled or rotated, and the whole game image when the window is bigger than the room. Leave it off for crisp pixel art. |
 | Color outside the room region | The colour of the area around the game when it doesn't fill the screen or window. |
 | Allow the player to resize the game window | The game window can be resized by dragging its edges. |
 | Let the game window always stay on top | Keeps the game window above other windows. |

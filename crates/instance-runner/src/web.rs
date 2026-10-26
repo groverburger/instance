@@ -356,13 +356,16 @@ fn webgl2(canvas: &HtmlCanvasElement) -> Option<web_sys::WebGl2RenderingContext>
 
 /// Installs the presentation hook: WebGL2 blit, or software pixels into a 2D canvas.
 fn install_present(g: &mut Game, canvas: &HtmlCanvasElement, place: Rc<RefCell<Placement>>, gl: bool) {
+    let smooth = g.gfx.smooth_screen;
+    // the software frame is scaled by CSS; the WebGL canvas is (about) 1:1 with the page
+    let _ = canvas.style().set_property("image-rendering", if smooth { "auto" } else { "pixelated" });
     if gl {
         g.gfx.present = Some(Box::new(move |be: &mut dyn Backend| {
             let p = *place.borrow();
             let o = p.outside;
             if let Some(gl) = be.as_gl() {
                 let m = p.map;
-                gl.present(p.w, p.h, m.ox, m.oy, m.sx, m.sy, [(o >> 16) as u8, (o >> 8) as u8, o as u8, 255], false);
+                gl.present(p.w, p.h, m.ox, m.oy, m.sx, m.sy, [(o >> 16) as u8, (o >> 8) as u8, o as u8, 255], smooth);
             }
         }));
         return;
