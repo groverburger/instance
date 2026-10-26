@@ -33,8 +33,10 @@ project regularly.
 
 ## Running games
 
-**Run** (F5) plays the game in a panel on top of the IDE. Click **✕** in its title
-bar to stop the game and return to the IDE. Debug mode isn't available in the browser:
+**Run** (F5) plays the game in a window on top of the IDE. A progress bar shows the
+player loading (the first time it downloads the player and the MIDI SoundFont); then
+click **Start**. Click **✕** in the window's title bar to stop the game and return to
+the IDE. Debug mode isn't available in the browser:
 **Run in debug mode** (F6) plays the game normally.
 
 Games running in the browser have some limits:

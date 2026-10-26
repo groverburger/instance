@@ -89,6 +89,9 @@ Both are disabled while a game is running. See
 The open forms are listed at the bottom of the menu; click one to bring it to the
 front.
 
+Move a form by dragging its title bar. It can go partly past the left, right and bottom
+edges of the workspace, where it is cut off; its title bar always stays in reach.
+
 ## The Help menu
 
 | Command | What it does |

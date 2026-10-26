@@ -652,6 +652,39 @@ fn ui_mdi_move_resize_maximise() {
     );
 }
 
+/// MDI child windows may be dragged partly out of the workspace (clipped there), keep
+/// their title bar reachable, and come back whole.
+#[test]
+fn ui_mdi_drag_partly_outside() {
+    use eframe::egui::vec2;
+    let mut h = harness();
+    h.state_mut().test_set_project(synthetic_project());
+    h.state_mut()
+        .open_form(ResKey::Res(ResourceKind::Script, 0));
+    h.run_steps(4);
+    let id = h.state().test_form_ids()[0];
+    let rect = |h: &egui_kittest::Harness<'_, crate::app::IdeApp>| {
+        h.ctx.memory(|m| m.area_rect(id)).unwrap()
+    };
+    let ws = crate::mdi::workspace(&h.ctx);
+    let r0 = rect(&h);
+    // far to the right and down: a strip of the window and its title bar stay inside
+    drag(&mut h, r0.min + vec2(40.0, 12.0), vec2(3000.0, 3000.0));
+    let r1 = rect(&h);
+    assert!((r1.width() - crate::mdi::KEEP_VISIBLE).abs() < 1.5, "{r1:?}");
+    assert!(r1.max.x <= ws.max.x + 0.5 && r1.max.y <= ws.max.y + 0.5, "{r1:?} in {ws:?}");
+    assert!(r1.height() >= crate::mdi::TITLE_H, "{r1:?}");
+    // partly out to the left: clipped at the workspace's left edge
+    drag(&mut h, r1.min + vec2(20.0, 12.0), vec2(-3000.0, -3000.0));
+    let r2 = rect(&h);
+    assert!((r2.min.x - ws.min.x).abs() < 1.5 && (r2.min.y - ws.min.y).abs() < 1.5, "{r2:?}");
+    assert!((r2.width() - crate::mdi::KEEP_VISIBLE).abs() < 1.5, "{r2:?}");
+    // and back in, whole
+    drag(&mut h, r2.min + vec2(20.0, 12.0), vec2(r0.width() + 50.0, 40.0));
+    let r3 = rect(&h);
+    assert!((r3.size() - r0.size()).length() < 1.5, "{r0:?} -> {r3:?}");
+}
+
 /// A small synthetic project with one populated resource of each kind.
 fn synthetic_project() -> instance_format::Project {
     let mut p = ops::new_project();

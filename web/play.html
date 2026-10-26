@@ -7,28 +7,54 @@
   <link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
   <style>
     [hidden] { display: none !important; }
-    html, body { margin: 0; height: 100%; background: #000; color: #ddd;
-      font: 15px system-ui, -apple-system, "Segoe UI", sans-serif; }
+    html, body { margin: 0; height: 100%; background: #000; color: #0a0a0a;
+      font: 13px/1.4 "Segoe UI", Tahoma, system-ui, sans-serif; }
     body { display: flex; align-items: center; justify-content: center; overflow: hidden; }
     #game { display: block; outline: none; image-rendering: pixelated; background: #000; }
-    #overlay { position: fixed; inset: 0; display: flex; flex-direction: column; gap: 12px;
-      align-items: center; justify-content: center; background: rgba(0, 0, 0, .85); text-align: center; padding: 16px; }
-    #overlay button { font: inherit; font-size: 18px; padding: 12px 28px; border: 0; border-radius: 6px;
-      background: #3a7bd5; color: #fff; cursor: pointer; }
-    #overlay button:hover { background: #2f68b8; }
-    #overlay .hint { color: #999; font-size: 13px; max-width: 34em; }
-    #overlay.drop { outline: 3px dashed #3a7bd5; outline-offset: -12px; }
-    .error { color: #f88; white-space: pre-wrap; }
+    /* loading and start: a classic dialog, like the IDE's (web/ide.html) */
+    #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      background: #000; padding: 16px; }
+    #overlay.drop { outline: 2px dashed #a6caf0; outline-offset: -10px; }
+    .win { box-sizing: border-box; width: min(100%, 340px); padding: 3px; background: #f0f0f0;
+      border: 1px solid; border-color: #fff #696969 #696969 #fff; box-shadow: inset 1px 1px #fff, inset -1px -1px #a0a0a0; }
+    .cap { display: flex; align-items: center; gap: 5px; height: 20px; padding: 0 4px;
+      background: linear-gradient(90deg, #0a246a, #a6caf0); color: #fff; font-weight: 700; user-select: none; }
+    .cap img { width: 16px; height: 16px; }
+    .cap span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .body { padding: 12px; }
+    .body p { margin: 0; }
+    #status { overflow-wrap: anywhere; }
+    /* a progress bar of whole blocks (the fill's width is rounded to whole blocks) */
+    .bar { position: relative; height: 18px; margin-top: 10px; background: #fff;
+      border: 1px solid; border-color: #696969 #fff #fff #696969; box-shadow: inset 1px 1px #a0a0a0; }
+    .bar i { position: absolute; top: 2px; bottom: 2px; left: 2px; width: 0;
+      background: repeating-linear-gradient(90deg, #0a246a 0 8px, transparent 8px 10px); }
+    #detail { margin-top: 6px; color: #505050; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .hint { margin-top: 10px; color: #505050; font-size: 12px; }
+    .acts { display: flex; justify-content: flex-end; margin-top: 12px; }
+    .btn { box-sizing: border-box; min-width: 82px; padding: 3px 12px; background: #f0f0f0; color: #0a0a0a;
+      font: inherit; cursor: pointer; outline: 1px solid #000;
+      border: 1px solid; border-color: #fff #696969 #696969 #fff; box-shadow: inset -1px -1px #a0a0a0; }
+    .btn:active { border-color: #696969 #fff #fff #696969; box-shadow: inset 1px 1px #a0a0a0; }
+    .btn:focus-visible { outline: 1px dotted #000; outline-offset: -4px; }
+    .error { color: #a00000; white-space: pre-wrap; }
   </style>
 </head>
 <body>
   <canvas id="game" width="640" height="480" hidden></canvas>
   <div id="overlay">
-    <div id="status">Loading&hellip;</div>
-    <button id="start" hidden>Click to start</button>
-    <div class="hint" id="hint">
-      Load a game with <code>?game=URL</code> (a .gm81 or .gmk file on this server),
-      or drop a .gm81 / .gmk file onto this page.
+    <div class="win" role="dialog" aria-labelledby="caption">
+      <div class="cap"><img src="favicon.ico" alt=""><span id="caption">Instance</span></div>
+      <div class="body">
+        <p id="status" role="status">Loading&hellip;</p>
+        <div class="bar" id="bar" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="fill"></i></div>
+        <p id="detail">&nbsp;</p>
+        <p class="hint" id="hint" hidden>
+          Load a game with <code>?game=URL</code> (a .gm81 or .gmk file on this server),
+          or drop a .gm81 / .gmk file onto this page.
+        </p>
+        <div class="acts"><button class="btn" id="start" hidden>Start</button></div>
+      </div>
     </div>
   </div>
   <!-- written by the build script: sets window.INSTANCE_SOUNDFONT when a SoundFont was bundled -->
@@ -38,6 +64,7 @@
 
     // Configuration (URL parameters):
     //   game=URL | idb:KEY   game file to load (idb: = IndexedDB "instance"/"files", used by the IDE)
+    //   name=NAME            the game's name in the dialog (default: from the URL or key)
     //   soundfont=URL        SoundFont for MIDI music (default: window.INSTANCE_SOUNDFONT from config.js; "none" to skip)
     //   renderer=gl|software
     //   audiodebug           log audio diagnostics (MIDI backend, synthesiser activity) to the console
@@ -46,7 +73,45 @@
     // id="gm81-game" and window.GM81_GAME_BASE64, also work).
     const params = new URLSearchParams(location.search);
     const $ = (id) => document.getElementById(id);
-    const status = (t, err) => { $("status").textContent = t; $("status").className = err ? "error" : ""; };
+    const status = (t, err) => {
+      $("status").textContent = t;
+      $("status").className = err ? "error" : "";
+      if (err) loading(false);
+    };
+
+    // Progress of the downloads (the player's code, the SoundFont and the game load at
+    // the same time): bytes so far and expected, per download. A compressed response
+    // reports its compressed length, so a download counts at least what has arrived.
+    const downloads = new Map();
+    let barShown = true;
+    function loading(on) {
+      barShown = on;
+      $("bar").hidden = !on;
+      $("detail").hidden = !on;
+    }
+    // the fill's width: fraction `f` of the bar, in whole blocks (10 px)
+    const blocks = (f) => Math.floor(($("bar").clientWidth - 2) * f / 10) * 10 + "px";
+    function showProgress() {
+      if (!barShown) return;
+      let got = 0, want = 0, known = true;
+      for (const d of downloads.values()) {
+        got += d.got;
+        if (d.want) want += Math.max(d.want, d.got); else known = false;
+      }
+      const mb = (n) => (n / 1048576).toFixed(1);
+      if (known && want > 0) {
+        const f = Math.min(1, got / want);
+        $("fill").style.width = blocks(f);
+        $("bar").setAttribute("aria-valuenow", Math.round(f * 100));
+        $("detail").textContent = `${mb(got)} of ${mb(want)} MB`;
+      } else {
+        $("detail").textContent = `${mb(got)} MB`;
+      }
+    }
+    function finishLoading() {
+      $("fill").style.width = blocks(1);
+      loading(false);
+    }
 
     function idbGet(key) {
       return new Promise((resolve, reject) => {
@@ -63,24 +128,52 @@
       });
     }
 
+    // Downloads `url`, counting its progress.
     async function fetchBytes(url) {
       const r = await fetch(url);
       if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
-      return new Uint8Array(await r.arrayBuffer());
+      const d = { got: 0, want: Number(r.headers.get("content-length")) || 0 };
+      downloads.set(url, d);
+      showProgress();
+      if (!r.body) {
+        const b = new Uint8Array(await r.arrayBuffer());
+        d.got = d.want = b.length;
+        showProgress();
+        return b;
+      }
+      const reader = r.body.getReader();
+      const parts = [];
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        parts.push(value);
+        d.got += value.length;
+        showProgress();
+      }
+      d.want = d.got;
+      showProgress();
+      const b = new Uint8Array(d.got);
+      let at = 0;
+      for (const p of parts) { b.set(p, at); at += p.length; }
+      return b;
     }
 
-    async function loadSoundFont() {
+    // The SoundFont's bytes, or null without one.
+    async function fetchSoundFont() {
       const sf = params.get("soundfont") ?? window.INSTANCE_SOUNDFONT ?? window.GM81_SOUNDFONT;
       if (!sf || sf === "none") {
         console.warn("instance: no SoundFont configured; MIDI music will be silent. " +
           "Build with INSTANCE_SOUNDFONT=path/to/file.sf2 (or put one in web/soundfonts/default.sf2) or pass ?soundfont=URL.");
-        return;
+        return null;
       }
       try {
-        set_soundfont(await fetchBytes(sf));
+        const b = await fetchBytes(sf);
         console.info("instance: SoundFont loaded from", sf);
+        return b;
       } catch (e) {
+        downloads.delete(sf);
         console.warn(`instance: cannot load the SoundFont (${e.message}); MIDI music will be silent.`);
+        return null;
       }
     }
 
@@ -89,11 +182,11 @@
       if (g && g.startsWith("idb:")) {
         const b = await idbGet(g.slice(4));
         if (!b) throw new Error(`no game stored under "${g.slice(4)}"`);
-        return { name: g.slice(4), bytes: b };
+        return { name: params.get("name") ?? g.slice(4), bytes: b };
       }
-      if (g) return { name: g, bytes: await fetchBytes(g) };
+      if (g) return { name: params.get("name") ?? g.split("/").pop(), bytes: await fetchBytes(g) };
       const tag = document.getElementById("instance-game") ?? document.getElementById("gm81-game");
-      if (tag && tag.dataset.src) return { name: tag.dataset.src, bytes: await fetchBytes(tag.dataset.src) };
+      if (tag && tag.dataset.src) return { name: tag.dataset.src.split("/").pop(), bytes: await fetchBytes(tag.dataset.src) };
       const b64 = window.INSTANCE_GAME_BASE64 ?? window.GM81_GAME_BASE64;
       if (b64) {
         const s = atob(b64);
@@ -107,7 +200,9 @@
     let started = false;
     function offer(game) {
       if (started) return;
-      status(`Ready: ${game.name.split("/").pop()} (${(game.bytes.length / 1024).toFixed(0)} KB)`);
+      finishLoading();
+      $("caption").textContent = `${game.name} - Instance`;
+      status(`${game.name} is ready.`);
       $("hint").hidden = true;
       const btn = $("start");
       btn.hidden = false;
@@ -138,6 +233,7 @@
       $("game").hidden = true;
       $("overlay").hidden = false;
       $("start").hidden = true;
+      loading(false);
       status("The game has ended.");
       if (parent !== window) parent.postMessage("instance-close-game", location.origin);
     };
@@ -155,12 +251,20 @@
     });
 
     try {
-      await init();
+      const g = params.get("game");
+      if (g && !g.startsWith("idb:")) status(`Loading ${g.split("/").pop()}…`);
+      const wasm = new URL("./pkg/instance_runner_bg.wasm", import.meta.url).href;
+      const [code, soundfont, game] = await Promise.all([fetchBytes(wasm), fetchSoundFont(), initialGame()]);
+      status("Starting\u2026");
+      await init({ module_or_path: code });
       if (params.has("audiodebug")) set_audio_debug(true);
-      await loadSoundFont();
-      const game = await initialGame();
+      if (soundfont) set_soundfont(soundfont);
       if (game) offer(game);
-      else status("No game loaded.");
+      else {
+        finishLoading();
+        $("hint").hidden = false;
+        status("No game loaded.");
+      }
     } catch (e) {
       console.error(e);
       status(String(e.message ?? e), true);

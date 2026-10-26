@@ -19,9 +19,10 @@ pub mod js {
         /// Offers `bytes` as a download named `name`.
         #[wasm_bindgen(js_namespace = instanceIde)]
         pub fn download(name: &str, bytes: &[u8]);
-        /// Stores the game in IndexedDB and opens `play.html` over the IDE.
+        /// Stores the game in IndexedDB and opens `play.html` over the IDE, in a
+        /// window captioned `name`.
         #[wasm_bindgen(js_namespace = instanceIde, js_name = runGame)]
-        pub fn run_game(bytes: &[u8]);
+        pub fn run_game(name: &str, bytes: &[u8]);
         /// Stores the autosave (name, bytes) in IndexedDB.
         #[wasm_bindgen(js_namespace = instanceIde, js_name = saveAutosave)]
         pub fn save_autosave(name: &str, bytes: &[u8]) -> js_sys::Promise;

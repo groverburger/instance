@@ -698,7 +698,11 @@ impl IdeApp {
             let _ = debug;
             match ops::project_bytes(&self.project) {
                 Ok(b) => {
-                    crate::web::js::run_game(&b);
+                    let name = self.path.as_ref().and_then(|p| p.file_name()).map_or_else(
+                        || "<new game>".to_string(),
+                        |n| n.to_string_lossy().into_owned(),
+                    );
+                    crate::web::js::run_game(&name, &b);
                     self.status = "Game running…".into();
                 }
                 Err(e) => self.messages.push(e),

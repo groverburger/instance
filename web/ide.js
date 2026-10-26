@@ -85,35 +85,34 @@
     if (c) c.focus();
   }
 
-  function showGame() {
+  // The running game: a maximised classic window (styles in ide.html) over the IDE,
+  // with the game page (play.html) below its title bar.
+  function showGame(name) {
     closeGame();
     const overlay = document.createElement("div");
     overlay.id = "instance-run-overlay";
-    overlay.style.cssText =
-      "position:fixed;inset:0;z-index:1000;background:#000;display:flex;flex-direction:column";
-    // a compact bar above the game; the game page (play.html) fits the game into
-    // the area below it
-    const bar = document.createElement("div");
-    bar.style.cssText =
-      "flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;" +
-      "height:22px;box-sizing:border-box;padding:0 2px 0 8px;background:#f0f0f0;color:#222;" +
-      "font:12px/1 system-ui,sans-serif;border-bottom:1px solid #999;user-select:none";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-label", `${name} - Instance`);
+    const cap = document.createElement("div");
+    cap.className = "cap";
+    const icon = document.createElement("img");
+    icon.src = "favicon.ico";
+    icon.alt = "";
     const title = document.createElement("span");
-    title.textContent = "Running game";
+    title.textContent = `${name} - Instance`;
     const close = document.createElement("button");
+    close.className = "x";
     close.textContent = "✕";
     close.title = "Close the game (stops it)";
-    close.style.cssText =
-      "font:12px/1 system-ui,sans-serif;height:18px;padding:0 8px;margin:0;cursor:pointer;" +
-      "border:1px solid #aaa;border-radius:2px;background:#fafafa";
+    close.setAttribute("aria-label", "Close");
     close.onclick = closeGame;
-    bar.append(title, close);
+    cap.append(icon, title, close);
     const frame = document.createElement("iframe");
-    frame.src = "play.html?game=idb:" + encodeURIComponent(RUN_KEY);
+    frame.src = "play.html?game=idb:" + encodeURIComponent(RUN_KEY) + "&name=" + encodeURIComponent(name);
     frame.allow = "autoplay; fullscreen; gamepad";
-    frame.style.cssText = "flex:1 1 auto;min-height:0;display:block;border:0;width:100%;background:#000";
+    frame.title = name;
     frame.onload = () => frame.focus();
-    overlay.append(bar, frame);
+    overlay.append(cap, frame);
     document.body.append(overlay);
     frame.focus();
   }
@@ -124,10 +123,10 @@
   });
 
   window.instanceIde = {
-    async runGame(bytes) {
+    async runGame(name, bytes) {
       try {
         await put(RUN_KEY, copy(bytes));
-        showGame();
+        showGame(name);
       } catch (e) {
         alert("Cannot start the game: " + e);
       }

@@ -1804,7 +1804,7 @@ impl Editor for RoomEditor {
                 .max_rect(page.shrink2(vec2(6.0, 6.0)))
                 .layout(egui::Layout::top_down(egui::Align::Min)),
             |ui| {
-                ui.set_clip_rect(page.shrink(2.0));
+                ui.set_clip_rect(page.shrink(2.0).intersect(ui.clip_rect()));
                 self.tabs_ui(ui, cx);
             },
         );

@@ -82,6 +82,23 @@
       animation: busy-marquee 1.4s linear infinite; will-change: transform; }
     @keyframes busy-marquee { from { transform: translateX(-70px); } to { transform: translateX(280px); } }
     @media (prefers-reduced-motion: reduce) { #busy .bar i { animation-duration: 4s; } }
+
+    /* the running game (web/ide.js: showGame): a maximised classic window */
+    #instance-run-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column;
+      box-sizing: border-box; padding: 3px; background: #f0f0f0; font: 13px/1.4 "Segoe UI", Tahoma, system-ui, sans-serif;
+      border: 1px solid; border-color: #fff #696969 #696969 #fff; box-shadow: inset 1px 1px #fff, inset -1px -1px #a0a0a0; }
+    #instance-run-overlay .cap { flex: none; display: flex; align-items: center; gap: 5px; height: 20px; padding: 0 2px 0 4px;
+      background: linear-gradient(90deg, #0a246a, #a6caf0); color: #fff; font-weight: 700; user-select: none; }
+    #instance-run-overlay .cap img { width: 16px; height: 16px; }
+    #instance-run-overlay .cap span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #instance-run-overlay .x { box-sizing: border-box; width: 18px; height: 16px; padding: 0; background: #f0f0f0; color: #000;
+      font: 700 11px/1 Tahoma, sans-serif; cursor: pointer;
+      border: 1px solid; border-color: #fff #696969 #696969 #fff; box-shadow: inset -1px -1px #a0a0a0; }
+    #instance-run-overlay .x:active { border-color: #696969 #fff #fff #696969; box-shadow: inset 1px 1px #a0a0a0; }
+    #instance-run-overlay .x:focus-visible { outline: 1px dotted #000; outline-offset: -4px; }
+    #instance-run-overlay iframe { flex: 1 1 auto; min-height: 0; display: block; width: 100%; margin-top: 2px;
+      box-sizing: border-box; background: #000;
+      border: 1px solid; border-color: #696969 #fff #fff #696969; }
   </style>
 </head>
 <body>

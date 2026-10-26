@@ -372,7 +372,7 @@ impl ExtensionsEditor {
         instance_ui::chrome::sunken(p, rect.shrink(2.0));
         let inner = rect.shrink(3.0);
         let mut child = ui.new_child(UiBuilder::new().max_rect(inner).id_salt(id));
-        child.set_clip_rect(inner);
+        child.set_clip_rect(inner.intersect(ui.clip_rect()));
         let mut out = (None, None);
         egui::ScrollArea::vertical()
             .id_salt(id)

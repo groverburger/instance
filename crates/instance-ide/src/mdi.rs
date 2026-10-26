@@ -6,6 +6,9 @@
 //! content is laid out inside a fixed, clipped child rectangle. This rules out the
 //! feedback loop where content sized from "available space" makes an auto-sizing
 //! window grow every frame.
+//!
+//! A window may be dragged partly out of the workspace (left, right and down), as in
+//! Windows; what lies outside is clipped away. Its title bar always stays reachable.
 
 use eframe::egui::{
     self, pos2, vec2, Color32, Context, CursorIcon, Id, LayerId, Order, Rect,
@@ -18,6 +21,8 @@ pub const TITLE_H: f32 = instance_ui::chrome::TITLE_H;
 pub const BORDER: f32 = instance_ui::chrome::BORDER;
 pub const MIN_SIZE: Vec2 = Vec2::new(220.0, 120.0);
 pub const MINIMISED_W: f32 = 170.0;
+/// Width of a window that stays inside the workspace when it is dragged out sideways.
+pub const KEEP_VISIBLE: f32 = 96.0;
 
 /// Placement of one child window.
 #[derive(Debug, Clone, Copy)]
@@ -65,6 +70,23 @@ pub fn clamp_into(r: Rect, area: Rect) -> Rect {
     Rect::from_min_size(pos2(x, y), size)
 }
 
+/// Where a window at `r` shows in `area`: size limited to the area as in [`clamp_into`],
+/// but it may stick out to the left, right and bottom, as long as [`KEEP_VISIBLE`]
+/// of its width and its whole title bar stay inside, so it can be dragged back.
+pub fn keep_reachable(r: Rect, area: Rect) -> Rect {
+    let size = r.size().min(area.size()).max(MIN_SIZE.min(area.size()));
+    let keep = KEEP_VISIBLE.min(size.x);
+    let x = r
+        .min
+        .x
+        .clamp(area.min.x - size.x + keep, (area.max.x - keep).max(area.min.x));
+    let y = r
+        .min
+        .y
+        .clamp(area.min.y, (area.max.y - TITLE_H - 2.0 * BORDER).max(area.min.y));
+    Rect::from_min_size(pos2(x, y), size)
+}
+
 use instance_ui::chrome::{bevel, caption_button, CaptionButton as Caption};
 /// Modal dialog boxes with the classic chrome (shared with the runner).
 pub use instance_ui::chrome::dialog;
@@ -96,6 +118,7 @@ fn title_bar(
     title: &str,
     icon: Icon,
     active: bool,
+    shown: Rect,
     st: &mut MdiState,
     out: &mut MdiOut,
     min_button: bool,
@@ -117,7 +140,8 @@ fn title_bar(
         out.activated = true;
     }
     if resp.dragged() && !st.maximised && !st.minimised {
-        st.rect = st.rect.translate(resp.drag_delta());
+        // from where it shows, so that a drag beyond the limits has no dead zone
+        st.rect = shown.translate(resp.drag_delta());
     }
     if resp.double_clicked() {
         if st.minimised {
@@ -216,22 +240,25 @@ fn show_impl(
     } else if st.maximised {
         area
     } else {
-        clamp_into(st.rect, area)
+        keep_reachable(st.rect, area)
     };
+    let shown = r;
     // Keep the frame on whole physical pixels (crisp 1px bevels).
     let r = {
         use egui::emath::GuiRounding as _;
         r.round_to_pixels(ctx.pixels_per_point()).round_ui()
     };
+    // The part inside the workspace: the area covers (and takes clicks on) only that.
+    let visible = r.intersect(area);
     let layer = LayerId::new(Order::Middle, id);
     egui::Area::new(id)
         .order(Order::Middle)
-        .fixed_pos(r.min)
+        .fixed_pos(visible.min)
         .movable(false)
         .constrain(false)
         .sense(Sense::click())
         .show(ctx, |ui| {
-            ui.set_clip_rect(r.expand(1.0));
+            ui.set_clip_rect(r.expand(1.0).intersect(area));
             let p = ui.painter().clone();
             // outer frame
             p.rect_filled(r, 0.0, Color32::from_gray(240));
@@ -248,6 +275,7 @@ fn show_impl(
                 title,
                 icon,
                 active,
+                shown,
                 st,
                 &mut out,
                 min_slot.is_some(),
@@ -263,18 +291,18 @@ fn show_impl(
                         .max_rect(content.shrink2(vec2(6.0, 4.0)))
                         .layout(egui::Layout::top_down(egui::Align::Min)),
                 );
-                child.set_clip_rect(content);
+                child.set_clip_rect(content.intersect(area));
                 add_contents(&mut child);
                 if !st.maximised {
-                    resize_handles(ui, id, r, st);
+                    resize_handles(ui, id, r, shown, st);
                 }
             }
-            // The area is exactly the window rect, whatever the content did.
-            ui.expand_to_include_rect(r);
+            // The area is exactly the visible window rect, whatever the content did.
+            ui.expand_to_include_rect(visible);
         });
     if ctx.input(|i| i.pointer.any_pressed()) {
         if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
-            if r.contains(pos) && ctx.layer_id_at(pos) == Some(layer) {
+            if visible.contains(pos) && ctx.layer_id_at(pos) == Some(layer) {
                 out.activated = true;
             }
         }
@@ -282,7 +310,7 @@ fn show_impl(
     out
 }
 
-fn resize_handles(ui: &mut Ui, id: Id, r: Rect, st: &mut MdiState) {
+fn resize_handles(ui: &mut Ui, id: Id, r: Rect, shown: Rect, st: &mut MdiState) {
     let e = BORDER + 1.0;
     let c = 12.0;
     // (dx-min, dy-min, dx-max, dy-max) masks for each handle
@@ -336,7 +364,7 @@ fn resize_handles(ui: &mut Ui, id: Id, r: Rect, st: &mut MdiState) {
         }
         if resp.dragged() {
             let d = resp.drag_delta();
-            let mut n = clamp_into(st.rect, Rect::EVERYTHING);
+            let mut n = shown;
             n.min.x += d.x * m[0];
             n.min.y += d.y * m[1];
             n.max.x += d.x * m[2];
