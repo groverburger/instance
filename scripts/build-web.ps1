@@ -29,7 +29,7 @@ try {
         & wasm-bindgen --target web --no-typescript --out-dir (Join-Path $Out "pkg") (Join-Path $wasmDir "$name.wasm")
         if ($LASTEXITCODE -ne 0) { throw "wasm-bindgen failed for $name" }
     }
-    Copy-Item -Force web\*.html, web\*.js $Out
+    Copy-Item -Force web\*.html, web\*.js, web\favicon.ico $Out
     # example projects of the welcome screen (packed by scripts/pack-web-examples.sh)
     New-Item -ItemType Directory -Force (Join-Path $Out "examples") | Out-Null
     Copy-Item -Force web\examples\* (Join-Path $Out "examples")

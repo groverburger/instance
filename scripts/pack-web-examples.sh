@@ -1,12 +1,12 @@
 #!/usr/bin/env sh
 # Packs the example games of the web build into web/examples/ (committed; the Pages
 # workflow only copies them, because it cannot read instance-gamekit).
-#   scripts/pack-web-examples.sh
+#   scripts/pack-web-examples.sh [GAME ...]     (default: emberwood gravity_grade)
 # Reads the games from $INSTANCE_GAMEKIT (default: ../instance-gamekit next to this
 # repository) and never writes there.
-#   brickhop.gm81, gravity_grade.gm81  from games/brickhop and games/gravity_grade, with
-#       their music (WAVs over $MUSIC_MIN_KB KB, default 256) transcoded to OGG Vorbis:
-#       the WAVs make the games 10 and 40 MB, too big to download for a demo
+#   emberwood.gm81, gravity_grade.gm81  from games/emberwood and games/gravity_grade, with
+#       their sounds (WAVs over $MUSIC_MIN_KB KB, default 256) transcoded to OGG Vorbis:
+#       the WAVs make the games too big to download for a demo
 # spelunky.gm81 (and spelunky-COPYING.txt, spelunky.png) are made separately and only
 # copied in (docs/reference.md, "The web build").
 # Needs: target/release/gmk-pack (cargo build --release -p instance-format --bins), or
@@ -96,7 +96,7 @@ pack_game() {
   "$pack" "$dir" "$out/$1.gm81"
 }
 
-pack_game brickhop
-pack_game gravity_grade
+[ $# -gt 0 ] || set -- emberwood gravity_grade
+for game in "$@"; do pack_game "$game"; done
 
 ls -l "$out"/*.gm81

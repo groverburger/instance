@@ -292,9 +292,7 @@
         e.preventDefault();
         e.stopPropagation();
       }, true);
-      w.querySelector(".nav.prev").onclick = () => go(current - 1);
-      w.querySelector(".nav.next").onclick = () => go(current + 1);
-      w.querySelectorAll(".dots button").forEach((b, i) => (b.onclick = () => go(i)));
+      w.querySelectorAll(".tabs button").forEach((b, i) => (b.onclick = () => go(i)));
       // swipe on the screenshot
       const stage = w.querySelector(".stage");
       let x0 = null;
@@ -305,17 +303,17 @@
       });
     }
 
-    // The carousel: one screenshot (.stage img), slide text and dot per example, in order.
+    // The carousel: one screenshot (.stage img), slide text and tab per example, in order.
     let current = 0;
     function go(i) {
       const w = $("welcome");
       const imgs = w.querySelectorAll(".stage img");
       const slides = w.querySelectorAll(".slide");
-      const dots = w.querySelectorAll(".dots button");
+      const tabs = w.querySelectorAll(".tabs button");
       current = (i + slides.length) % slides.length;
       slides.forEach((s, k) => (s.hidden = k !== current));
       imgs.forEach((im, k) => im.classList.toggle("on", k === current));
-      dots.forEach((d, k) => d.setAttribute("aria-current", String(k === current)));
+      tabs.forEach((d, k) => d.setAttribute("aria-current", String(k === current)));
     }
 
     function show() {

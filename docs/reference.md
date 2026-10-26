@@ -163,17 +163,16 @@ over HTTP, not opened as files. The GitHub Pages site is built by
   isn't available; File > Export Web Page is (below).
 - **Welcome screen**: on a first visit (no `?project=`, no autosave) the IDE shows
   the example projects of `web/examples/` (Edit opens one in the IDE, Play in
-  `play.html`), "Start an empty project" and "Open a file". Help > Examples shows it
-  again. It is plain HTML in `web/ide.html` and `web/ide.js`; the Spelunky card
-  appears only when `examples/spelunky.gm81` is on the server.
+  `play.html`), "New project" and "Open file". Help > Examples shows it again. It is
+  plain HTML in `web/ide.html` and `web/ide.js`, styled like the IDE's own dialogs.
 - **Examples**: `web/examples/*.gm81` are committed, because the Pages workflow can't
   read the private `instance-gamekit` repository; the build scripts copy the folder.
-  `scripts/pack-web-examples.sh` repacks Brickhop and Gravity Grade from
-  `$INSTANCE_GAMEKIT` (default `../instance-gamekit`), transcoding their music WAVs to
+  `scripts/pack-web-examples.sh` repacks Emberwood and Gravity Grade from
+  `$INSTANCE_GAMEKIT` (default `../instance-gamekit`), transcoding their large WAVs to
   OGG Vorbis (ffmpeg, oggenc or Python with `soundfile`) so that the files are 2 and
-  5 MB instead of 10 and 40 MB. `scripts/build-spelunky-mod.py` makes `spelunky.gm81`
+  5 MB instead of 12 and 40 MB. `scripts/build-spelunky-mod.py` makes `spelunky.gm81`
   (Spelunky Classic, under its own license, `spelunky-COPYING.txt`). The thumbnails
-  (`*.png`) are headless-runner screenshots.
+  (`*.png`, `emberwood.jpg`) are headless-runner screenshots.
 - **Player**: `play.html?game=URL` loads a game, or drop a file onto the page. A page
   can also embed a game with `<script id="instance-game" data-src=URL>` or
   `window.INSTANCE_GAME_BASE64`. The game starts after a click, because browsers only
@@ -187,6 +186,13 @@ over HTTP, not opened as files. The GitHub Pages site is built by
   boxes inside the game (highscore name entry, splash images) are skipped, and
   `show_message`, `show_question` and `get_string` use the browser's dialogs. Scripts
   can nest at most 512 calls deep.
+- **Moving the mouse**: a page cannot move the cursor. When a game moves the mouse
+  (`display_mouse_set`, `window_mouse_set`, `window_view(s)_mouse_set`) while the cursor
+  is hidden, as mouse look in a 3D game does, the game takes the pointer lock: the
+  cursor stays put, and the game's mouse moves with the mouse and goes where the game
+  sets it. Esc (in the browser) ends the lock; a click on the game takes it again, and
+  showing the cursor ends it. With the cursor shown, the game sees the new position
+  until the mouse moves.
 
 ## Where things are stored
 

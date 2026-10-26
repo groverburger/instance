@@ -26,7 +26,7 @@ mkdir -p "$out/pkg"
 for name in instance_runner instance_ide; do
   wasm-bindgen --target web --no-typescript --out-dir "$out/pkg" "$target/wasm32-unknown-unknown/$profile/$name.wasm"
 done
-cp web/*.html web/*.js "$out/"
+cp web/*.html web/*.js web/favicon.ico "$out/"
 # example projects of the welcome screen (packed by scripts/pack-web-examples.sh)
 mkdir -p "$out/examples"
 cp web/examples/* "$out/examples/"

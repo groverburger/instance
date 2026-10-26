@@ -7,7 +7,9 @@
 //! the OpenGL backend on WebGL2 (falling back to the software renderer and a
 //! 2D canvas), input comes from DOM events on the canvas and the document,
 //! dialogs use `alert`/`confirm`/`prompt`, and files live in [`crate::vfs`]
-//! (persisted in `localStorage`).
+//! (persisted in `localStorage`). Browsers cannot move the mouse cursor, so a game
+//! that moves it (`display_mouse_set`, `window_mouse_set`, ...) while the cursor is
+//! hidden gets pointer lock instead ([`Pointer`]).
 
 use crate::draw::Backend;
 use crate::frontend::{self, mapping, Pacer};
@@ -141,6 +143,46 @@ struct Placement {
     mouse: frontend::Mapping,
     /// Colour around the region (0RGB).
     outside: u32,
+    /// Region size (the room or view size the game draws).
+    rw: u32,
+    rh: u32,
+}
+
+/// The mouse of a game that moves it. A browser page cannot move the cursor, so when
+/// a game moves the mouse while the cursor is hidden (mouse look in a 3D game, say)
+/// the canvas asks for pointer lock: the cursor stays put, and the mouse position the
+/// game sees is kept here, moved by the raw mouse motion and set by the game. The
+/// first request rides on the click that started the game; after Esc (which ends the
+/// lock) a click on the game locks it again. Showing the cursor ends it.
+#[derive(Default)]
+struct Pointer {
+    /// The game moves a hidden mouse: keep (or get back) the lock.
+    want: Cell<bool>,
+    /// Mouse position in region coordinates.
+    x: Cell<f64>,
+    y: Cell<f64>,
+}
+
+/// True while `canvas` holds the pointer lock.
+fn locked(canvas: &HtmlCanvasElement) -> bool {
+    let doc = window().document().unwrap();
+    let el: &web_sys::Element = canvas.as_ref();
+    doc.pointer_lock_element().as_ref() == Some(el)
+}
+
+/// Asks for pointer lock on `canvas`. Newer browsers answer with a promise that is
+/// rejected without a recent user gesture; that is ignored (the next click asks again).
+fn request_lock(canvas: &HtmlCanvasElement) {
+    let f = js_sys::Reflect::get(canvas, &"requestPointerLock".into()).ok();
+    if let Some(f) = f.as_ref().and_then(|f| f.dyn_ref::<js_sys::Function>()) {
+        if let Ok(r) = f.call0(canvas) {
+            if let Ok(p) = r.dyn_into::<js_sys::Promise>() {
+                let ignore = Closure::<dyn FnMut(JsValue)>::new(|_: JsValue| {});
+                let _ = p.catch(&ignore);
+                ignore.forget();
+            }
+        }
+    }
 }
 
 /// Everything the animation-frame callback needs.
@@ -155,6 +197,9 @@ struct Runner {
     place: Rc<RefCell<Placement>>,
     /// Set by the window's resize event: the canvas is sized again.
     resized: Rc<Cell<bool>>,
+    /// Input queue (also fed by the game moving the mouse).
+    queue: Rc<RefCell<Vec<InputEvent>>>,
+    pointer: Rc<Pointer>,
     gl: bool,
     done: bool,
 }
@@ -214,8 +259,24 @@ impl Runner {
             let m = frontend::Mapping { ox: 0.0, oy: 0.0, sx, sy };
             (m, m)
         };
-        *self.place.borrow_mut() = Placement { w: cw, h: ch, map, mouse, outside: v.outside };
+        *self.place.borrow_mut() = Placement { w: cw, h: ch, map, mouse, outside: v.outside, rw: v.w, rh: v.h };
+        if v.cursor_visible && self.pointer.want.replace(false) && locked(&self.canvas) {
+            window().document().unwrap().exit_pointer_lock();
+        }
         self.last = Some(v);
+    }
+
+    /// The game moved the mouse to (x, y) in region coordinates. It sees the new
+    /// position from the next step on, as after a real cursor move; with the cursor
+    /// hidden the canvas takes the pointer lock ([`Pointer`]).
+    fn warp(&mut self, x: f64, y: f64) {
+        self.pointer.x.set(x);
+        self.pointer.y.set(y);
+        self.queue.borrow_mut().push(InputEvent::MouseMove(x, y));
+        let hidden = self.last.as_ref().is_some_and(|v| !v.cursor_visible);
+        if hidden && !self.pointer.want.replace(true) && !locked(&self.canvas) {
+            request_lock(&self.canvas);
+        }
     }
 
     /// Runs the steps that are due; returns false once the game has ended.
@@ -238,6 +299,9 @@ impl Runner {
             }
             *self.title.borrow_mut() = self.g.caption();
             self.apply_view();
+            if let Some((x, y)) = self.g.win.set_mouse.take() {
+                self.warp(x, y);
+            }
             self.g.gfx.present_now();
             self.pacer.advance(self.g.rs.speed);
             self.pacer.delay(std::mem::take(&mut self.g.sleep_debt_ms));
@@ -246,6 +310,9 @@ impl Runner {
         crate::vfs::persist();
         if self.g.ended {
             self.done = true;
+            if locked(&self.canvas) {
+                window().document().unwrap().exit_pointer_lock();
+            }
             crate::vfs::persist();
             log("instance-runner: game ended");
             let w = window();
@@ -365,7 +432,10 @@ pub fn start_game(canvas_id: &str, data: &[u8], renderer: Option<String>) -> Res
         map: mapping(canvas.width(), canvas.height(), 640, 480, 1.0, false),
         mouse: mapping(canvas.width(), canvas.height(), 640, 480, 1.0, false),
         outside: 0,
+        rw: 640,
+        rh: 480,
     }));
+    let pointer = Rc::new(Pointer::default());
     install_present(&mut g, &canvas, place.clone(), gl);
 
     // input → queue drained by the game at the start of each step
@@ -402,9 +472,21 @@ pub fn start_game(canvas_id: &str, data: &[u8], renderer: Option<String>) -> Res
     }
     let ct: &web_sys::EventTarget = canvas.as_ref();
     {
-        let (q, m) = (queue.clone(), place.clone());
+        let (q, m, p, c) = (queue.clone(), place.clone(), pointer.clone(), canvas.clone());
         listen(ct, "mousemove", move |e: MouseEvent| {
-            let (x, y) = m.borrow().mouse.to_region(e.offset_x() as f64, e.offset_y() as f64);
+            let pl = *m.borrow();
+            let (x, y) = if locked(&c) {
+                // the cursor stands still: move the game's mouse by the raw motion,
+                // at most a region's size beyond its edges
+                let (rw, rh) = (pl.rw as f64, pl.rh as f64);
+                let x = p.x.get() + e.movement_x() as f64 / pl.mouse.sx.max(1e-9);
+                let y = p.y.get() + e.movement_y() as f64 / pl.mouse.sy.max(1e-9);
+                (x.clamp(-rw, 2.0 * rw), y.clamp(-rh, 2.0 * rh))
+            } else {
+                pl.mouse.to_region(e.offset_x() as f64, e.offset_y() as f64)
+            };
+            p.x.set(x);
+            p.y.set(y);
             q.borrow_mut().push(InputEvent::MouseMove(x, y));
         });
         let button = |e: &MouseEvent| match e.button() {
@@ -413,11 +495,21 @@ pub fn start_game(canvas_id: &str, data: &[u8], renderer: Option<String>) -> Res
             1 => Some(3),
             _ => None,
         };
-        let (q, m, c2) = (queue.clone(), place.clone(), canvas.clone());
+        let (q, m, c2, p) = (queue.clone(), place.clone(), canvas.clone(), pointer.clone());
         listen(ct, "mousedown", move |e: MouseEvent| {
             let _ = c2.focus();
-            let (x, y) = m.borrow().mouse.to_region(e.offset_x() as f64, e.offset_y() as f64);
-            q.borrow_mut().push(InputEvent::MouseMove(x, y));
+            if locked(&c2) {
+                // a locked pointer has no position of its own
+                q.borrow_mut().push(InputEvent::MouseMove(p.x.get(), p.y.get()));
+            } else {
+                if p.want.get() {
+                    request_lock(&c2);
+                }
+                let (x, y) = m.borrow().mouse.to_region(e.offset_x() as f64, e.offset_y() as f64);
+                p.x.set(x);
+                p.y.set(y);
+                q.borrow_mut().push(InputEvent::MouseMove(x, y));
+            }
             if let Some(b) = button(&e) {
                 q.borrow_mut().push(InputEvent::MouseDown(b));
             }
@@ -465,6 +557,8 @@ pub fn start_game(canvas_id: &str, data: &[u8], renderer: Option<String>) -> Res
         last: None,
         place,
         resized,
+        queue,
+        pointer,
         gl,
         done: false,
     }));

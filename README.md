@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/ide-room-editor.png" alt="The Instance IDE with a level of Brickhop open in the room editor, zoomed to 200%">
+  <img src="docs/images/ide-room-editor.png" alt="The Instance IDE with the tutorial level of Spelunky Classic open in the room editor, zoomed to 200%">
 </p>
 
 Instance is a classic 2D game creation tool, written from scratch in Rust. You build games
@@ -35,15 +35,14 @@ compiled to WebAssembly. It opens with three example games: pick one, change it,
 press Run. Click a screenshot to play that game.
 
 <p align="center">
-  <a href="https://groverburger.github.io/instance/play.html?game=examples/brickhop.gm81"><img src="web/examples/brickhop.png" alt="Brickhop" width="36%"></a>
-  <a href="https://groverburger.github.io/instance/play.html?game=examples/gravity_grade.gm81"><img src="web/examples/gravity_grade.png" alt="Gravity Grade" width="36%"></a>
   <a href="https://groverburger.github.io/instance/play.html?game=examples/spelunky.gm81"><img src="web/examples/spelunky.png" alt="Spelunky Classic" width="27%"></a>
+  <a href="https://groverburger.github.io/instance/play.html?game=examples/emberwood.gm81"><img src="web/examples/emberwood.jpg" alt="Emberwood" width="36%"></a>
+  <a href="https://groverburger.github.io/instance/play.html?game=examples/gravity_grade.gm81"><img src="web/examples/gravity_grade.png" alt="Gravity Grade" width="36%"></a>
 </p>
 
-- **Brickhop**, a platformer: open a level in the room editor, move some bricks and play
-  your version.
-- **Gravity Grade**, a falling-block game written in GML.
 - **Spelunky Classic**, Derek Yu's 2008 game, from the source he released in 2009.
+- **Emberwood**, a walk through an autumn forest in 3D, built from `d3d` models in GML.
+- **Gravity Grade**, a falling-block game written in GML.
 
 Your work is autosaved in the browser; File > Save downloads it as a `.gm81`.
 
@@ -120,7 +119,7 @@ Tools and example games for *making* games with Instance live in the separate
 Instance is released under the [MIT License](LICENSE). The bundled fonts keep their
 own licenses (Liberation Sans: SIL Open Font License; Roboto: Apache 2.0).
 
-The example games are in [`web/examples`](web/examples). Brickhop and Gravity Grade were
+The example games are in [`web/examples`](web/examples). Emberwood and Gravity Grade were
 made with [`instance-gamekit`](https://github.com/groverburger/instance-gamekit).
 Spelunky Classic is not covered by Instance's license: it is © 2008, 2009 Derek Yu and
 Mossmouth, LLC, shared under the
