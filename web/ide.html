@@ -63,6 +63,25 @@
       #welcome .acts .btn, #welcome .more .btn { flex: 1; }
     }
     @media (prefers-reduced-motion: reduce) { #welcome .stage img { transition: none; } }
+
+    /* "Opening ..." while a project downloads and opens (web/ide.js: busy); a small classic
+       dialog with a marquee progress bar, moved by a transform so that it keeps going
+       while the page is busy opening the project */
+    #busy { position: fixed; inset: 0; z-index: 950; display: flex; align-items: center; justify-content: center;
+      background: rgba(0, 0, 0, .2); cursor: progress; font: 13px/1.4 "Segoe UI", Tahoma, system-ui, sans-serif; }
+    #busy .win { width: 300px; padding: 3px; background: #f0f0f0;
+      border: 1px solid; border-color: #fff #696969 #696969 #fff; box-shadow: inset 1px 1px #fff, inset -1px -1px #a0a0a0; }
+    #busy .cap { display: flex; align-items: center; gap: 5px; height: 20px; padding: 0 4px;
+      background: linear-gradient(90deg, #0a246a, #a6caf0); color: #fff; font-weight: 700; }
+    #busy .cap img { width: 16px; height: 16px; }
+    #busy p { margin: 12px 12px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #busy .bar { position: relative; height: 16px; margin: 0 12px 12px; overflow: hidden; background: #fff;
+      border: 1px solid; border-color: #696969 #fff #fff #696969; box-shadow: inset 1px 1px #a0a0a0; }
+    #busy .bar i { position: absolute; top: 2px; bottom: 2px; left: 0; width: 70px;
+      background: repeating-linear-gradient(90deg, #0a246a 0 8px, transparent 8px 10px);
+      animation: busy-marquee 1.4s linear infinite; will-change: transform; }
+    @keyframes busy-marquee { from { transform: translateX(-70px); } to { transform: translateX(280px); } }
+    @media (prefers-reduced-motion: reduce) { #busy .bar i { animation-duration: 4s; } }
   </style>
 </head>
 <body>
@@ -128,6 +147,13 @@
         </div>
         <p class="foot">Not affiliated with or endorsed by YoYo Games.</p>
       </div>
+    </div>
+  </div>
+  <div id="busy" hidden role="alertdialog" aria-busy="true" aria-labelledby="busy-text">
+    <div class="win">
+      <div class="cap"><img src="favicon.ico" alt="">Instance</div>
+      <p id="busy-text">Opening&hellip;</p>
+      <div class="bar"><i></i></div>
     </div>
   </div>
   <!-- written by the build script: window.INSTANCE_SOUNDFONT, used when exporting web pages -->

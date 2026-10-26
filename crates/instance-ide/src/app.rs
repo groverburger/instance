@@ -228,7 +228,9 @@ impl IdeApp {
     fn web_frame(&mut self, ctx: &Context) {
         use crate::web::{self, Incoming};
         web::startup(ctx);
-        for i in web::take_incoming() {
+        let incoming = web::take_incoming();
+        let arrived = !incoming.is_empty();
+        for i in incoming {
             match i {
                 Incoming::Open(l) => self.request(Pending::OpenBytes(l.name, l.bytes, l.open)),
                 Incoming::Autosave(a, linked) => {
@@ -258,6 +260,11 @@ impl IdeApp {
                 Incoming::New => self.request(Pending::New),
                 Incoming::Error(e) => self.messages.push(e),
             }
+        }
+        if arrived {
+            // the project is open (or a question about it is up): the page's
+            // "Loading" / "Opening" notice goes; this frame shows the result
+            web::js::loaded();
         }
         self.restore_dialog(ctx);
         // Autosave every 15 s while there are unsaved changes.

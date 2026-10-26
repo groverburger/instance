@@ -37,7 +37,8 @@ pub mod js {
         /// A query parameter of the page URL.
         #[wasm_bindgen(js_namespace = instanceIde, js_name = queryParam)]
         pub fn query_param(name: &str) -> Option<String>;
-        /// Hides the "loading" message of the page.
+        /// Hides the page's "Loading" / "Opening" notice (`web/ide.js`): called once a
+        /// project is open, or a question about it is shown.
         #[wasm_bindgen(js_namespace = instanceIde, js_name = loaded)]
         pub fn loaded();
         /// Shows the welcome screen with the example projects (`web/ide.js`).
@@ -182,9 +183,10 @@ pub fn startup(_ctx: &eframe::egui::Context) {
         match (autosave().await, linked) {
             (Some(a), l) => push(Incoming::Autosave(a, l)),
             (None, Some(l)) => push(Incoming::Open(l)),
-            (None, None) => {}
+            // nothing to open: the IDE is ready (otherwise `IdeApp::web_frame` says so
+            // once it has opened the project or asked about it)
+            (None, None) => js::loaded(),
         }
-        js::loaded();
         repaint();
     });
 }
@@ -201,7 +203,6 @@ pub fn open_project_url(url: String, open: Option<String>) {
             Ok(l) => push(Incoming::Open(l)),
             Err(e) => push(Incoming::Error(e)),
         }
-        js::loaded();
         repaint();
     });
 }
@@ -212,7 +213,6 @@ pub fn open_project_url(url: String, open: Option<String>) {
 pub fn new_project() {
     mark_started();
     push(Incoming::New);
-    js::loaded();
     repaint();
 }
 
@@ -221,7 +221,6 @@ pub fn new_project() {
 pub fn open_project_bytes(name: String, bytes: Vec<u8>) {
     mark_started();
     push(Incoming::Open(Linked { name, bytes, open: None }));
-    js::loaded();
     repaint();
 }
 

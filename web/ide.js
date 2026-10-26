@@ -205,9 +205,21 @@
       return new URLSearchParams(location.search).get(name);
     },
 
+    // Called by the IDE once a project is open, or a question about it is shown: the
+    // page's notices ("Loading Instance", "Opening ...") go.
     loaded() {
       const l = document.getElementById("loading");
       if (l) l.remove();
+      const b = document.getElementById("busy");
+      if (b) b.hidden = true;
+    },
+
+    // Shows "Opening NAME..." until the IDE calls loaded().
+    busy(name) {
+      const b = document.getElementById("busy");
+      if (!b) return;
+      document.getElementById("busy-text").textContent = "Opening " + name + "…";
+      b.hidden = false;
     },
 
     // Called by ide.html once the wasm module is initialised: its exports
@@ -240,17 +252,12 @@
       if (c) c.focus();
     }
 
-    function loadingText(t) {
-      const l = $("loading");
-      if (l) l.textContent = t;
-    }
-
     async function edit(a) {
       const params = new URL(a.href, location.href).searchParams;
       const url = params.get("project");
       const open = params.get("open");
       hide();
-      loadingText("Loading " + url.split("/").pop() + "…");
+      window.instanceIde.busy(url.split("/").pop());
       history.replaceState(null, "", a.getAttribute("href"));
       (await wasm).open_project_url(url, open || undefined);
     }
@@ -259,6 +266,7 @@
       const files = await window.instanceIde.pickFiles(".gm81,.gmk,.gm6", false);
       if (!files || !files.length) return;
       hide();
+      window.instanceIde.busy(files[0].name);
       (await wasm).open_project_bytes(files[0].name, files[0].bytes);
     }
 

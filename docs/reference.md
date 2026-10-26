@@ -164,7 +164,9 @@ over HTTP, not opened as files. The GitHub Pages site is built by
 - **Welcome screen**: on a first visit (no `?project=`, no autosave) the IDE shows
   the example projects of `web/examples/` (Edit opens one in the IDE, Play in
   `play.html`), "New project" and "Open file". Help > Examples shows it again. It is
-  plain HTML in `web/ide.html` and `web/ide.js`, styled like the IDE's own dialogs.
+  plain HTML in `web/ide.html` and `web/ide.js`, styled like the IDE's own dialogs. While a
+  project downloads and opens, an "Opening NAME" box with a progress bar shows; the IDE
+  closes it (`instanceIde.loaded`) once the project is open or a question about it is up.
 - **Examples**: `web/examples/*.gm81` are committed, because the Pages workflow can't
   read the private `instance-gamekit` repository; the build scripts copy the folder.
   `scripts/pack-web-examples.sh` repacks Emberwood and Gravity Grade from
