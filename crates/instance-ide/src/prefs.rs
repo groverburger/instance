@@ -21,6 +21,8 @@ pub struct Prefs {
     pub show_origin: bool,
     /// Room grid on by default.
     pub room_grid: bool,
+    /// The welcome dialog was shown (desktop: it opens by itself only the first time).
+    pub welcome_seen: bool,
 }
 
 impl Default for Prefs {
@@ -33,6 +35,7 @@ impl Default for Prefs {
             syntax_colouring: true,
             show_origin: true,
             room_grid: true,
+            welcome_seen: false,
         }
     }
 }

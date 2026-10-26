@@ -91,21 +91,43 @@ pub fn prepare(
     if p.rooms.iter().flatten().next().is_none() {
         return Err("A game needs at least one room to run.".into());
     }
-    let exe = find_runner(runner).ok_or_else(|| {
-        format!(
-            "Runner executable '{}' not found next to the IDE or in a cargo target \
-             directory. Set its path in File > Preferences.",
-            runner_file_name()
-        )
-    })?;
+    let exe = runner_exe(runner)?;
     let game = write_temp_game(p)?;
     let workdir = project_path
         .and_then(|p| p.parent())
         .filter(|d| d.is_dir())
         .map(Path::to_path_buf)
         .unwrap_or_else(temp_dir);
-    let mut c = Command::new(&exe);
-    c.args(runner_args(&game, debug))
+    Ok(command(&exe, &game, &workdir, debug))
+}
+
+/// The command that plays an example game (welcome.rs): `bytes` saved as `name` in
+/// the temporary folder, which is also its working directory.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn prepare_example(name: &str, bytes: &[u8], runner: Option<&str>) -> Result<Command, String> {
+    let exe = runner_exe(runner)?;
+    let dir = temp_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let game = dir.join(name);
+    std::fs::write(&game, bytes).map_err(|e| format!("{}: {e}", game.display()))?;
+    Ok(command(&exe, &game, &dir, false))
+}
+
+/// The runner executable, or why there is none.
+fn runner_exe(runner: Option<&str>) -> Result<PathBuf, String> {
+    find_runner(runner).ok_or_else(|| {
+        format!(
+            "Runner executable '{}' not found next to the IDE or in a cargo target \
+             directory. Set its path in File > Preferences.",
+            runner_file_name()
+        )
+    })
+}
+
+/// The runner playing `game` in `workdir`, its output piped (for the Output Log).
+fn command(exe: &Path, game: &Path, workdir: &Path, debug: bool) -> Command {
+    let mut c = Command::new(exe);
+    c.args(runner_args(game, debug))
         .current_dir(workdir)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
@@ -117,7 +139,7 @@ pub fn prepare(
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         c.creation_flags(CREATE_NO_WINDOW);
     }
-    Ok(c)
+    c
 }
 
 /// Remove this instance's temporary folder.

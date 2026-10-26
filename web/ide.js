@@ -85,8 +85,8 @@
     if (c) c.focus();
   }
 
-  // The running game: a maximised classic window (styles in ide.html) over the IDE,
-  // with the game page (play.html) below its title bar.
+  // The running game: the game page (play.html) over the IDE, below a classic title
+  // bar with a close button (styles in ide.html).
   function showGame(name) {
     closeGame();
     const overlay = document.createElement("div");
@@ -108,7 +108,7 @@
     close.onclick = closeGame;
     cap.append(icon, title, close);
     const frame = document.createElement("iframe");
-    frame.src = "play.html?game=idb:" + encodeURIComponent(RUN_KEY) + "&name=" + encodeURIComponent(name);
+    frame.src = "play.html?game=idb:" + encodeURIComponent(RUN_KEY) + "&name=" + encodeURIComponent(name) + "&ide";
     frame.allow = "autoplay; fullscreen; gamepad";
     frame.title = name;
     frame.onload = () => frame.focus();
@@ -227,7 +227,7 @@
       resolveWasm(exports);
     },
 
-    // Shows the welcome screen (also Help > Examples).
+    // Shows the welcome screen (also File > Examples).
     showWelcome() {
       welcome.show();
     },
@@ -237,7 +237,7 @@
   const wasm = new Promise((r) => (resolveWasm = r));
 
   // The welcome screen (#welcome in ide.html): shown on a first visit, i.e. without
-  // ?project= and without an autosave. Its links are real URLs (ide.html?project=...,
+  // ?project= and without an autosave, and by File > Examples. Its links are real URLs (ide.html?project=...,
   // play.html?game=...), so they also work in a new tab; a plain click on "Edit"
   // opens the project in this page without reloading it.
   const welcome = (function () {

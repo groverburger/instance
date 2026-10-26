@@ -7,65 +7,66 @@
   <link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
   <style>
     [hidden] { display: none !important; }
-    html, body { margin: 0; height: 100%; background: #000; color: #0a0a0a;
+    html, body { margin: 0; height: 100%; background: #000; color: #c0c0c0;
       font: 13px/1.4 "Segoe UI", Tahoma, system-ui, sans-serif; }
     body { display: flex; align-items: center; justify-content: center; overflow: hidden; }
     #game { display: block; outline: none; image-rendering: pixelated; background: #000; }
-    /* loading and start: a classic dialog, like the IDE's (web/ide.html) */
-    #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-      background: #000; padding: 16px; }
+    /* the start screen: the game's name, a progress bar of whole blocks while it loads,
+       then a classic Play button (the same look as an exported game's page,
+       crates/instance-format/src/web_page.html) */
+    #overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; padding: 16px; background: #000; text-align: center; }
     #overlay.drop { outline: 2px dashed #a6caf0; outline-offset: -10px; }
-    .win { box-sizing: border-box; width: min(100%, 340px); padding: 3px; background: #f0f0f0;
-      border: 1px solid; border-color: #fff #696969 #696969 #fff; box-shadow: inset 1px 1px #fff, inset -1px -1px #a0a0a0; }
-    .cap { display: flex; align-items: center; gap: 5px; height: 20px; padding: 0 4px;
-      background: linear-gradient(90deg, #0a246a, #a6caf0); color: #fff; font-weight: 700; user-select: none; }
-    .cap img { width: 16px; height: 16px; }
-    .cap span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .body { padding: 12px; }
-    .body p { margin: 0; }
-    #status { overflow-wrap: anywhere; }
-    /* a progress bar of whole blocks (the fill's width is rounded to whole blocks) */
-    .bar { position: relative; height: 18px; margin-top: 10px; background: #fff;
-      border: 1px solid; border-color: #696969 #fff #fff #696969; box-shadow: inset 1px 1px #a0a0a0; }
-    .bar i { position: absolute; top: 2px; bottom: 2px; left: 2px; width: 0;
-      background: repeating-linear-gradient(90deg, #0a246a 0 8px, transparent 8px 10px); }
-    #detail { margin-top: 6px; color: #505050; font-size: 12px; font-variant-numeric: tabular-nums; }
-    .hint { margin-top: 10px; color: #505050; font-size: 12px; }
-    .acts { display: flex; justify-content: flex-end; margin-top: 12px; }
-    .btn { box-sizing: border-box; min-width: 82px; padding: 3px 12px; background: #f0f0f0; color: #0a0a0a;
-      font: inherit; cursor: pointer; outline: 1px solid #000;
+    #overlay p { margin: 0; }
+    #title { margin: 0 0 18px; max-width: 100%; overflow-wrap: anywhere; color: #fff;
+      font: 700 22px/1.25 "Segoe UI", Tahoma, system-ui, sans-serif; }
+    .bar { box-sizing: border-box; width: min(100%, 244px); height: 16px; padding: 2px; background: #000;
+      border: 1px solid; border-color: #5a5a5a #c0c0c0 #c0c0c0 #5a5a5a; }
+    .bar i { display: block; height: 100%; width: 0;
+      background: repeating-linear-gradient(90deg, #a6caf0 0 6px, transparent 6px 8px); }
+    #detail { min-height: 1.4em; margin-top: 6px; color: #808080; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .play { display: inline-flex; align-items: center; gap: 8px; box-sizing: border-box; min-width: 112px;
+      padding: 5px 22px; justify-content: center; background: #f0f0f0; color: #0a0a0a; cursor: pointer;
+      font: 700 14px/1.2 "Segoe UI", Tahoma, system-ui, sans-serif;
       border: 1px solid; border-color: #fff #696969 #696969 #fff; box-shadow: inset -1px -1px #a0a0a0; }
-    .btn:active { border-color: #696969 #fff #fff #696969; box-shadow: inset 1px 1px #a0a0a0; }
-    .btn:focus-visible { outline: 1px dotted #000; outline-offset: -4px; }
-    .error { color: #a00000; white-space: pre-wrap; }
+    .play svg { width: 10px; height: 12px; fill: currentColor; }
+    .play:active { border-color: #696969 #fff #fff #696969; box-shadow: inset 1px 1px #a0a0a0; }
+    .play:active svg { transform: translate(1px, 1px); }
+    .play:focus-visible { outline: 1px dotted #000; outline-offset: -5px; }
+    #status { min-height: 1.4em; margin-top: 12px; max-width: 36em; overflow-wrap: anywhere; }
+    .hint { margin-top: 8px; max-width: 34em; color: #808080; font-size: 12px; }
+    .error { color: #ff8080; white-space: pre-wrap; }
+    .made { position: fixed; bottom: 10px; left: 0; right: 0; display: flex; align-items: center;
+      justify-content: center; gap: 6px; color: #5a5a5a; font-size: 11px; text-decoration: none; }
+    .made img { width: 16px; height: 16px; opacity: .7; }
+    .made:hover { color: #909090; }
   </style>
 </head>
 <body>
   <canvas id="game" width="640" height="480" hidden></canvas>
   <div id="overlay">
-    <div class="win" role="dialog" aria-labelledby="caption">
-      <div class="cap"><img src="favicon.ico" alt=""><span id="caption">Instance</span></div>
-      <div class="body">
-        <p id="status" role="status">Loading&hellip;</p>
-        <div class="bar" id="bar" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="fill"></i></div>
-        <p id="detail">&nbsp;</p>
-        <p class="hint" id="hint" hidden>
-          Load a game with <code>?game=URL</code> (a .gm81 or .gmk file on this server),
-          or drop a .gm81 / .gmk file onto this page.
-        </p>
-        <div class="acts"><button class="btn" id="start" hidden>Start</button></div>
-      </div>
-    </div>
+    <h1 id="title">Instance</h1>
+    <div class="bar" id="bar" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="fill"></i></div>
+    <p id="detail"></p>
+    <button class="play" id="start" hidden><svg viewBox="0 0 10 12" aria-hidden="true"><path d="M0 0 10 6 0 12z"/></svg>Play</button>
+    <p id="status" role="status"></p>
+    <p class="hint" id="hint" hidden>
+      Load a game with <code>?game=URL</code> (a .gm81 or .gmk file on this server),
+      or drop a .gm81 / .gmk file onto this page.
+    </p>
+    <a class="made" id="made" href="./" title="Instance: make games in your browser"><img src="favicon.ico" alt="">Instance</a>
   </div>
   <!-- written by the build script: sets window.INSTANCE_SOUNDFONT when a SoundFont was bundled -->
   <script src="config.js"></script>
   <script type="module">
-    import init, { start_game, set_soundfont, set_audio_debug } from "./pkg/instance_runner.js";
+    import init, { start_game, set_soundfont, set_audio_debug, game_uses_midi } from "./pkg/instance_runner.js";
 
     // Configuration (URL parameters):
     //   game=URL | idb:KEY   game file to load (idb: = IndexedDB "instance"/"files", used by the IDE)
-    //   name=NAME            the game's name in the dialog (default: from the URL or key)
-    //   soundfont=URL        SoundFont for MIDI music (default: window.INSTANCE_SOUNDFONT from config.js; "none" to skip)
+    //   name=NAME            the game's name on the start screen (default: from the URL or key)
+    //   soundfont=URL        SoundFont for MIDI music, loaded only for games with MIDI sounds
+    //                        (default: window.INSTANCE_SOUNDFONT from config.js; "none" to skip)
+    //   ide                  opened by the IDE's Run (no link back to the IDE)
     //   renderer=gl|software
     //   audiodebug           log audio diagnostics (MIDI backend, synthesiser activity) to the console
     // A page can also embed a game: <script id="instance-game" type="application/octet-stream" data-src="URL">
@@ -79,9 +80,10 @@
       if (err) loading(false);
     };
 
-    // Progress of the downloads (the player's code, the SoundFont and the game load at
-    // the same time): bytes so far and expected, per download. A compressed response
-    // reports its compressed length, so a download counts at least what has arrived.
+    // Progress of the downloads (the player's code and the game load at the same time,
+    // then the SoundFont if the game has MIDI): bytes so far and expected, per download.
+    // A compressed response reports its compressed length, so a download counts at
+    // least what has arrived.
     const downloads = new Map();
     let barShown = true;
     function loading(on) {
@@ -89,8 +91,8 @@
       $("bar").hidden = !on;
       $("detail").hidden = !on;
     }
-    // the fill's width: fraction `f` of the bar, in whole blocks (10 px)
-    const blocks = (f) => Math.floor(($("bar").clientWidth - 2) * f / 10) * 10 + "px";
+    // the fill's width: fraction `f` of the bar, in whole blocks (8 px)
+    const blocks = (f) => Math.floor(($("bar").clientWidth - 4 + 2) * f / 8) * 8 + "px";
     function showProgress() {
       if (!barShown) return;
       let got = 0, want = 0, known = true;
@@ -159,6 +161,7 @@
     }
 
     // The SoundFont's bytes, or null without one.
+    let soundfontLoaded = false;
     async function fetchSoundFont() {
       const sf = params.get("soundfont") ?? window.INSTANCE_SOUNDFONT ?? window.GM81_SOUNDFONT;
       if (!sf || sf === "none") {
@@ -169,6 +172,7 @@
       try {
         const b = await fetchBytes(sf);
         console.info("instance: SoundFont loaded from", sf);
+        soundfontLoaded = true;
         return b;
       } catch (e) {
         downloads.delete(sf);
@@ -197,12 +201,29 @@
       return null;
     }
 
+    // the game's name as the start screen's title
+    function titled(name) {
+      $("title").textContent = name.replace(/\.(gm81|gmk|gm6)$/i, "");
+    }
+
+    // A loaded game: the SoundFont comes too if it has MIDI sounds, then it is offered.
+    async function prepare(game) {
+      titled(game.name);
+      await runnerReady;
+      if (!soundfontLoaded && game_uses_midi(game.bytes)) {
+        loading(true);
+        status("Loading the music\u2026");
+        const sf = await fetchSoundFont();
+        if (sf) set_soundfont(sf);
+      }
+      offer(game);
+    }
+
     let started = false;
     function offer(game) {
       if (started) return;
       finishLoading();
-      $("caption").textContent = `${game.name} - Instance`;
-      status(`${game.name} is ready.`);
+      status("");
       $("hint").hidden = true;
       const btn = $("start");
       btn.hidden = false;
@@ -247,19 +268,24 @@
       const f = e.dataTransfer.files[0];
       if (!f || started) return;
       if (!/\.(gm81|gmk|gm6)$/i.test(f.name)) { status(`${f.name}: not a .gm81/.gmk file`, true); return; }
-      offer({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+      try {
+        await prepare({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+      } catch (e) {
+        console.error(e);
+        status(String(e.message ?? e), true);
+      }
     });
 
+    if (params.has("ide")) $("made").hidden = true;
+    const wasm = new URL("./pkg/instance_runner_bg.wasm", import.meta.url).href;
+    const runnerReady = fetchBytes(wasm).then((code) => init({ module_or_path: code })).then(() => {
+      if (params.has("audiodebug")) set_audio_debug(true);
+    });
     try {
       const g = params.get("game");
-      if (g && !g.startsWith("idb:")) status(`Loading ${g.split("/").pop()}…`);
-      const wasm = new URL("./pkg/instance_runner_bg.wasm", import.meta.url).href;
-      const [code, soundfont, game] = await Promise.all([fetchBytes(wasm), fetchSoundFont(), initialGame()]);
-      status("Starting\u2026");
-      await init({ module_or_path: code });
-      if (params.has("audiodebug")) set_audio_debug(true);
-      if (soundfont) set_soundfont(soundfont);
-      if (game) offer(game);
+      if (g) titled(params.get("name") ?? g.replace(/^idb:/, "").split("/").pop());
+      const [, game] = await Promise.all([runnerReady, initialGame()]);
+      if (game) await prepare(game);
       else {
         finishLoading();
         $("hint").hidden = false;

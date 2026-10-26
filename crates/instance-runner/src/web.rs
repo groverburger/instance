@@ -43,6 +43,15 @@ pub fn set_soundfont(data: Vec<u8>) {
     crate::audio::set_soundfont_bytes(data);
 }
 
+/// Whether a game (the bytes of a `.gm81` / `.gmk`) has MIDI sounds, which need a
+/// SoundFont ([`set_soundfont`]) to be heard. The player page downloads the
+/// SoundFont only for those.
+#[wasm_bindgen]
+pub fn game_uses_midi(data: &[u8]) -> Result<bool, JsValue> {
+    let (p, _) = instance_format::read_project_versioned(data).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    Ok(instance_format::web::uses_midi(&p))
+}
+
 /// Logs audio diagnostics (MIDI backend, synthesiser activity) to the console.
 #[wasm_bindgen]
 pub fn set_audio_debug(on: bool) {
@@ -208,6 +217,9 @@ impl Runner {
     /// Sizes the canvas for the current window state. The game window is scaled
     /// to fit the page (keeping its aspect ratio; by whole factors when it fits)
     /// and centred by the page; the backing store follows the device pixel ratio.
+    /// In full screen, and with the "Full scale" setting, the page is the game
+    /// window: the canvas fills it and the region is placed in it as in a resized
+    /// window (stretched for "Full scale").
     fn apply_view(&mut self) {
         let v = frontend::view(&self.g);
         let resized = self.resized.replace(false);
@@ -223,7 +235,10 @@ impl Runner {
         let ah = w.inner_height().ok().and_then(|x| x.as_f64()).unwrap_or(600.0).max(1.0);
         let dpr = w.device_pixel_ratio().clamp(0.25, 8.0);
         // CSS size of the canvas
-        let (css_w, css_h) = if v.fullscreen {
+        // (the software renderer can only stretch the region over the canvas, so it
+        // fills the page only to stretch)
+        let fill = (v.fullscreen && self.gl) || v.scale == 0.0;
+        let (css_w, css_h) = if fill {
             (aw.floor(), ah.floor())
         } else {
             let (gw, gh) = frontend::client_size(&v);
@@ -248,7 +263,7 @@ impl Runner {
         let _ = style.set_property("background", &format!("#{:06x}", o & 0xFFFFFF));
         let (map, mouse) = if self.gl {
             // the region placed in the game window, then the window scaled onto the canvas
-            let (gw, gh) = if v.fullscreen { (css_w as u32, css_h as u32) } else { frontend::client_size(&v) };
+            let (gw, gh) = if fill { (css_w as u32, css_h as u32) } else { frontend::client_size(&v) };
             let m = mapping(gw, gh, v.w, v.h, v.scale, v.fullscreen);
             let scaled = |f: f64| frontend::Mapping { ox: m.ox * f, oy: m.oy * f, sx: m.sx * f, sy: m.sy * f };
             let f = css_w / gw.max(1) as f64;

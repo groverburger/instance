@@ -19,6 +19,12 @@ It works the same way as the desktop version, with a few differences around file
 A web page can open a project from the server it's hosted on by adding
 `?project=URL` to the IDE's address.
 
+### The welcome screen
+
+The first visit starts at the welcome screen. It shows the example games (open one with
+**Edit**, or **Play** it), starts a **New project**, or opens a file of your own.
+**File > Examples…** brings it back at any time.
+
 ### Autosave
 
 While the project has unsaved changes, the browser version saves a copy in the
@@ -33,9 +39,9 @@ project regularly.
 
 ## Running games
 
-**Run** (F5) plays the game in a window on top of the IDE. A progress bar shows the
-player loading (the first time it downloads the player and the MIDI SoundFont); then
-click **Start**. Click **✕** in the window's title bar to stop the game and return to
+**Run** (F5) plays the game on top of the IDE. A progress bar shows the player
+loading (the first time it downloads the player, and the MIDI SoundFont if the game has
+MIDI music); then click **Play**. Click **✕** in the window's title bar to stop the game and return to
 the IDE. Debug mode isn't available in the browser:
 **Run in debug mode** (F6) plays the game normally.
 

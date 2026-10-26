@@ -685,6 +685,24 @@ fn ui_mdi_drag_partly_outside() {
     assert!((r3.size() - r0.size()).length() < 1.5, "{r0:?} -> {r3:?}");
 }
 
+/// File > Examples… shows the welcome dialog; Edit on a tab opens that example.
+#[test]
+fn ui_examples_open_from_welcome() {
+    use egui_kittest::kittest::Queryable;
+    let mut h = harness();
+    h.get_by_label("File").click();
+    h.run_steps(2);
+    h.get_by_label("Examples…").click();
+    h.run_steps(3);
+    h.get_by_label("Emberwood").click();
+    h.run_steps(2);
+    // (the menu bar has an "Edit" too: the dialog's button comes last)
+    h.get_all_by_label("Edit").last().unwrap().click();
+    h.run_steps(4);
+    let p = h.state().test_state().0;
+    assert!(p.objects.iter().flatten().any(|o| o.name == "obj_game"), "Emberwood is open");
+}
+
 /// A small synthetic project with one populated resource of each kind.
 fn synthetic_project() -> instance_format::Project {
     let mut p = ops::new_project();

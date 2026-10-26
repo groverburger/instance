@@ -163,7 +163,7 @@ over HTTP, not opened as files. The GitHub Pages site is built by
   isn't available; File > Export Web Page is (below).
 - **Welcome screen**: on a first visit (no `?project=`, no autosave) the IDE shows
   the example projects of `web/examples/` (Edit opens one in the IDE, Play in
-  `play.html`), "New project" and "Open file". Help > Examples shows it again. It is
+  `play.html`), "New project" and "Open file". File > Examples… shows it again. It is
   plain HTML in `web/ide.html` and `web/ide.js`, styled like the IDE's own dialogs. While a
   project downloads and opens, an "Opening NAME" box with a progress bar shows; the IDE
   closes it (`instanceIde.loaded`) once the project is open or a question about it is up.
@@ -173,14 +173,22 @@ over HTTP, not opened as files. The GitHub Pages site is built by
   `$INSTANCE_GAMEKIT` (default `../instance-gamekit`), transcoding their large WAVs to
   OGG Vorbis (ffmpeg, oggenc or Python with `soundfile`) so that the files are 2 and
   5 MB instead of 12 and 40 MB. `scripts/build-spelunky-mod.py` makes `spelunky.gm81`
-  (Spelunky Classic, under its own license, `spelunky-COPYING.txt`). The thumbnails
-  (`*.png`, `emberwood.jpg`) are headless-runner screenshots.
+  (Spelunky Classic, under its own license, `spelunky-COPYING.txt`); Emberwood and
+  Gravity Grade are under the MIT License (`LICENSE-MIT.txt`). The thumbnails
+  (`*.png`, `emberwood.jpg`) are headless-runner screenshots. The desktop IDE has the
+  examples built in (`crates/instance-ide/src/welcome.rs`, about 14 MB) and shows the
+  same welcome dialog on its first start and with File > Examples….
 - **Player**: `play.html?game=URL` loads a game, or drop a file onto the page. A page
   can also embed a game with `<script id="instance-game" data-src=URL>` or
-  `window.INSTANCE_GAME_BASE64`. The game starts after a click, because browsers only
-  allow audio after user input (`?autostart` skips the button). The game is scaled
-  to fit the page. `?renderer=software` forces the CPU renderer, and `?soundfont=URL`
-  picks a different SoundFont.
+  `window.INSTANCE_GAME_BASE64`. A start screen shows the game's name and a progress
+  bar while the runner and the game download; the SoundFont follows only for a game
+  with MIDI sounds (`game_uses_midi`). The game starts after a click on Play, because
+  browsers only allow audio after user input (`?autostart` skips the button). Exported
+  pages (`crates/instance-format/src/web_page.html`) share the start screen's look.
+  The page is the game's window: the game is scaled to fit it by whole factors (keeping
+  its aspect ratio), and fills it, stretched, with the "Full scale" setting (or as
+  placed by the scaling setting in full screen). `?renderer=software` forces the CPU
+  renderer, and `?soundfont=URL` picks a different SoundFont.
 - **Files** a game writes (`file_*`, `ini_*`, saves, highscores, registry) live in a
   virtual file system in `localStorage`, per game.
 - **Limits**: no DLLs, no multiplayer and no room transitions. `sleep` delays the next

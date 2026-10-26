@@ -75,6 +75,9 @@ pub struct IdeApp {
     active: Option<u64>,
     /// Workspace rectangle of the last frame (where forms live).
     workspace: egui::Rect,
+    /// The welcome dialog with the example games (desktop; the web has its own).
+    #[cfg(not(target_arch = "wasm32"))]
+    welcome: crate::welcome::Welcome,
     show_about: bool,
     /// The help window.
     help: crate::help::HelpView,
@@ -129,6 +132,8 @@ impl IdeApp {
             active: None,
             workspace: egui::Rect::from_min_size(egui::pos2(250.0, 60.0), Vec2::new(1000.0, 700.0)),
             show_about: false,
+            #[cfg(not(target_arch = "wasm32"))]
+            welcome: Default::default(),
             help: Default::default(),
             autosave_at: crate::platform::unix_secs(),
             restore_offer: None,
@@ -137,6 +142,14 @@ impl IdeApp {
         app.project_replaced();
         if let Some(p) = open {
             app.open_path(&p);
+        } else {
+            // the first start shows the example games, as the web's first visit does
+            #[cfg(not(target_arch = "wasm32"))]
+            if !app.prefs.welcome_seen && !cfg!(test) {
+                app.welcome.show();
+                app.prefs.welcome_seen = true;
+                app.prefs.save();
+            }
         }
         app
     }
@@ -716,14 +729,33 @@ impl IdeApp {
         }
         let rp =
             (!self.prefs.runner_path.trim().is_empty()).then(|| self.prefs.runner_path.clone());
-        let mut cmd =
-            match crate::run::prepare(&self.project, rp.as_deref(), self.path.as_deref(), debug) {
-                Ok(c) => c,
-                Err(e) => {
-                    self.messages.push(e);
-                    return;
-                }
-            };
+        let name = self.path.as_ref().and_then(|p| p.file_name()).map_or_else(
+            || "<new game>".to_string(),
+            |n| n.to_string_lossy().into_owned(),
+        );
+        match crate::run::prepare(&self.project, rp.as_deref(), self.path.as_deref(), debug) {
+            Ok(c) => self.start_runner(c, &name, debug),
+            Err(e) => self.messages.push(e),
+        }
+    }
+
+    /// Plays an example game of the welcome dialog (without opening it).
+    #[cfg(not(target_arch = "wasm32"))]
+    fn play_example(&mut self, ex: &crate::welcome::Example) {
+        if self.runner.is_some() {
+            self.messages.push("A game is already running.".into());
+            return;
+        }
+        let rp =
+            (!self.prefs.runner_path.trim().is_empty()).then(|| self.prefs.runner_path.clone());
+        match crate::run::prepare_example(ex.file, ex.bytes, rp.as_deref()) {
+            Ok(c) => self.start_runner(c, ex.file, false),
+            Err(e) => self.messages.push(e),
+        }
+    }
+
+    /// Starts the runner command `cmd` playing `name`, its output going to the Output Log.
+    fn start_runner(&mut self, mut cmd: std::process::Command, name: &str, debug: bool) {
         self.last_run_args = cmd
             .get_args()
             .map(|a| a.to_string_lossy().into_owned())
@@ -733,10 +765,6 @@ impl IdeApp {
                 {
                     let mut log = self.log.lock().unwrap();
                     log.clear();
-                    let name = self.path.as_ref().and_then(|p| p.file_name()).map_or_else(
-                        || "<new game>".to_string(),
-                        |n| n.to_string_lossy().into_owned(),
-                    );
                     log.ide(format!(
                         "--- Running {name}{} ---",
                         if debug { " in debug mode" } else { "" }
@@ -897,6 +925,13 @@ impl IdeApp {
                             }
                         }
                     });
+                }
+                if ui.button("Examples…").clicked() {
+                    #[cfg(target_arch = "wasm32")]
+                    crate::web::js::show_welcome();
+                    #[cfg(not(target_arch = "wasm32"))]
+                    self.welcome.show();
+                    ui.close();
                 }
                 if ui.button("Save").clicked() {
                     self.save(false);
@@ -1083,11 +1118,6 @@ impl IdeApp {
                     self.help.open_contents();
                     self.help
                         .navigate(crate::help::Loc::page(crate::help::NAME_INDEX));
-                    ui.close();
-                }
-                #[cfg(target_arch = "wasm32")]
-                if ui.button("Examples…").clicked() {
-                    crate::web::js::show_welcome();
                     ui.close();
                 }
                 ui.separator();
@@ -1762,6 +1792,19 @@ impl IdeApp {
                 }
                 Some(false) => {}
                 None => self.group_prompt = Some((path, name)),
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            use crate::welcome::Choice;
+            match self.welcome.ui(ctx) {
+                Some(Choice::Edit(ex)) => {
+                    self.request(Pending::OpenBytes(ex.file.into(), ex.bytes.to_vec(), None))
+                }
+                Some(Choice::Play(ex)) => self.play_example(ex),
+                Some(Choice::New) => self.request(Pending::New),
+                Some(Choice::Open) => self.request(Pending::Open(None)),
+                None => {}
             }
         }
         if self.show_about {

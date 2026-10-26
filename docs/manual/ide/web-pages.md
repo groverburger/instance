@@ -21,7 +21,7 @@ The page works on its own. Players can:
 - play it from any web server or file host that serves `.html` files, such as
   GitHub Pages or itch.io (upload it as an HTML game, with the file as `index.html`).
 
-The game starts when the player clicks *Click to play*, because browsers only allow
+The game starts when the player clicks **Play**, because browsers only allow
 sound after the player has clicked or pressed a key. It needs a current browser
 (Chrome, Edge, Firefox or Safari from 2023 on).
 
