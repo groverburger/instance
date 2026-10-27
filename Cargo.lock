@@ -1751,7 +1751,7 @@ dependencies = [
 
 [[package]]
 name = "gml"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "js-sys",
 ]
@@ -2026,7 +2026,7 @@ dependencies = [
 
 [[package]]
 name = "instance-audio"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "instance-brand",
  "midly",
@@ -2039,7 +2039,7 @@ dependencies = [
 
 [[package]]
 name = "instance-blackbox"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "instance-format",
  "serde_json",
@@ -2047,14 +2047,14 @@ dependencies = [
 
 [[package]]
 name = "instance-brand"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "png",
 ]
 
 [[package]]
 name = "instance-check"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "gml",
  "instance-format",
@@ -2064,11 +2064,11 @@ dependencies = [
 
 [[package]]
 name = "instance-dllcall"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "instance-dllhost32"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "instance-dllcall",
  "libloading",
@@ -2077,7 +2077,7 @@ dependencies = [
 
 [[package]]
 name = "instance-format"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "flate2",
  "png",
@@ -2088,7 +2088,7 @@ dependencies = [
 
 [[package]]
 name = "instance-gmx"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "instance-brand",
  "instance-format",
@@ -2101,7 +2101,7 @@ dependencies = [
 
 [[package]]
 name = "instance-ide"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "arboard",
  "eframe",
@@ -2125,7 +2125,7 @@ dependencies = [
 
 [[package]]
 name = "instance-net"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "if-addrs",
  "socket2",
@@ -2133,7 +2133,7 @@ dependencies = [
 
 [[package]]
 name = "instance-runner"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "arboard",
  "console_error_panic_hook",
@@ -2170,11 +2170,11 @@ dependencies = [
 
 [[package]]
 name = "instance-testdll"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "instance-ui"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "egui",
  "egui_kittest",

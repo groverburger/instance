@@ -129,7 +129,8 @@ Put `instance-dllhost32.exe` next to `instance-runner.exe`, or set `INSTANCE_DLL
 | DLLs | x64 in-process, x86 via helper | `.dylib` only | `.so` only | no |
 | Multiplayer | yes | yes | yes | no |
 
-macOS and Linux are built and tested by CI, but see little interactive use.
+macOS and Linux are built and tested by CI, but see little interactive use. Linux is not
+officially supported (there are no release builds), though it should work.
 
 - **Linux** builds need the ALSA, udev, X11/Wayland and GL development packages (see
   the `apt-get` line in `.github/workflows/ci.yml`).
@@ -167,6 +168,9 @@ over HTTP, not opened as files. The GitHub Pages site is built by
   plain HTML in `web/ide.html` and `web/ide.js`, styled like the IDE's own dialogs. While a
   project downloads and opens, an "Opening NAME" box with a progress bar shows; the IDE
   closes it (`instanceIde.loaded`) once the project is open or a question about it is up.
+- **Phones and tablets**: `web/phone.js` (on every page) puts up a notice that
+  Instance is made for a computer, on touch-only or very small screens, until "Continue
+  anyway" (remembered for the browser tab).
 - **Examples**: `web/examples/*.gm81` are committed, because the Pages workflow can't
   read the private `instance-gamekit` repository; the build scripts copy the folder.
   `scripts/pack-web-examples.sh` repacks Emberwood and Gravity Grade from

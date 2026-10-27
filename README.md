@@ -22,7 +22,7 @@
 Instance is a classic 2D game creation tool, written from scratch in Rust. You build games
 from sprites, objects, events and rooms, with drag-and-drop actions or the GML
 scripting language. It opens existing `.gmk` and `.gm81` projects and plays them the
-way you remember, on Windows, macOS, Linux and in the browser.
+way you remember, on Windows, macOS and in the browser.
 
 Older games rely on all kinds of engine quirks: the order events run in, the exact
 random number generator, how `sound_isplaying` lags behind the audio. Instance
@@ -84,7 +84,8 @@ target/release/instance-runner game.gm81        # play a game
 target/release/instance-runner game.gm81 --debug
 ```
 
-On Linux you'll need the ALSA, udev, X11/Wayland and GL development packages first.
+Linux isn't supported yet, but it should work when built from source: you'll need the
+ALSA, udev, X11/Wayland and GL development packages first.
 The [manual](docs/manual/README.md) explains how to make games, from a first tutorial
 to the full function reference; it is also built into the IDE (Help > Contents, or
 F1). The [reference](docs/reference.md) covers the rest: command-line tools, the headless
@@ -111,16 +112,13 @@ decompiled or copied. [CLEANROOM.md](CLEANROOM.md) describes the process.
 | `instance-dllcall`, `instance-dllhost32` | calling native DLLs, including 32-bit ones |
 | `instance-blackbox` | black-box test projects for checking compatibility |
 
-Tools and example games for *making* games with Instance live in the separate
-`instance-gamekit` repository.
-
 ## License
 
 Instance is released under the [MIT License](LICENSE). The bundled fonts keep their
 own licenses (Liberation Sans: SIL Open Font License; Roboto: Apache 2.0).
 
 The example games are in [`web/examples`](web/examples). Emberwood and Gravity Grade were
-made with [`instance-gamekit`](https://github.com/groverburger/instance-gamekit).
+made with Instance and are shared under the [MIT License](web/examples/LICENSE-MIT.txt).
 Spelunky Classic is not covered by Instance's license: it is © 2008, 2009 Derek Yu and
 Mossmouth, LLC, shared under the
 [Spelunky User License v1.1b](web/examples/spelunky-COPYING.txt). The copy here is a mod
